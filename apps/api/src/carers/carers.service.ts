@@ -1,0 +1,281 @@
+import { Injectable, NotFoundException, ForbiddenException } from "@nestjs/common";
+import { prisma } from "@poolcare/db";
+import { CreateCarerDto, UpdateCarerDto } from "./dto";
+
+@Injectable()
+export class CarersService {
+  async list(
+    orgId: string,
+    role: string,
+    filters: {
+      query?: string;
+      active?: boolean;
+      page: number;
+      limit: number;
+    }
+  ) {
+    // CARER role can only see themselves
+    if (role === "CARER") {
+      throw new ForbiddenException("Use /carers/me/carer to view your profile");
+    }
+
+    const where: any = {
+      orgId,
+    };
+
+    if (filters.active !== undefined) {
+      where.active = filters.active;
+    }
+
+    if (filters.query) {
+      where.OR = [
+        { name: { contains: filters.query, mode: "insensitive" } },
+        { phone: { contains: filters.query, mode: "insensitive" } },
+      ];
+    }
+
+    const [items, total] = await Promise.all([
+      prisma.carer.findMany({
+        where,
+        skip: (filters.page - 1) * filters.limit,
+        take: filters.limit,
+        include: {
+          user: {
+            select: {
+              id: true,
+              email: true,
+              phone: true,
+              name: true,
+            },
+          },
+        },
+        orderBy: { createdAt: "desc" },
+      }),
+      prisma.carer.count({ where }),
+    ]);
+
+    return {
+      items,
+      total,
+      page: filters.page,
+      limit: filters.limit,
+    };
+  }
+
+  async create(orgId: string, dto: CreateCarerDto) {
+    let userId = dto.userId;
+
+    // If no userId provided, create user from phone/email
+    if (!userId) {
+      if (!dto.phone && !dto.email) {
+        throw new Error("Either userId, phone, or email must be provided");
+      }
+
+      const orConditions: any[] = [];
+      if (dto.phone) orConditions.push({ phone: dto.phone });
+      if (dto.email) orConditions.push({ email: dto.email });
+
+      const existingUser = orConditions.length > 0
+        ? await prisma.user.findFirst({
+            where: { OR: orConditions },
+          })
+        : null;
+
+      if (existingUser) {
+        userId = existingUser.id;
+      } else {
+        const newUser = await prisma.user.create({
+          data: {
+            phone: dto.phone,
+            email: dto.email,
+            name: dto.name,
+          },
+        });
+        userId = newUser.id;
+
+        // Add membership if not exists
+        await prisma.orgMember.upsert({
+          where: {
+            orgId_userId: {
+              orgId,
+              userId,
+            },
+          },
+          create: {
+            orgId,
+            userId,
+            role: "CARER",
+          },
+          update: {},
+        });
+      }
+    }
+
+    const carer = await prisma.carer.create({
+      data: {
+        orgId,
+        userId,
+        name: dto.name,
+        phone: dto.phone,
+        homeBaseLat: dto.homeBase?.lat,
+        homeBaseLng: dto.homeBase?.lng,
+        active: dto.active ?? true,
+      },
+      include: {
+        user: true,
+      },
+    });
+
+    return carer;
+  }
+
+  async getOne(orgId: string, role: string, currentUserId: string, carerId: string) {
+    const carer = await prisma.carer.findFirst({
+      where: {
+        id: carerId,
+        orgId,
+      },
+      include: {
+        user: true,
+      },
+    });
+
+    if (!carer) {
+      throw new NotFoundException("Carer not found");
+    }
+
+    // CARER can only see themselves
+    if (role === "CARER" && carer.userId !== currentUserId) {
+      throw new ForbiddenException("Access denied");
+    }
+
+    return carer;
+  }
+
+  async update(orgId: string, carerId: string, dto: UpdateCarerDto) {
+    const carer = await prisma.carer.findFirst({
+      where: {
+        id: carerId,
+        orgId,
+      },
+    });
+
+    if (!carer) {
+      throw new NotFoundException("Carer not found");
+    }
+
+    const updated = await prisma.carer.update({
+      where: { id: carerId },
+      data: {
+        name: dto.name,
+        phone: dto.phone,
+        homeBaseLat: dto.homeBase?.lat,
+        homeBaseLng: dto.homeBase?.lng,
+        active: dto.active,
+      },
+      include: {
+        user: true,
+      },
+    });
+
+    return updated;
+  }
+
+  async getMyCarer(orgId: string, userId: string) {
+    const carer = await prisma.carer.findFirst({
+      where: {
+        orgId,
+        userId,
+      },
+      include: {
+        user: true,
+      },
+    });
+
+    if (!carer) {
+      throw new NotFoundException("Carer profile not found");
+    }
+
+    return carer;
+  }
+
+  async updateMyCarer(orgId: string, userId: string, dto: UpdateCarerDto) {
+    const carer = await prisma.carer.findFirst({
+      where: {
+        orgId,
+        userId,
+      },
+    });
+
+    if (!carer) {
+      throw new NotFoundException("Carer profile not found");
+    }
+
+    // Carers can only update preferences, not active status
+    const { active, ...prefs } = dto;
+    const updateData: any = {
+      ...prefs,
+      homeBaseLat: dto.homeBase?.lat,
+      homeBaseLng: dto.homeBase?.lng,
+    };
+
+    const updated = await prisma.carer.update({
+      where: { id: carer.id },
+      data: updateData,
+      include: {
+        user: true,
+      },
+    });
+
+    return updated;
+  }
+
+  async registerDeviceToken(
+    orgId: string,
+    userId: string,
+    carerId: string,
+    dto: { token: string; platform: string }
+  ) {
+    // Verify carer belongs to user
+    const carer = await prisma.carer.findFirst({
+      where: {
+        id: carerId,
+        orgId,
+        userId,
+      },
+    });
+
+    if (!carer) {
+      throw new NotFoundException("Carer not found or access denied");
+    }
+
+    // Upsert device token (dedupe by userId + platform)
+    const existing = await prisma.deviceToken.findFirst({
+      where: {
+        userId,
+        platform: dto.platform,
+      },
+    });
+
+    const deviceToken = existing
+      ? await prisma.deviceToken.update({
+          where: { id: existing.id },
+          data: {
+            token: dto.token,
+            carerId,
+          },
+        })
+      : await prisma.deviceToken.create({
+          data: {
+            orgId,
+            userId,
+            carerId,
+            token: dto.token,
+            platform: dto.platform,
+          },
+        });
+
+    return deviceToken;
+  }
+}
+

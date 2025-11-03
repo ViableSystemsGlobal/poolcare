@@ -1,0 +1,719 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Enums
+enum JobStatus {
+  scheduled
+  en_route
+  on_site
+  completed
+  failed
+  cancelled
+}
+
+enum IssueSeverity {
+  low
+  medium
+  high
+  critical
+}
+
+enum LocationType {
+  warehouse
+  truck
+}
+
+// Organizations & Users (Module 1)
+// Note: User records managed by auth.users in Supabase pattern
+// For VPS standalone, we'll create a User table
+model User {
+  id          String   @id @default(uuid()) @db.Uuid
+  phone       String?  @unique
+  email       String?  @unique
+  name        String?
+  passwordHash String?
+  createdAt   DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(6)
+
+  memberships OrgMember[]
+  carers      Carer[]
+
+  @@index([phone])
+  @@index([email])
+}
+
+model Organization {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+
+  members OrgMember[]
+  carers  Carer[]
+  clients Client[]
+  pools           Pool[]
+  servicePlans    ServicePlan[]
+  templates       VisitTemplate[]
+  jobs            Job[]
+  visits          VisitEntry[]
+  readings        Reading[]
+  chemicals       ChemicalsUsed[]
+  photos          Photo[]
+  issues          Issue[]
+  quotes          Quote[]
+  invoices        Invoice[]
+  payments        Payment[]
+  receipts        Receipt[]
+  notifications   Notification[]
+  threads         Thread[]
+  participants    Participant[]
+  messages        Message[]
+  threadLinks     ThreadLink[]
+  webhookLogs     ChannelWebhookLog[]
+  refunds        Refund[]
+  creditNotes    CreditNote[]
+  // ... other relations
+}
+
+model OrgMember {
+  orgId    String       @db.Uuid
+  userId   String       @db.Uuid
+  role     String // ADMIN, MANAGER, CARER, CLIENT
+  createdAt DateTime    @default(now()) @db.Timestamptz(6)
+  
+  org      Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  user     User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@id([orgId, userId])
+  @@index([userId])
+}
+
+model OtpRequest {
+  id         String   @id @default(uuid()) @db.Uuid
+  channel    String   // phone, email
+  target     String
+  codeHash   String
+  purpose    String   @default("login")
+  attempts   Int      @default(0)
+  expiresAt  DateTime @db.Timestamptz(6)
+  cooldownAt DateTime? @db.Timestamptz(6)
+  usedAt     DateTime? @db.Timestamptz(6)
+  userId     String?  @db.Uuid
+  createdAt  DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([target, purpose])
+  @@index([expiresAt])
+}
+
+// Carers & Clients (Module 2)
+model Carer {
+  id            String   @id @default(uuid()) @db.Uuid
+  orgId         String   @db.Uuid
+  userId        String   @db.Uuid
+  name          String?
+  phone         String?
+  homeBaseLat   Float?
+  homeBaseLng   Float?
+  ratePerVisitCents Int? // Fixed pay per visit (in cents)
+  currency      String?  @default("GHS") // Currency for rate
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now()) @db.Timestamptz(6)
+
+  org          Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  assignedJobs Job[]
+
+  @@index([orgId, active])
+  @@index([orgId, name])
+}
+
+model Client {
+  id               String   @id @default(uuid()) @db.Uuid
+  orgId            String   @db.Uuid
+  userId           String?  @db.Uuid
+  name             String
+  email            String?
+  phone            String?
+  billingAddress   String?
+  preferredChannels String[] @default(["WHATSAPP"])
+  createdAt        DateTime @default(now()) @db.Timestamptz(6)
+
+  org         Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  pools       Pool[]
+  quotes      Quote[]
+  invoices    Invoice[]
+  threads     Thread[]
+  creditNotes CreditNote[]
+
+  @@index([orgId, name])
+  @@index([orgId, phone])
+}
+
+// Pools (Module 3)
+model Pool {
+  id         String   @id @default(uuid()) @db.Uuid
+  orgId      String   @db.Uuid
+  clientId  String   @db.Uuid
+  name       String?
+  address    String?
+  lat        Float?
+  lng        Float?
+  volumeL    Int?
+  surfaceType String?
+  equipment  Json?
+  targets    Json?
+  notes      String?
+  createdAt  DateTime @default(now()) @db.Timestamptz(6)
+
+  org          Organization     @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  client       Client           @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  servicePlans ServicePlan[]
+  jobs         Job[]
+  issues       Issue[]
+  quotes       Quote[]
+  invoices     Invoice[]
+
+  @@index([orgId, clientId])
+  @@index([orgId, name])
+}
+
+// Device Tokens (Module 2)
+model DeviceToken {
+  id        String   @id @default(uuid()) @db.Uuid
+  orgId     String   @db.Uuid
+  userId    String   @db.Uuid
+  carerId   String?  @db.Uuid
+  clientId  String?  @db.Uuid
+  token     String   @unique
+  platform  String   // ios, android, web
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([userId])
+  @@index([orgId])
+  @@unique([userId, platform])
+}
+
+// Files & Storage (Module 11)
+model FileObject {
+  id           String    @id @default(uuid()) @db.Uuid
+  orgId        String    @db.Uuid
+  scope        String    // visit_photo, pool_attachment, etc.
+  refId        String    // visit_123, pool_456, etc.
+  storageKey   String
+  storageBucket String
+  contentType  String
+  sizeBytes    Int
+  checksum     String?
+  width        Int?
+  height       Int?
+  exif         Json?
+  variants     Json?     // {"xl":"...","thumb":"..."}
+  uploadedAt   DateTime  @default(now()) @db.Timestamptz(6)
+  deletedAt    DateTime? @db.Timestamptz(6)
+
+  @@index([orgId, scope, refId])
+  @@index([orgId, uploadedAt(sort: Desc)])
+}
+
+// Visit Templates (Module 4)
+model VisitTemplate {
+  id                 String   @id @default(uuid()) @db.Uuid
+  orgId              String   @db.Uuid
+  name               String
+  checklist          Json     // Array of steps
+  targets            Json?    // Chemistry targets
+  serviceDurationMin Int      @default(45)
+  createdBy          String?  @db.Uuid
+  createdAt          DateTime @default(now()) @db.Timestamptz(6)
+  version            Int      @default(1)
+
+  org         Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  servicePlans ServicePlan[]
+  visits      VisitEntry[]
+
+  @@index([orgId, name])
+}
+
+// Service Plans (Module 5)
+model ServicePlan {
+  id                   String    @id @default(uuid()) @db.Uuid
+  orgId                String    @db.Uuid
+  poolId               String    @db.Uuid
+  frequency            String    // weekly, biweekly, monthly
+  dow                  String?   // mon..sun for weekly/biweekly
+  dom                  Int?      // 1..28 or -1 for monthly
+  windowStart          String?   // HH:MM:SS
+  windowEnd            String?
+  serviceDurationMin   Int       @default(45)
+  visitTemplateId      String?   @db.Uuid
+  visitTemplateVersion Int?
+  priceCents           Int
+  currency             String    @default("GHS")
+  taxPct               Float     @default(0)
+  discountPct          Float     @default(0)
+  startsOn             DateTime? @db.Date
+  endsOn               DateTime? @db.Date
+  status               String    @default("active") // active, paused, ended
+  nextVisitAt          DateTime? @db.Timestamptz(6)
+  lastVisitAt          DateTime? @db.Timestamptz(6)
+  notes                String?
+  createdAt            DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt            DateTime  @updatedAt @db.Timestamptz(6)
+
+  pool           Pool            @relation(fields: [poolId], references: [id], onDelete: Cascade)
+  visitTemplate  VisitTemplate?  @relation(fields: [visitTemplateId], references: [id], onDelete: SetNull)
+  org            Organization    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  windowOverrides ServicePlanWindowOverride[]
+  jobs           Job[]
+
+  @@index([orgId, poolId])
+  @@index([orgId, status, nextVisitAt])
+}
+
+model ServicePlanWindowOverride {
+  id          String    @id @default(uuid()) @db.Uuid
+  orgId       String    @db.Uuid
+  planId      String    @db.Uuid
+  date        DateTime  @db.Date
+  windowStart String    // HH:MM:SS
+  windowEnd   String
+  reason      String?
+  createdAt   DateTime  @default(now()) @db.Timestamptz(6)
+
+  plan ServicePlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@unique([planId, date], name: "planId_date")
+}
+
+// Jobs (Module 6)
+model Job {
+  id               String   @id @default(uuid()) @db.Uuid
+  orgId            String   @db.Uuid
+  poolId           String   @db.Uuid
+  planId           String?  @db.Uuid
+  scheduledStart   DateTime? @db.Timestamptz(6)
+  windowStart      DateTime  @db.Timestamptz(6)
+  windowEnd        DateTime  @db.Timestamptz(6)
+  status           JobStatus @default(scheduled)
+  assignedCarerId  String?  @db.Uuid
+  etaMinutes       Int?
+  distanceMeters   Int?
+  sequence         Int?
+  slaMinutes       Int      @default(120)
+  slaBreachedAt    DateTime? @db.Timestamptz(6)
+  cancelCode       String?
+  failCode         String?
+  notes            String?
+  templateId       String?  @db.Uuid
+  templateVersion  Int?
+  durationMin      Int?
+  createdAt        DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt        DateTime @updatedAt @db.Timestamptz(6)
+
+  pool          Pool            @relation(fields: [poolId], references: [id], onDelete: Cascade)
+  plan          ServicePlan?    @relation(fields: [planId], references: [id], onDelete: SetNull)
+  assignedCarer Carer?          @relation(fields: [assignedCarerId], references: [id], onDelete: SetNull)
+  org           Organization    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  visit         VisitEntry?
+
+  @@index([orgId, windowStart])
+  @@index([orgId, assignedCarerId, windowStart])
+  @@index([status, windowStart])
+}
+
+// Visits (Module 7)
+model VisitEntry {
+  id                String    @id @default(uuid()) @db.Uuid
+  orgId             String    @db.Uuid
+  jobId             String    @db.Uuid @unique
+  startedAt         DateTime? @db.Timestamptz(6)
+  arrivedAt         DateTime? @db.Timestamptz(6)
+  completedAt       DateTime? @db.Timestamptz(6)
+  clientSignatureUrl String?
+  rating            Int?      // 1-5
+  feedback          String?
+  templateId        String?   @db.Uuid
+  templateVersion   Int?
+  // Carer payment fields
+  approvedAt        DateTime? @db.Timestamptz(6)
+  approvedBy        String?   @db.Uuid
+  paymentAmountCents Int?
+  paymentStatus     String?   @default("pending") // pending, approved, paid
+  createdAt         DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt         DateTime  @updatedAt @db.Timestamptz(6)
+
+  job       Job       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  template  VisitTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  org       Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  readings  Reading[]
+  chemicals ChemicalsUsed[]
+  photos    Photo[]
+  invoice   Invoice?
+  issues    Issue[]
+
+  @@index([orgId, jobId])
+  @@index([orgId, completedAt])
+  @@index([orgId, paymentStatus, approvedAt])
+}
+
+model Reading {
+  id              String    @id @default(uuid()) @db.Uuid
+  orgId           String    @db.Uuid
+  visitId         String    @db.Uuid
+  ph              Float?
+  chlorineFree    Float?    @map("chlorine_free")
+  chlorineTotal   Float?    @map("chlorine_total")
+  alkalinity      Int?
+  calciumHardness Int?      @map("calcium_hardness")
+  cyanuricAcid    Int?      @map("cyanuric_acid")
+  tempC           Float?
+  measuredAt      DateTime  @default(now()) @db.Timestamptz(6)
+
+  visit VisitEntry @relation(fields: [visitId], references: [id], onDelete: Cascade)
+  org   Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([visitId])
+}
+
+model ChemicalsUsed {
+  id        String    @id @default(uuid()) @db.Uuid
+  orgId     String    @db.Uuid
+  visitId   String    @db.Uuid
+  chemical  String
+  qty       Float?
+  unit      String?
+  lotNo     String?
+  costCents Int?
+  createdAt DateTime  @default(now()) @db.Timestamptz(6)
+
+  visit VisitEntry @relation(fields: [visitId], references: [id], onDelete: Cascade)
+  org   Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([visitId])
+}
+
+model Photo {
+  id       String    @id @default(uuid()) @db.Uuid
+  orgId    String    @db.Uuid
+  visitId  String?   @db.Uuid
+  issueId  String?   @db.Uuid
+  url      String
+  label    String    // before, after, issue
+  takenAt  DateTime  @default(now()) @db.Timestamptz(6)
+  meta     Json?     // exif, width, height, thumbUrl
+
+  visit VisitEntry? @relation(fields: [visitId], references: [id], onDelete: SetNull)
+  issue Issue?      @relation(fields: [issueId], references: [id], onDelete: SetNull)
+  org   Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([visitId])
+  @@index([issueId])
+}
+
+// Issues & Quotes (Module 8)
+model Issue {
+  id            String         @id @default(uuid()) @db.Uuid
+  orgId         String         @db.Uuid
+  visitId       String?        @db.Uuid
+  poolId        String         @db.Uuid
+  type          String
+  severity      IssueSeverity
+  description   String
+  status        String         @default("open") // open, quoted, scheduled, resolved, dismissed
+  requiresQuote Boolean        @default(false)
+  createdBy     String?        @db.Uuid
+  createdAt     DateTime       @default(now()) @db.Timestamptz(6)
+  updatedAt     DateTime       @updatedAt @db.Timestamptz(6)
+
+  visit   VisitEntry? @relation(fields: [visitId], references: [id], onDelete: SetNull)
+  pool    Pool        @relation(fields: [poolId], references: [id], onDelete: Cascade)
+  org     Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  quote   Quote?
+  photos  Photo[]
+
+  @@index([orgId, poolId, status, severity])
+}
+
+model Quote {
+  id            String    @id @default(uuid()) @db.Uuid
+  orgId         String    @db.Uuid
+  issueId       String?   @db.Uuid @unique
+  poolId        String    @db.Uuid
+  clientId      String    @db.Uuid
+  status        String    @default("pending") // pending, approved, rejected
+  currency      String    @default("GHS")
+  items         Json      // Array of {sku?, label, qty, unitPriceCents, taxPct}
+  subtotalCents Int
+  taxCents      Int       @default(0)
+  totalCents    Int
+  notes         String?
+  approvedAt    DateTime? @db.Timestamptz(6)
+  rejectedAt    DateTime? @db.Timestamptz(6)
+  approvedBy    String?   @db.Uuid
+  rejectedBy    String?   @db.Uuid
+  rejectionReason String?
+  createdAt     DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt     DateTime  @updatedAt @db.Timestamptz(6)
+
+  issue   Issue?         @relation(fields: [issueId], references: [id], onDelete: SetNull)
+  pool    Pool           @relation(fields: [poolId], references: [id], onDelete: Cascade)
+  client  Client         @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  org     Organization   @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  audits  QuoteAudit[]
+  invoice Invoice?
+
+  @@index([orgId, clientId, status])
+  @@index([issueId])
+}
+
+model QuoteAudit {
+  id        String   @id @default(uuid()) @db.Uuid
+  orgId     String   @db.Uuid
+  quoteId   String   @db.Uuid
+  userId    String?  @db.Uuid
+  action    String   // create, edit, approve, reject, create_job
+  payload   Json?
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+
+  quote Quote @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+
+  @@index([quoteId])
+}
+
+// Invoices & Payments (Module 9)
+model Invoice {
+  id              String         @id @default(uuid()) @db.Uuid
+  orgId           String         @db.Uuid
+  clientId        String         @db.Uuid
+  poolId          String?        @db.Uuid
+  visitId         String?        @db.Uuid @unique
+  quoteId         String?        @db.Uuid @unique
+  invoiceNumber   String         @unique
+  status          String         @default("draft") // draft, sent, paid, overdue, cancelled
+  currency        String         @default("GHS")
+  items           Json           // Array of {sku?, label, qty, unitPriceCents, taxPct}
+  subtotalCents   Int
+  taxCents        Int            @default(0)
+  totalCents      Int
+  paidCents       Int            @default(0)
+  dueDate         DateTime?      @db.Date
+  issuedAt        DateTime?      @db.Timestamptz(6)
+  paidAt          DateTime?      @db.Timestamptz(6)
+  notes           String?
+  metadata        Json?
+  createdAt       DateTime       @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime       @updatedAt @db.Timestamptz(6)
+
+  client     Client      @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  pool       Pool?       @relation(fields: [poolId], references: [id], onDelete: SetNull)
+  visit      VisitEntry? @relation(fields: [visitId], references: [id], onDelete: SetNull)
+  quote      Quote?      @relation(fields: [quoteId], references: [id], onDelete: SetNull)
+  org        Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  payments   Payment[]
+  receipts   Receipt[]
+  creditNotes CreditNote[]
+
+  @@index([orgId, clientId, status])
+  @@index([orgId, status, dueDate])
+  @@index([invoiceNumber])
+}
+
+model Payment {
+  id            String    @id @default(uuid()) @db.Uuid
+  orgId         String    @db.Uuid
+  invoiceId     String    @db.Uuid
+  method        String    // card, mobile_money, bank_transfer, cash
+  provider      String?   // paystack, flutterwave, etc.
+  providerRef   String?   // external transaction ID
+  amountCents   Int
+  currency      String    @default("GHS")
+  status        String    @default("pending") // pending, processing, completed, failed, refunded
+  metadata      Json?     // provider response, fees, etc.
+  processedAt   DateTime? @db.Timestamptz(6)
+  createdAt     DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt     DateTime  @updatedAt @db.Timestamptz(6)
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  org     Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  receipt Receipt?
+  refunds Refund[]
+
+  @@index([invoiceId])
+  @@index([orgId, status])
+  @@index([providerRef])
+}
+
+model Receipt {
+  id          String    @id @default(uuid()) @db.Uuid
+  orgId       String    @db.Uuid
+  invoiceId   String    @db.Uuid
+  paymentId   String?   @db.Uuid @unique
+  receiptNumber String  @unique
+  issuedAt    DateTime  @default(now()) @db.Timestamptz(6)
+  pdfUrl      String?
+  createdAt   DateTime  @default(now()) @db.Timestamptz(6)
+
+  invoice Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  payment Payment? @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  org     Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([invoiceId])
+  @@index([receiptNumber])
+}
+
+model CreditNote {
+  id          String    @id @default(uuid()) @db.Uuid
+  orgId       String    @db.Uuid
+  clientId    String    @db.Uuid
+  invoiceId   String?   @db.Uuid
+  reason      String?
+  items       Json      // Array of {label, qty, unitPriceCents, taxPct?}
+  amountCents Int
+  appliedAt   DateTime? @db.Timestamptz(6)
+  createdAt   DateTime  @default(now()) @db.Timestamptz(6)
+
+  client  Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  invoice Invoice? @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
+  org     Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId, clientId])
+  @@index([invoiceId])
+}
+
+model Refund {
+  id          String    @id @default(uuid()) @db.Uuid
+  orgId       String    @db.Uuid
+  paymentId   String    @db.Uuid
+  amountCents Int
+  providerRef String?
+  refundedAt   DateTime  @default(now()) @db.Timestamptz(6)
+  meta        Json?
+
+  payment Payment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  org     Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([paymentId])
+  @@index([orgId])
+}
+
+// Notifications (Module 12)
+model Notification {
+  id          String   @id @default(uuid()) @db.Uuid
+  orgId       String   @db.Uuid
+  recipientId String?  @db.Uuid // User ID (nullable for org-wide)
+  recipientType String // user, org, client, carer
+  channel     String   // email, sms, push, whatsapp
+  template    String?  // template key
+  subject     String?
+  body        String
+  status      String   @default("pending") // pending, sent, delivered, failed
+  providerRef String?
+  metadata    Json?
+  scheduledFor DateTime? @db.Timestamptz(6)
+  sentAt      DateTime? @db.Timestamptz(6)
+  deliveredAt DateTime? @db.Timestamptz(6)
+  createdAt   DateTime @default(now()) @db.Timestamptz(6)
+
+  org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId, status, scheduledFor])
+  @@index([recipientId])
+}
+
+// Inbox & Chat (Module 10)
+model Thread {
+  id            String   @id @default(uuid()) @db.Uuid
+  orgId         String   @db.Uuid
+  clientId      String?  @db.Uuid
+  channelPrimary String  @default("whatsapp") // whatsapp, sms, email, inapp
+  subject       String?
+  status        String   @default("open") // open, archived
+  tags          String[]
+  unreadCount   Int      @default(0)
+  lastMessageAt DateTime? @db.Timestamptz(6)
+  createdAt     DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt     DateTime @updatedAt @db.Timestamptz(6)
+
+  org         Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  client     Client?      @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  participants Participant[]
+  messages   Message[]
+  links      ThreadLink[]
+
+  @@index([orgId, lastMessageAt(sort: Desc)])
+  @@index([orgId, status, lastMessageAt(sort: Desc)])
+  @@index([clientId])
+}
+
+model Participant {
+  id          String   @id @default(uuid()) @db.Uuid
+  orgId       String   @db.Uuid
+  threadId    String   @db.Uuid
+  userId      String?  @db.Uuid
+  role        String   // manager, carer, client
+  displayName String?
+  createdAt   DateTime @default(now()) @db.Timestamptz(6)
+
+  thread Thread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  org    Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@unique([threadId, userId, role])
+  @@index([threadId])
+}
+
+model Message {
+  id          String    @id @default(uuid()) @db.Uuid
+  orgId       String    @db.Uuid
+  threadId    String    @db.Uuid
+  senderRole  String    // manager, carer, client, system
+  channel     String    // whatsapp, sms, email, inapp
+  text        String?
+  attachments Json?      // Array of {url, mime, size?, width?, height?}
+  meta        Json?      // delivery status, provider ids, etc.
+  createdAt   DateTime  @default(now()) @db.Timestamptz(6)
+
+  thread Thread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  org    Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([threadId, createdAt(sort: Desc)])
+  @@index([orgId, createdAt(sort: Desc)])
+}
+
+model ThreadLink {
+  id        String   @id @default(uuid()) @db.Uuid
+  orgId     String   @db.Uuid
+  threadId  String   @db.Uuid
+  targetType String   // pool, job, visit, invoice, quote, service_plan
+  targetId  String   @db.Uuid
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+
+  thread Thread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  org    Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@unique([threadId, targetType, targetId])
+  @@index([targetType, targetId])
+}
+
+model ChannelWebhookLog {
+  id         String    @id @default(uuid()) @db.Uuid
+  orgId      String?   @db.Uuid
+  provider   String    // whatsapp, sms, email
+  payload    Json
+  receivedAt DateTime  @default(now()) @db.Timestamptz(6)
+  processedAt DateTime? @db.Timestamptz(6)
+  error      String?
+
+  org Organization? @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId, receivedAt(sort: Desc)])
+  @@index([provider, processedAt])
+}
+
