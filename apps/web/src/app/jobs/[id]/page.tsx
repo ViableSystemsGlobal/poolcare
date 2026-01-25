@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, type SyntheticEvent, type ChangeEvent } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -18,6 +18,10 @@ import {
   Play,
   Navigation,
   Edit,
+  FileText,
+  Camera,
+  ClipboardCheck,
+  FlaskConical,
 } from "lucide-react";
 import {
   Select,
@@ -86,6 +90,7 @@ export default function JobDetailPage() {
 
   const [loading, setLoading] = useState(true);
   const [job, setJob] = useState<Job | null>(null);
+  const [visit, setVisit] = useState<any>(null);
   const [carers, setCarers] = useState<any[]>([]);
   const [isAssignDialogOpen, setIsAssignDialogOpen] = useState(false);
   const [isRescheduleDialogOpen, setIsRescheduleDialogOpen] = useState(false);
@@ -140,6 +145,30 @@ export default function JobDetailPage() {
       if (carersRes.ok) {
         const carersData = await carersRes.json();
         setCarers(carersData.items || []);
+      }
+
+      // Fetch visit for this job (if exists)
+      const visitsRes = await fetch(`${API_URL}/visits?jobId=${jobId}`, {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
+        },
+      });
+
+      if (visitsRes.ok) {
+        const visitsData = await visitsRes.json();
+        if (visitsData.items && visitsData.items.length > 0) {
+          // Fetch full visit details
+          const visitId = visitsData.items[0].id;
+          const visitDetailRes = await fetch(`${API_URL}/visits/${visitId}`, {
+            headers: {
+              Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
+            },
+          });
+          if (visitDetailRes.ok) {
+            const visitData = await visitDetailRes.json();
+            setVisit(visitData);
+          }
+        }
       }
     } catch (error) {
       console.error("Failed to fetch job data:", error);
@@ -643,6 +672,178 @@ export default function JobDetailPage() {
               </CardContent>
             </Card>
           )}
+
+          {/* Visit Details - Show when visit exists */}
+          {visit && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <ClipboardCheck className="h-5 w-5" />
+                  Service Details
+                </CardTitle>
+                <CardDescription>
+                  Checklist, readings, and photos from the service visit
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {/* Checklist Items */}
+                {visit.checklist && (
+                  <div>
+                    <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                      <CheckCircle className="h-4 w-4" />
+                      Checklist
+                    </h4>
+                    <div className="space-y-2 max-h-60 overflow-y-auto">
+                      {(() => {
+                        // Parse checklist if it's a JSON string
+                        let checklistItems: any[] = [];
+                        if (typeof visit.checklist === 'string') {
+                          try {
+                            checklistItems = JSON.parse(visit.checklist);
+                          } catch (e) {
+                            console.error('Failed to parse checklist:', e);
+                          }
+                        } else if (Array.isArray(visit.checklist)) {
+                          checklistItems = visit.checklist;
+                        }
+                        
+                        const completedCount = checklistItems.filter((item: any) => item.completed).length;
+                        return (
+                          <>
+                            <p className="text-xs text-gray-500 mb-2">
+                              {completedCount} of {checklistItems.length} completed
+                            </p>
+                            {checklistItems.map((item: any, idx: number) => (
+                              <div key={idx} className="flex items-start gap-2 text-sm">
+                                {item.completed ? (
+                                  <CheckCircle className="h-4 w-4 text-green-600 mt-0.5 flex-shrink-0" />
+                                ) : item.notApplicable ? (
+                                  <XCircle className="h-4 w-4 text-gray-400 mt-0.5 flex-shrink-0" />
+                                ) : (
+                                  <div className="h-4 w-4 rounded-full border-2 border-gray-300 mt-0.5 flex-shrink-0" />
+                                )}
+                                <div className="flex-1">
+                                  <span className={item.completed ? "text-gray-900" : item.notApplicable ? "text-gray-500 italic" : "text-gray-600"}>
+                                    {item.task || item.label}
+                                  </span>
+                                  {item.notApplicable && item.comment && (
+                                    <span className="text-xs text-gray-500 ml-2">({item.comment})</span>
+                                  )}
+                                  {item.value !== undefined && item.value !== null && (
+                                    <span className="text-xs text-blue-600 ml-2">Value: {item.value}</span>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </>
+                        );
+                      })()}
+                    </div>
+                  </div>
+                )}
+
+                {/* Water Chemistry Readings */}
+                {visit.readings && visit.readings.length > 0 && (
+                  <div>
+                    <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                      <FlaskConical className="h-4 w-4" />
+                      Water Chemistry
+                    </h4>
+                    <div className="grid grid-cols-2 gap-3">
+                      {visit.readings[0].ph !== null && visit.readings[0].ph !== undefined && (
+                        <div className="text-sm">
+                          <span className="text-gray-600">pH:</span>{" "}
+                          <span className="font-medium">{visit.readings[0].ph.toFixed(2)}</span>
+                        </div>
+                      )}
+                      {visit.readings[0].chlorineFree !== null && visit.readings[0].chlorineFree !== undefined && (
+                        <div className="text-sm">
+                          <span className="text-gray-600">Free Chlorine:</span>{" "}
+                          <span className="font-medium">{visit.readings[0].chlorineFree.toFixed(2)} ppm</span>
+                        </div>
+                      )}
+                      {visit.readings[0].alkalinity !== null && visit.readings[0].alkalinity !== undefined && (
+                        <div className="text-sm">
+                          <span className="text-gray-600">Alkalinity:</span>{" "}
+                          <span className="font-medium">{visit.readings[0].alkalinity} ppm</span>
+                        </div>
+                      )}
+                      {visit.readings[0].tempC !== null && visit.readings[0].tempC !== undefined && (
+                        <div className="text-sm">
+                          <span className="text-gray-600">Temperature:</span>{" "}
+                          <span className="font-medium">{visit.readings[0].tempC.toFixed(1)}°C</span>
+                        </div>
+                      )}
+                      {visit.readings[0].calciumHardness !== null && visit.readings[0].calciumHardness !== undefined && (
+                        <div className="text-sm">
+                          <span className="text-gray-600">Calcium Hardness:</span>{" "}
+                          <span className="font-medium">{visit.readings[0].calciumHardness} ppm</span>
+                        </div>
+                      )}
+                      {visit.readings[0].cyanuricAcid !== null && visit.readings[0].cyanuricAcid !== undefined && (
+                        <div className="text-sm">
+                          <span className="text-gray-600">Cyanuric Acid:</span>{" "}
+                          <span className="font-medium">{visit.readings[0].cyanuricAcid} ppm</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Photos */}
+                {visit.photos && visit.photos.length > 0 && (
+                  <div>
+                    <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                      <Camera className="h-4 w-4" />
+                      Photos ({visit.photos.length})
+                    </h4>
+                    <div className="grid grid-cols-2 gap-2">
+                      {visit.photos.map((photo: any, idx: number) => (
+                        <div key={idx} className="relative aspect-square rounded-lg overflow-hidden bg-gray-100">
+                          {(() => {
+                            const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+                            const rawUrl = photo.url || photo.presignedUrl || "";
+                            // Prefix API_URL if the URL is relative (avoids service worker /_next intercept)
+                            const finalUrl = rawUrl.startsWith("http") ? rawUrl : `${API_URL}${rawUrl}`;
+                            return (
+                          <img
+                              src={finalUrl}
+                            alt={photo.label || `Photo ${idx + 1}`}
+                            className="w-full h-full object-cover"
+                              onError={(e: SyntheticEvent<HTMLImageElement>) => {
+                                e.currentTarget.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100'%3E%3Crect fill='%23ddd' width='100' height='100'/%3E%3Ctext x='50%25' y='50%25' text-anchor='middle' dy='.3em' fill='%23999' font-size='12'%3EPhoto%3C/text%3E%3C/svg%3E";
+                            }}
+                          />
+                            );
+                          })()}
+                          <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-50 text-white text-xs px-2 py-1">
+                            {photo.label || "Photo"}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Service Report */}
+                {visit.completedAt && (
+                  <div>
+                    <Button
+                      variant="outline"
+                      className="w-full"
+                      onClick={() => {
+                        const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+                        window.open(`${API_URL}/visits/${visit.id}/report`, "_blank");
+                      }}
+                    >
+                      <FileText className="h-4 w-4 mr-2" />
+                      View Service Report
+                    </Button>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
         </div>
       </div>
 
@@ -695,7 +896,7 @@ export default function JobDetailPage() {
                 id="window-start"
                 type="datetime-local"
                 value={newWindowStart}
-                onChange={(e) => setNewWindowStart(e.target.value)}
+                onChange={(e: ChangeEvent<HTMLInputElement>) => setNewWindowStart(e.target.value)}
               />
             </div>
             <div>
@@ -704,7 +905,7 @@ export default function JobDetailPage() {
                 id="window-end"
                 type="datetime-local"
                 value={newWindowEnd}
-                onChange={(e) => setNewWindowEnd(e.target.value)}
+                onChange={(e: ChangeEvent<HTMLInputElement>) => setNewWindowEnd(e.target.value)}
               />
             </div>
             <div className="flex justify-end gap-2">

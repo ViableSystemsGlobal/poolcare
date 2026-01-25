@@ -114,6 +114,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [customLogo, setCustomLogo] = useState<string | null>(null);
 
   useEffect(() => {
+    // Load from localStorage first (for immediate display)
     const saved = localStorage.getItem('themeColor') as ThemeColor;
     if (saved && themeConfig[saved]) {
       setThemeColorState(saved);
@@ -121,6 +122,44 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     const logo = localStorage.getItem('customLogo');
     if (logo) {
       setCustomLogo(logo);
+    }
+
+    // Then try to load from API if authenticated
+    const token = localStorage.getItem('auth_token');
+    if (token) {
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+      fetch(`${API_URL}/settings/org`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      })
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.profile) {
+            if (data.profile.themeColor && themeConfig[data.profile.themeColor as ThemeColor]) {
+              setThemeColorState(data.profile.themeColor as ThemeColor);
+              localStorage.setItem('themeColor', data.profile.themeColor);
+            }
+            if (data.profile.logoUrl) {
+              setCustomLogo(data.profile.logoUrl);
+              localStorage.setItem('customLogo', data.profile.logoUrl);
+            }
+            if (data.profile.faviconUrl) {
+              const link = document.querySelector("link[rel='icon']") as HTMLLinkElement;
+              if (link) {
+                link.href = data.profile.faviconUrl;
+              } else {
+                const newLink = document.createElement("link");
+                newLink.rel = "icon";
+                newLink.href = data.profile.faviconUrl;
+                document.head.appendChild(newLink);
+              }
+            }
+          }
+        })
+        .catch((err) => {
+          console.error("Failed to load theme settings:", err);
+        });
     }
   }, []);
 

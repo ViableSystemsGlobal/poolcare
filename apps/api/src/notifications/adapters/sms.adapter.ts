@@ -1,18 +1,117 @@
-import { Injectable, Logger } from "@nestjs/common";
+import { Injectable, Logger, Inject, forwardRef } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
+import { SettingsService } from "../../settings/settings.service";
+
+interface DeywuroResponse {
+  code: number;
+  message?: string;
+}
+
+const isDeywuroResponse = (value: unknown): value is DeywuroResponse => {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as { code?: unknown }).code === "number" &&
+    (typeof (value as { message?: unknown }).message === "string" ||
+      typeof (value as { message?: unknown }).message === "undefined")
+  );
+};
 
 @Injectable()
 export class SmsAdapter {
   private readonly logger = new Logger(SmsAdapter.name);
 
-  constructor(private readonly configService: ConfigService) {}
+  constructor(
+    private readonly configService: ConfigService,
+    @Inject(forwardRef(() => SettingsService))
+    private readonly settingsService: SettingsService
+  ) {}
+
+  private async getSmsConfig(orgId?: string) {
+    // Try to get settings from database if orgId is provided
+    if (orgId) {
+      try {
+        // Get raw settings from database (bypass the password masking)
+        const { prisma } = await import("@poolcare/db");
+        const orgSetting = await prisma.orgSetting.findUnique({
+          where: { orgId },
+        });
+        
+        this.logger.debug(`Loading SMS config for org ${orgId}, found setting: ${!!orgSetting}`);
+        
+        if (orgSetting?.integrations) {
+          const integrations = orgSetting.integrations as any;
+          const sms = integrations.sms || {};
+          
+          this.logger.debug(`SMS settings from DB: username=${!!sms.username}, password=${!!sms.password}`);
+          this.logger.debug(`SMS settings structure: ${JSON.stringify({ hasSms: !!sms, username: typeof sms.username, password: typeof sms.password, keys: Object.keys(sms) })}`);
+          
+          // Only use DB settings if username and password are configured
+          const hasUsername = sms.username && typeof sms.username === "string" && sms.username.trim().length > 0;
+          const passwordValue = sms.password;
+          const hasPassword = passwordValue && 
+                             typeof passwordValue === "string" && 
+                             passwordValue.trim().length > 0 && 
+                             passwordValue !== "***" &&
+                             passwordValue !== "******" &&
+                             passwordValue !== "••••••••" &&
+                             passwordValue !== "null" &&
+                             passwordValue !== "undefined";
+          
+          this.logger.log(`SMS Config Check: username="${sms.username || 'undefined'}", password="${passwordValue ? (passwordValue.length > 2 ? passwordValue.substring(0, 2) + '...' : '***') : 'null'}", hasUsername=${hasUsername}, hasPassword=${hasPassword}`);
+          
+          if (hasUsername && hasPassword) {
+            this.logger.log(`✅ Using SMS settings from database for org ${orgId}`);
+            return {
+              provider: (sms.provider || "Deywuro")?.toLowerCase() || "deywuro",
+              username: sms.username,
+              password: passwordValue,
+              source: sms.senderId || "PoolCare",
+              apiUrl: sms.apiEndpoint || "https://deywuro.com/api/sms",
+            };
+          } else {
+            this.logger.error(`❌ SMS settings found in DB but invalid. username="${sms.username}", password="${passwordValue}", hasUsername=${hasUsername}, hasPassword=${hasPassword}`);
+          }
+        } else {
+          this.logger.warn(`No integrations found in org settings for org ${orgId}`);
+        }
+      } catch (error: any) {
+        this.logger.error(`Failed to load SMS settings from database for org ${orgId}:`, error.message || error);
+      }
+    } else {
+      this.logger.debug("No orgId provided, using environment variables");
+    }
+
+    // Fall back to environment variables
+    const envUsername = this.configService.get<string>("DEYWURO_USERNAME");
+    const envPassword = this.configService.get<string>("DEYWURO_PASSWORD");
+    
+    if (envUsername && envPassword) {
+      this.logger.log(`Using SMS settings from environment variables`);
+      return {
+        provider: this.configService.get<string>("SMS_PROVIDER") || "deywuro",
+        username: envUsername,
+        password: envPassword,
+        source: this.configService.get<string>("SMS_SENDER_ID") || "PoolCare",
+        apiUrl: this.configService.get<string>("DEYWURO_API_URL") || "https://deywuro.com/api/sms",
+      };
+    }
+    
+    // If no env vars, throw error
+    this.logger.error("SMS provider not configured - no database settings and no environment variables");
+    throw new Error("SMS provider not configured");
+  }
 
   async send(to: string, message: string, orgId?: string): Promise<string> {
-    const provider = this.configService.get<string>("SMS_PROVIDER") || "deywuro";
-    const username = this.configService.get<string>("DEYWURO_USERNAME");
-    const password = this.configService.get<string>("DEYWURO_PASSWORD");
-    const source = this.configService.get<string>("SMS_SENDER_ID") || "PoolCare";
-    const apiUrl = this.configService.get<string>("DEYWURO_API_URL") || "https://deywuro.com/api/sms";
+    const config = await this.getSmsConfig(orgId);
+    const { provider, username, password, source, apiUrl } = config;
+
+    this.logger.log(`SMS send attempt: provider=${provider}, username=${username || 'missing'}, hasPassword=${!!password}, passwordLength=${password?.length || 0}, orgId=${orgId}`);
+
+    if (!username || !password) {
+      this.logger.error(`SMS provider not configured: username=${!!username}, password=${!!password}`);
+      throw new Error("SMS provider not configured");
+    }
 
     if (provider === "deywuro" && username && password) {
       try {
@@ -42,7 +141,17 @@ export class SmsAdapter {
           throw new Error(`Deywuro API HTTP error: ${response.status}`);
         }
 
-        const data = await response.json();
+        const json = await response.json().catch((error) => {
+          this.logger.error("Failed to parse Deywuro API response as JSON", error);
+          throw new Error("Invalid Deywuro API response");
+        });
+
+        if (!isDeywuroResponse(json)) {
+          this.logger.error("Unexpected Deywuro API response shape", json);
+          throw new Error("Unexpected Deywuro API response");
+        }
+
+        const data = json;
         
         // Check response code (0 = success)
         if (data.code !== 0) {
@@ -123,11 +232,8 @@ export class SmsAdapter {
     recipients: { to: string; message: string }[],
     orgId?: string
   ): Promise<string[]> {
-    const provider = this.configService.get<string>("SMS_PROVIDER") || "deywuro";
-    const username = this.configService.get<string>("DEYWURO_USERNAME");
-    const password = this.configService.get<string>("DEYWURO_PASSWORD");
-    const source = this.configService.get<string>("SMS_SENDER_ID") || "PoolCare";
-    const apiUrl = this.configService.get<string>("DEYWURO_API_URL") || "https://deywuro.com/api/sms";
+    const config = await this.getSmsConfig(orgId);
+    const { provider, username, password, source, apiUrl } = config;
 
     // If all recipients have the same message, send as bulk (comma-separated destinations)
     const uniqueMessages = new Set(recipients.map(r => r.message));
@@ -154,9 +260,18 @@ export class SmsAdapter {
         });
 
         if (response.ok) {
-          const data = await response.json();
-          if (data.code === 0) {
-            this.logger.log(`Bulk SMS sent successfully: ${data.message || "OK"}`);
+          const json = await response.json().catch((error) => {
+            this.logger.error("Failed to parse Deywuro bulk API response as JSON", error);
+            throw new Error("Invalid Deywuro API response");
+          });
+
+          if (!isDeywuroResponse(json)) {
+            this.logger.error("Unexpected Deywuro bulk API response shape", json);
+            throw new Error("Unexpected Deywuro API response");
+          }
+
+          if (json.code === 0) {
+            this.logger.log(`Bulk SMS sent successfully: ${json.message || "OK"}`);
             return recipients.map(() => `deywuro_bulk_${Date.now()}`);
           }
         }

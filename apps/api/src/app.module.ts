@@ -10,6 +10,7 @@ import { PoolsModule } from "./pools/pools.module";
 import { FilesModule } from "./files/files.module";
 import { TemplatesModule } from "./templates/templates.module";
 import { PlansModule } from "./plans/plans.module";
+import { SubscriptionTemplatesModule } from "./subscription-templates/subscription-templates.module";
 import { JobsModule } from "./jobs/jobs.module";
 import { VisitsModule } from "./visits/visits.module";
 import { IssuesModule } from "./issues/issues.module";
@@ -20,6 +21,13 @@ import { InboxModule } from "./inbox/inbox.module";
 import { AiModule } from "./ai/ai.module";
 import { MobileModule } from "./mobile/mobile.module";
 import { DashboardModule } from "./dashboard/dashboard.module";
+import { SettingsModule } from "./settings/settings.module";
+import { SmsModule } from "./sms/sms.module";
+import { EmailModule } from "./email/email.module";
+import { SuppliesModule } from "./supplies/supplies.module";
+import { MapsModule } from "./maps/maps.module";
+import { BillingModule } from "./billing/billing.module";
+import { InventoryModule } from "./inventory/inventory.module";
 import { RlsInterceptor } from "./core/rls.interceptor";
 
 @Module({
@@ -36,6 +44,7 @@ import { RlsInterceptor } from "./core/rls.interceptor";
     FilesModule,
     TemplatesModule,
     PlansModule,
+    SubscriptionTemplatesModule,
     JobsModule,
     VisitsModule,
     IssuesModule,
@@ -46,6 +55,13 @@ import { RlsInterceptor } from "./core/rls.interceptor";
     AiModule,
     MobileModule,
     DashboardModule,
+    SettingsModule,
+    SmsModule,
+    EmailModule,
+    SuppliesModule,
+    MapsModule,
+    BillingModule,
+    InventoryModule,
   ],
   controllers: [AppController],
   providers: [

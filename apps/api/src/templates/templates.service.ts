@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { prisma } from "@poolcare/db";
 import { CreateTemplateDto, UpdateTemplateDto } from "./dto";
+import { DEFAULT_DETAILED_CHECKLIST } from "./default-checklist";
 
 @Injectable()
 export class TemplatesService {
@@ -37,11 +38,16 @@ export class TemplatesService {
   }
 
   async create(orgId: string, createdBy: string, dto: CreateTemplateDto) {
+    // If no checklist provided, use default detailed checklist
+    const checklist = dto.checklist && dto.checklist.length > 0 
+      ? dto.checklist 
+      : DEFAULT_DETAILED_CHECKLIST;
+
     const template = await prisma.visitTemplate.create({
       data: {
         orgId,
         name: dto.name,
-        checklist: dto.checklist,
+        checklist: checklist,
         targets: dto.targets,
         serviceDurationMin: dto.serviceDurationMin || 45,
         createdBy,
@@ -50,6 +56,13 @@ export class TemplatesService {
     });
 
     return template;
+  }
+
+  /**
+   * Get default detailed checklist for creating new templates
+   */
+  async getDefaultChecklist() {
+    return DEFAULT_DETAILED_CHECKLIST;
   }
 
   async getOne(orgId: string, id: string) {

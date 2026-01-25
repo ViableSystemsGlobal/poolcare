@@ -26,6 +26,9 @@ import {
   FolderOpen,
   Phone,
   Mail,
+  Package,
+  Warehouse,
+  Truck,
 } from "lucide-react";
 
 const navigationGroups = [
@@ -43,10 +46,6 @@ const navigationGroups = [
         href: "/jobs",
         icon: Calendar,
         module: "jobs",
-        children: [
-          { name: "Today", href: "/jobs/today", icon: Calendar },
-          { name: "All Jobs", href: "/jobs", icon: ClipboardCheck },
-        ],
       },
       {
         name: "Visits",
@@ -59,6 +58,26 @@ const navigationGroups = [
         href: "/carers",
         icon: UserCheck,
         module: "carers",
+      },
+      {
+        name: "Supplies",
+        href: "/supplies",
+        icon: Package,
+        module: "supplies",
+      },
+      {
+        name: "Inventory",
+        href: "/inventory",
+        icon: Warehouse,
+        module: "inventory",
+        children: [
+          { name: "Overview", href: "/inventory", icon: Warehouse },
+          { name: "Products", href: "/inventory/products", icon: Package },
+          { name: "Stock Levels", href: "/inventory/stock", icon: BarChart3 },
+          { name: "Movements", href: "/inventory/movements", icon: Truck },
+          { name: "Warehouses", href: "/inventory/warehouses", icon: Warehouse },
+          { name: "Suppliers", href: "/inventory/suppliers", icon: Users },
+        ],
       },
       {
         name: "Visit Templates",
@@ -86,6 +105,10 @@ const navigationGroups = [
         href: "/plans",
         icon: FileText,
         module: "plans",
+        children: [
+          { name: "Plans", href: "/plans", icon: FileText },
+          { name: "Templates", href: "/subscription-templates", icon: FileText },
+        ],
       },
       {
         name: "Financial",
@@ -95,6 +118,7 @@ const navigationGroups = [
         children: [
           { name: "Quotes", href: "/quotes", icon: FileText },
           { name: "Invoices", href: "/invoices", icon: Receipt },
+          { name: "Subscription Billing", href: "/billing", icon: Calendar },
           { name: "Payments", href: "/payments", icon: DollarSign },
           { name: "Receipts", href: "/receipts", icon: Receipt },
           { name: "Credit Notes", href: "/credit-notes", icon: FileText },

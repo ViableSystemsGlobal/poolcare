@@ -40,29 +40,72 @@ A comprehensive pool maintenance management system with Manager Console, Carer A
    - Update `DATABASE_URL` in `apps/api/.env`
    - Example: `postgresql://user:password@localhost:5432/poolcare`
 
-4. **Run database migrations**
+4. **Setup MinIO (File Storage)**
+   - MinIO is required for photo uploads and file storage
+   - **Option 1: Using Docker (Recommended)**
+     ```bash
+     # Start MinIO using the provided script
+     ./start-minio.sh
+     
+     # Or manually:
+     docker run -d \
+       --name poolcare-minio \
+       -p 9000:9000 \
+       -p 9001:9001 \
+       -e "MINIO_ROOT_USER=minioadmin" \
+       -e "MINIO_ROOT_PASSWORD=minioadmin" \
+       -v poolcare-minio-data:/data \
+       minio/minio server /data --console-address ":9001"
+     ```
+   - **Option 2: Install MinIO locally**
+     - Download from https://min.io/download
+     - Run: `minio server /data --console-address ":9001"`
+   - **Access:**
+     - API: http://localhost:9000
+     - Console: http://localhost:9001 (login: minioadmin/minioadmin)
+   - The bucket will be created automatically on first use
+
+5. **Run database migrations**
    ```bash
    cd packages/db
    pnpm prisma migrate dev --name init
    ```
 
-5. **Generate Prisma client**
+6. **Generate Prisma client**
    ```bash
    cd packages/db
    pnpm prisma generate
    ```
 
-6. **Start development servers**
+6. **Start the API server** ⚠️ **IMPORTANT: Do this first!**
    ```bash
-   # Option 1: Use turbo (starts all apps)
-   pnpm dev
+   # Easiest way (from project root):
+   ./start-api.sh
    
-   # Option 2: Start individually
-   # Terminal 1 - API
+   # Or manually:
    cd apps/api && pnpm dev
+   ```
    
-   # Terminal 2 - Web
+   **Wait for:** `✅ API running on http://localhost:4000/api`
+   
+   **Verify it's working:**
+   ```bash
+   curl http://localhost:4000/api/healthz
+   # Should return: {"status":"ok","database":"connected",...}
+   ```
+
+7. **Start the web app** (in a new terminal)
+   ```bash
    cd apps/web && pnpm dev
+   ```
+
+### 🚨 Troubleshooting "Cannot connect to API server"
+
+If you see this error in the web app, the API server is not running. See [RESTART_API.md](./RESTART_API.md) for detailed troubleshooting.
+
+**Quick fix:**
+```bash
+./start-api.sh
    ```
 
 ## Project Structure

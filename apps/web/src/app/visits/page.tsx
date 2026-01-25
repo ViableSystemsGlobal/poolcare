@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -88,8 +88,25 @@ export default function VisitsPage() {
     averageRating: 0,
   });
 
+  // Track if component is mounted to avoid race conditions
+  const isMounted = useRef(true);
+  const fetchCount = useRef(0);
+
   useEffect(() => {
-    fetchVisits();
+    isMounted.current = true;
+    // Increment fetch count to detect stale responses
+    fetchCount.current += 1;
+    const currentFetchId = fetchCount.current;
+    
+    const doFetch = async () => {
+      await fetchVisits(currentFetchId);
+    };
+    
+    doFetch();
+    
+    return () => {
+      isMounted.current = false;
+    };
   }, [statusFilter]);
 
   useEffect(() => {
@@ -171,32 +188,83 @@ export default function VisitsPage() {
     URL.revokeObjectURL(url);
   };
 
-  const fetchVisits = async () => {
+  const fetchVisits = useCallback(async (fetchId?: number) => {
     try {
       setLoading(true);
+      setVisits([]); // Clear existing data first to prevent stale display
+      
       const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
       const params = new URLSearchParams();
-      if (statusFilter === "completed") params.append("completed", "true");
-      if (statusFilter === "in-progress") params.append("completed", "false");
+      // Backend expects status filter to match job status
+      if (statusFilter === "completed") params.append("status", "completed");
+      if (statusFilter === "in-progress") params.append("status", "on_site");
       params.append("limit", "100");
+      // Add timestamp to bust ALL caches (browser, CDN, proxy)
+      params.append("_t", Date.now().toString());
+      // Add random to ensure uniqueness
+      params.append("_r", Math.random().toString(36).substring(7));
+
+      const token = localStorage.getItem("auth_token");
+      if (!token) {
+        console.warn("No auth token found, skipping fetch");
+        setLoading(false);
+        return;
+      }
+
+      console.log("[Visits] Fetching with token:", token.substring(0, 20) + "...");
 
       const response = await fetch(`${API_URL}/visits?${params}`, {
+        method: "GET",
         headers: {
-          Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
+          Authorization: `Bearer ${token}`,
+          "Cache-Control": "no-cache, no-store, must-revalidate",
+          "Pragma": "no-cache",
+          "Expires": "0",
         },
+        cache: "no-store",
       });
 
-      if (response.ok) {
+      // Check if this fetch is still relevant (not stale)
+      if (fetchId !== undefined && fetchId !== fetchCount.current) {
+        console.log("[Visits] Stale fetch response, ignoring");
+        return;
+      }
+
+      if (!isMounted.current) {
+        console.log("[Visits] Component unmounted, ignoring response");
+        return;
+      }
+
+      if (!response.ok) {
+        console.error("[Visits] Failed to fetch:", response.status, response.statusText);
+        setVisits([]);
+        calculateMetrics([]);
+        return;
+      }
+
         const data = await response.json();
-        setVisits(data.items || []);
-        calculateMetrics(data.items || []);
+      console.log("[Visits] Raw response:", data);
+      
+      // Backend returns array directly, not { items: [] }
+      const visitsArray = Array.isArray(data) ? data : (data.items || []);
+      console.log("[Visits] Parsed visits count:", visitsArray.length);
+      
+      if (isMounted.current) {
+        setVisits(visitsArray);
+        calculateMetrics(visitsArray);
       }
     } catch (error) {
-      console.error("Failed to fetch visits:", error);
+      console.error("[Visits] Failed to fetch:", error);
+      if (isMounted.current) {
+        setVisits([]);
+        calculateMetrics([]);
+      }
     } finally {
+      if (isMounted.current) {
       setLoading(false);
+      }
     }
-  };
+  }, [statusFilter]);
 
   const calculateMetrics = (currentVisits: Visit[]) => {
     const totalVisits = currentVisits.length;

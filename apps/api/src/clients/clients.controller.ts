@@ -7,18 +7,27 @@ import {
   Query,
   Body,
   UseGuards,
+  UseInterceptors,
+  UploadedFile,
+  BadRequestException,
 } from "@nestjs/common";
+import { FileInterceptor } from "@nestjs/platform-express";
 import { ClientsService } from "./clients.service";
+import { FilesService } from "../files/files.service";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { RolesGuard } from "../auth/guards/roles.guard";
 import { Roles } from "../auth/decorators/roles.decorator";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
-import { CreateClientDto, UpdateClientDto } from "./dto";
+import { CreateClientDto, UpdateClientDto, CreateHouseholdDto, InviteHouseholdMemberDto } from "./dto";
+import { ParseFilePipe, MaxFileSizeValidator, FileTypeValidator } from "@nestjs/common/pipes";
 
 @Controller("clients")
 @UseGuards(JwtAuthGuard)
 export class ClientsController {
-  constructor(private readonly clientsService: ClientsService) {}
+  constructor(
+    private readonly clientsService: ClientsService,
+    private readonly filesService: FilesService
+  ) {}
 
   @Get()
   async list(
@@ -63,6 +72,144 @@ export class ClientsController {
     @Body() dto: UpdateClientDto
   ) {
     return this.clientsService.update(user.org_id, id, dto);
+  }
+
+  @Post("upload-image")
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "MANAGER")
+  @UseInterceptors(FileInterceptor("image"))
+  async uploadImage(
+    @CurrentUser() user: { org_id: string },
+    @UploadedFile(
+      new ParseFilePipe({
+        fileIsRequired: true,
+        validators: [
+          new MaxFileSizeValidator({ maxSize: 5 * 1024 * 1024 }), // 5MB
+          new FileTypeValidator({ fileType: /(jpeg|jpg|png|webp|gif)$/ }),
+        ],
+      })
+    )
+    file: Express.Multer.File
+  ) {
+    if (!file) {
+      throw new BadRequestException("No file uploaded");
+    }
+
+    try {
+      const imageUrl = await this.filesService.uploadImage(
+        user.org_id,
+        file,
+        "client_profile",
+        user.org_id
+      );
+
+      return { imageUrl };
+    } catch (error: any) {
+      console.error("Image upload error:", error);
+      throw new BadRequestException(error.message || "Failed to upload image");
+    }
+  }
+
+  // =====================
+  // HOUSEHOLD ENDPOINTS
+  // =====================
+
+  @Post(":id/household")
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "MANAGER", "CLIENT")
+  async createHousehold(
+    @CurrentUser() user: { org_id: string; sub: string; role: string },
+    @Param("id") clientId: string,
+    @Body() dto: CreateHouseholdDto
+  ) {
+    // CLIENT role can only create household for themselves
+    if (user.role === "CLIENT" && user.sub !== clientId) {
+      throw new BadRequestException("You can only create a household for yourself");
+    }
+    return this.clientsService.createHousehold(user.org_id, clientId, dto);
+  }
+
+  @Get(":id/household")
+  async getHousehold(
+    @CurrentUser() user: { org_id: string; sub: string; role: string },
+    @Param("id") clientId: string
+  ) {
+    // CLIENT role can only view their own household
+    if (user.role === "CLIENT" && user.sub !== clientId) {
+      throw new BadRequestException("You can only view your own household");
+    }
+    return this.clientsService.getHousehold(user.org_id, clientId);
+  }
+
+  @Post(":id/household/invite")
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "MANAGER", "CLIENT")
+  async inviteHouseholdMember(
+    @CurrentUser() user: { org_id: string; sub: string; role: string },
+    @Param("id") primaryClientId: string,
+    @Body() dto: InviteHouseholdMemberDto
+  ) {
+    // CLIENT role can only invite from their own household
+    if (user.role === "CLIENT" && user.sub !== primaryClientId) {
+      throw new BadRequestException("You can only invite members to your own household");
+    }
+    return this.clientsService.inviteHouseholdMember(user.org_id, primaryClientId, dto);
+  }
+
+  @Post(":id/household/members/:memberId")
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "MANAGER", "CLIENT")
+  async addClientToHousehold(
+    @CurrentUser() user: { org_id: string; sub: string; role: string },
+    @Param("id") clientId: string,
+    @Param("memberId") memberId: string,
+    @Query("householdId") householdId: string
+  ) {
+    if (!householdId) {
+      throw new BadRequestException("householdId query parameter is required");
+    }
+    // CLIENT role can only add members to their own household
+    if (user.role === "CLIENT") {
+      // Verify the client is the primary client of the household
+      const household = await this.clientsService.getHousehold(user.org_id, clientId);
+      if (household.primaryClientId !== clientId) {
+        throw new BadRequestException("Only the primary client can add members");
+      }
+      // Verify the householdId matches
+      if (household.id !== householdId) {
+        throw new BadRequestException("Household ID mismatch");
+      }
+    }
+    return this.clientsService.addClientToHousehold(user.org_id, memberId, householdId);
+  }
+
+  @Post(":id/household/leave")
+  @UseGuards(RolesGuard)
+  @Roles("CLIENT")
+  async leaveHousehold(
+    @CurrentUser() user: { org_id: string; sub: string },
+    @Param("id") clientId: string
+  ) {
+    // CLIENT can only leave their own household
+    if (user.sub !== clientId) {
+      throw new BadRequestException("You can only leave your own household");
+    }
+    return this.clientsService.leaveHousehold(user.org_id, clientId);
+  }
+
+  @Post(":id/household/members/:memberId/remove")
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "MANAGER", "CLIENT")
+  async removeHouseholdMember(
+    @CurrentUser() user: { org_id: string; sub: string; role: string },
+    @Param("id") primaryClientId: string,
+    @Param("memberId") memberId: string
+  ) {
+    // CLIENT role can only remove members from their own household
+    if (user.role === "CLIENT" && user.sub !== primaryClientId) {
+      throw new BadRequestException("You can only remove members from your own household");
+    }
+    return this.clientsService.removeHouseholdMember(user.org_id, primaryClientId, memberId);
   }
 }
 

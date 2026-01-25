@@ -24,11 +24,44 @@ import {
 
 interface DashboardData {
   metrics: {
-    todayJobs: number;
+    today?: {
+      total: number;
+      completed: number;
+      unassigned: number;
+      enRoute: number;
+      onSite: number;
+      atRisk: number;
+    };
+    operations?: {
+      jobsCompleted30d: number;
+      onTimePercentage: number;
+      avgVisitDuration: number;
+    };
+    business?: {
     totalClients: number;
     activePools: number;
     pendingQuotes: number;
+    };
+    finance?: {
     monthlyRevenue: number;
+      monthlyInvoiced: number;
+      monthlyCollected: number;
+      accountsReceivable: number;
+    };
+    quality?: {
+      photoCompliance: number;
+      totalVisits30d: number;
+    };
+    supplies?: {
+      pendingRequests: number;
+      urgentRequests: number;
+    };
+    // Legacy support
+    todayJobs?: number;
+    totalClients?: number;
+    activePools?: number;
+    pendingQuotes?: number;
+    monthlyRevenue?: number;
   };
   recentActivity: Array<{
     id: string;
@@ -56,6 +89,7 @@ export default function Dashboard() {
           headers: {
             ...(token && { Authorization: `Bearer ${token}` }),
           },
+          cache: "no-store", // Prevent Next.js from caching this request
         });
         if (response.ok) {
           const data = await response.json();
@@ -74,13 +108,23 @@ export default function Dashboard() {
     fetchDashboardData();
   }, []);
 
-  const metrics = dashboardData?.metrics || {
-    todayJobs: 0,
-    totalClients: 0,
-    activePools: 0,
-    pendingQuotes: 0,
-    monthlyRevenue: 0,
+  // Support both new and legacy metric structures
+  const metrics = dashboardData?.metrics || {};
+  const today = metrics.today || { total: metrics.todayJobs || 0, completed: 0, unassigned: 0, enRoute: 0, onSite: 0, atRisk: 0 };
+  const business = metrics.business || { 
+    totalClients: metrics.totalClients || 0, 
+    activePools: metrics.activePools || 0, 
+    pendingQuotes: metrics.pendingQuotes || 0 
   };
+  const finance = metrics.finance || { 
+    monthlyRevenue: metrics.monthlyRevenue || 0, 
+    monthlyInvoiced: 0, 
+    monthlyCollected: 0, 
+    accountsReceivable: 0 
+  };
+  const operations = metrics.operations || { jobsCompleted30d: 0, onTimePercentage: 0, avgVisitDuration: 0 };
+  const quality = metrics.quality || { photoCompliance: 0, totalVisits30d: 0 };
+  const supplies = metrics.supplies || { pendingRequests: 0, urgentRequests: 0 };
 
   const recentActivity = dashboardData?.recentActivity || [];
 
@@ -89,11 +133,11 @@ export default function Dashboard() {
     const recommendations = [];
     
     // High priority: Pending quotes
-    if (metrics.pendingQuotes > 0) {
+    if (business.pendingQuotes > 0) {
       recommendations.push({
         id: "follow-up-quotes",
         title: "🎯 Follow up on pending quotes",
-        description: `${metrics.pendingQuotes} quotes awaiting client approval - potential revenue at risk`,
+        description: `${business.pendingQuotes} quotes awaiting client approval - potential revenue at risk`,
         priority: "high" as const,
         action: "Review Quotes",
         href: "/quotes",
@@ -101,12 +145,12 @@ export default function Dashboard() {
       });
     }
 
-    // High priority: Job assignments
-    if (metrics.todayJobs > 0) {
+    // High priority: Unassigned jobs
+    if (today.unassigned > 0) {
       recommendations.push({
         id: "assign-jobs",
         title: "⚡ Assign today's jobs",
-        description: `${metrics.todayJobs} jobs need carer assignment for optimal routing`,
+        description: `${today.unassigned} jobs need carer assignment for optimal routing`,
         priority: "high" as const,
         action: "View Jobs",
         href: "/jobs",
@@ -114,9 +158,35 @@ export default function Dashboard() {
       });
     }
 
+    // High priority: At-risk jobs
+    if (today.atRisk > 0) {
+      recommendations.push({
+        id: "at-risk-jobs",
+        title: "⚠️ Jobs at risk",
+        description: `${today.atRisk} jobs are past their window - immediate attention needed`,
+        priority: "high" as const,
+        action: "View Jobs",
+        href: "/jobs?status=at_risk",
+        completed: false,
+      });
+    }
+
+    // High priority: Urgent supply requests
+    if (supplies.urgentRequests > 0) {
+      recommendations.push({
+        id: "urgent-supplies",
+        title: "📦 Urgent supply requests",
+        description: `${supplies.urgentRequests} urgent supply requests need immediate attention`,
+        priority: "high" as const,
+        action: "View Supplies",
+        href: "/supplies?priority=urgent",
+        completed: false,
+      });
+    }
+
     // Medium priority: Pool maintenance scheduling
-    if (metrics.activePools > 0) {
-      const poolsNeedingMaintenance = Math.ceil(metrics.activePools * 0.3);
+    if (business.activePools > 0) {
+      const poolsNeedingMaintenance = Math.ceil(business.activePools * 0.3);
       recommendations.push({
         id: "schedule-maintenance",
         title: "🔧 Smart maintenance scheduling",
@@ -140,11 +210,11 @@ export default function Dashboard() {
     });
 
     // Revenue optimization based on client count
-    if (metrics.totalClients >= 3) {
+    if (business.totalClients >= 3) {
       recommendations.push({
         id: "revenue-optimization",
         title: "💰 Revenue opportunity detected",
-        description: `AI identified ${Math.ceil(metrics.totalClients * 0.25)} clients for service upgrades`,
+        description: `AI identified ${Math.ceil(business.totalClients * 0.25)} clients for service upgrades`,
         priority: "medium" as const,
         action: "View Insights",
         href: "/analytics",
@@ -211,71 +281,123 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Key Metrics */}
+      {/* Key Metrics - Today's Overview */}
+      <div className="space-y-4">
+        <h2 className="text-xl font-semibold text-gray-900">Today's Overview</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
+          <Card className="border-0 shadow-sm bg-white hover:shadow-md transition-shadow">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium text-gray-600">Total Jobs</CardTitle>
+              <Calendar className="h-4 w-4 text-orange-600" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-gray-900">{today.total}</div>
+              <div className="text-xs text-gray-500 mt-1">Scheduled</div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-0 shadow-sm bg-white hover:shadow-md transition-shadow">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium text-gray-600">Completed</CardTitle>
+              <CheckCircle className="h-4 w-4 text-green-600" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-green-600">{today.completed}</div>
+              <div className="text-xs text-gray-500 mt-1">Done today</div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-0 shadow-sm bg-white hover:shadow-md transition-shadow">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium text-gray-600">Unassigned</CardTitle>
+              <AlertCircle className="h-4 w-4 text-yellow-600" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-yellow-600">{today.unassigned}</div>
+              <div className="text-xs text-gray-500 mt-1">Need assignment</div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-0 shadow-sm bg-white hover:shadow-md transition-shadow">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium text-gray-600">En Route</CardTitle>
+              <ArrowUpRight className="h-4 w-4 text-blue-600" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-blue-600">{today.enRoute}</div>
+              <div className="text-xs text-gray-500 mt-1">In transit</div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-0 shadow-sm bg-white hover:shadow-md transition-shadow">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium text-gray-600">On Site</CardTitle>
+              <ClipboardCheck className="h-4 w-4 text-purple-600" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-purple-600">{today.onSite}</div>
+              <div className="text-xs text-gray-500 mt-1">In progress</div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-0 shadow-sm bg-white hover:shadow-md transition-shadow">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium text-gray-600">At Risk</CardTitle>
+              <AlertCircle className="h-4 w-4 text-red-600" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-red-600">{today.atRisk}</div>
+              <div className="text-xs text-gray-500 mt-1">Past window</div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+
+      {/* Business & Operations Metrics */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <Card className="border-0 shadow-sm bg-white hover:shadow-md transition-shadow">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-gray-600">Today's Jobs</CardTitle>
-            <div className={`p-2 bg-${theme.primaryBg} rounded-lg`}>
-              <Calendar className={`h-4 w-4 text-${theme.primary}`} />
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-gray-900">{metrics.todayJobs}</div>
-            <div className="flex items-center text-xs text-gray-500 mt-1">
-              <ArrowUpRight className="h-3 w-3 mr-1 text-green-500" />
-              Scheduled for today
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-0 shadow-sm bg-white hover:shadow-md transition-shadow">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium text-gray-600">Active Clients</CardTitle>
-            <div className={`p-2 bg-${theme.primaryBg} rounded-lg`}>
-              <Users className={`h-4 w-4 text-${theme.primary}`} />
-            </div>
+            <Users className="h-4 w-4 text-orange-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-gray-900">{metrics.totalClients}</div>
-            <div className="flex items-center text-xs text-gray-500 mt-1">
-              <ArrowUpRight className="h-3 w-3 mr-1 text-green-500" />
-              Total clients
-            </div>
+            <div className="text-2xl font-bold text-gray-900">{business.totalClients}</div>
+            <div className="text-xs text-gray-500 mt-1">Total clients</div>
           </CardContent>
         </Card>
 
         <Card className="border-0 shadow-sm bg-white hover:shadow-md transition-shadow">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-gray-600">Active Pools</CardTitle>
-            <div className={`p-2 bg-${theme.primaryBg} rounded-lg`}>
-              <Droplet className={`h-4 w-4 text-${theme.primary}`} />
-            </div>
+            <CardTitle className="text-sm font-medium text-gray-600">On-Time %</CardTitle>
+            <TrendingUp className="h-4 w-4 text-green-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-gray-900">{metrics.activePools}</div>
-            <div className="flex items-center text-xs text-gray-500 mt-1">
-              <ArrowUpRight className="h-3 w-3 mr-1 text-green-500" />
-              Under service
-            </div>
+            <div className="text-2xl font-bold text-gray-900">{operations.onTimePercentage}%</div>
+            <div className="text-xs text-gray-500 mt-1">Last 30 days</div>
           </CardContent>
         </Card>
 
         <Card className="border-0 shadow-sm bg-white hover:shadow-md transition-shadow">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium text-gray-600">Monthly Revenue</CardTitle>
-            <div className={`p-2 bg-${theme.primaryBg} rounded-lg`}>
-              <TrendingUp className={`h-4 w-4 text-${theme.primary}`} />
-            </div>
+            <Receipt className="h-4 w-4 text-orange-600" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-gray-900">
-              {`GH₵${(metrics.monthlyRevenue / 1000).toFixed(1)}K`}
+              {`GH₵${(finance.monthlyRevenue / 100).toFixed(0)}`}
             </div>
-            <div className="flex items-center text-xs text-gray-500 mt-1">
-              <ArrowUpRight className="h-3 w-3 mr-1 text-green-500" />
-              This month
-            </div>
+            <div className="text-xs text-gray-500 mt-1">This month</div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-0 shadow-sm bg-white hover:shadow-md transition-shadow">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium text-gray-600">Photo Compliance</CardTitle>
+            <ClipboardCheck className="h-4 w-4 text-blue-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-gray-900">{quality.photoCompliance}%</div>
+            <div className="text-xs text-gray-500 mt-1">Visits with photos</div>
           </CardContent>
         </Card>
       </div>

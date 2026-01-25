@@ -84,6 +84,10 @@ export default function ServicePlanDetailPage() {
   const [loading, setLoading] = useState(true);
   const [plan, setPlan] = useState<ServicePlan | null>(null);
   const [jobs, setJobs] = useState<Job[]>([]);
+  const [calendarData, setCalendarData] = useState<any>(null);
+  const [calendarLoading, setCalendarLoading] = useState(false);
+  const [viewMode, setViewMode] = useState<"list" | "calendar">("list");
+  const [calendarMonth, setCalendarMonth] = useState(new Date());
 
   useEffect(() => {
     if (planId) {
@@ -126,6 +130,41 @@ export default function ServicePlanDetailPage() {
       setLoading(false);
     }
   };
+
+  const fetchCalendarData = async (from?: string, to?: string) => {
+    try {
+      setCalendarLoading(true);
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+      
+      const params = new URLSearchParams();
+      if (from) params.append("from", from);
+      if (to) params.append("to", to);
+
+      const response = await fetch(`${API_URL}/service-plans/${planId}/calendar?${params}`, {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setCalendarData(data);
+      }
+    } catch (error) {
+      console.error("Failed to fetch calendar data:", error);
+    } finally {
+      setCalendarLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (planId && viewMode === "calendar") {
+      // Calculate date range for current month view
+      const startOfMonth = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), 1);
+      const endOfMonth = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 0);
+      fetchCalendarData(startOfMonth.toISOString(), endOfMonth.toISOString());
+    }
+  }, [planId, viewMode, calendarMonth]);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -431,7 +470,66 @@ export default function ServicePlanDetailPage() {
 
         {/* Right Column - Jobs */}
         <div className="lg:col-span-2 space-y-6 max-h-[calc(100vh-200px)] overflow-y-auto pr-2">
-          {/* Jobs */}
+          {/* View Mode Toggle */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Button
+                variant={viewMode === "list" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setViewMode("list")}
+              >
+                <FileText className="h-4 w-4 mr-2" />
+                List View
+              </Button>
+              <Button
+                variant={viewMode === "calendar" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setViewMode("calendar")}
+              >
+                <Calendar className="h-4 w-4 mr-2" />
+                Calendar View
+              </Button>
+            </div>
+            {viewMode === "calendar" && (
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const prevMonth = new Date(calendarMonth);
+                    prevMonth.setMonth(prevMonth.getMonth() - 1);
+                    setCalendarMonth(prevMonth);
+                  }}
+                >
+                  ← Prev
+                </Button>
+                <span className="text-sm font-medium min-w-[150px] text-center">
+                  {calendarMonth.toLocaleDateString("en-US", { month: "long", year: "numeric" })}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const nextMonth = new Date(calendarMonth);
+                    nextMonth.setMonth(nextMonth.getMonth() + 1);
+                    setCalendarMonth(nextMonth);
+                  }}
+                >
+                  Next →
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCalendarMonth(new Date())}
+                >
+                  Today
+                </Button>
+              </div>
+            )}
+          </div>
+
+          {/* Jobs List View */}
+          {viewMode === "list" && (
           <Card>
             <CardHeader>
               <CardTitle>Jobs ({jobs.length})</CardTitle>
@@ -508,6 +606,177 @@ export default function ServicePlanDetailPage() {
               )}
             </CardContent>
           </Card>
+          )}
+
+          {/* Calendar View */}
+          {viewMode === "calendar" && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Calendar View</CardTitle>
+                <CardDescription>
+                  Planned occurrences and actual jobs for {calendarMonth.toLocaleDateString("en-US", { month: "long", year: "numeric" })}
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {calendarLoading ? (
+                  <div className="text-center py-8">
+                    <p className="text-gray-600">Loading calendar...</p>
+                  </div>
+                ) : calendarData ? (
+                  <CalendarGrid
+                    month={calendarMonth}
+                    occurrences={calendarData.occurrences || []}
+                    jobs={calendarData.jobs || []}
+                    onJobClick={(jobId) => router.push(`/jobs/${jobId}`)}
+                  />
+                ) : (
+                  <div className="text-center py-8">
+                    <Calendar className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                    <p className="text-gray-600">No calendar data available</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Calendar Grid Component
+function CalendarGrid({ 
+  month, 
+  occurrences, 
+  jobs, 
+  onJobClick 
+}: { 
+  month: Date; 
+  occurrences: any[]; 
+  jobs: any[]; 
+  onJobClick: (jobId: string) => void;
+}) {
+  const year = month.getFullYear();
+  const monthIndex = month.getMonth();
+  
+  // Get first day of month and number of days
+  const firstDay = new Date(year, monthIndex, 1);
+  const lastDay = new Date(year, monthIndex + 1, 0);
+  const daysInMonth = lastDay.getDate();
+  const startingDayOfWeek = firstDay.getDay(); // 0 = Sunday, 1 = Monday, etc.
+
+  // Create a map of date -> items for quick lookup
+  const dateMap = new Map<string, { occurrences: any[]; jobs: any[] }>();
+  
+  occurrences.forEach((occ) => {
+    const dateKey = occ.date;
+    if (!dateMap.has(dateKey)) {
+      dateMap.set(dateKey, { occurrences: [], jobs: [] });
+    }
+    dateMap.get(dateKey)!.occurrences.push(occ);
+  });
+
+  jobs.forEach((job) => {
+    const dateKey = job.date;
+    if (!dateMap.has(dateKey)) {
+      dateMap.set(dateKey, { occurrences: [], jobs: [] });
+    }
+    dateMap.get(dateKey)!.jobs.push(job);
+  });
+
+  const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+  // Generate calendar cells
+  const cells = [];
+  
+  // Empty cells for days before month starts
+  for (let i = 0; i < startingDayOfWeek; i++) {
+    cells.push(<div key={`empty-${i}`} className="h-24 border border-gray-200 bg-gray-50"></div>);
+  }
+
+  // Cells for each day of the month
+  for (let day = 1; day <= daysInMonth; day++) {
+    const date = new Date(year, monthIndex, day);
+    const dateKey = date.toISOString().split("T")[0];
+    const dayData = dateMap.get(dateKey) || { occurrences: [], jobs: [] };
+    const isToday = dateKey === new Date().toISOString().split("T")[0];
+
+    cells.push(
+      <div
+        key={day}
+        className={`h-24 border border-gray-200 p-1 overflow-y-auto ${
+          isToday ? "bg-blue-50 border-blue-300" : ""
+        }`}
+      >
+        <div className={`text-xs font-medium mb-1 ${isToday ? "text-blue-600" : "text-gray-700"}`}>
+          {day}
+        </div>
+        <div className="space-y-0.5">
+          {dayData.occurrences.map((occ, idx) => (
+            <div
+              key={`occ-${idx}`}
+              className="text-xs px-1 py-0.5 bg-purple-100 text-purple-700 rounded truncate"
+              title={`Planned: ${new Date(occ.windowStart).toLocaleTimeString()}`}
+            >
+              📅 Planned
+            </div>
+          ))}
+          {dayData.jobs.map((job) => (
+            <div
+              key={job.id}
+              className={`text-xs px-1 py-0.5 rounded truncate cursor-pointer hover:opacity-80 ${
+                job.status === "completed"
+                  ? "bg-green-100 text-green-700"
+                  : job.status === "on_site"
+                    ? "bg-blue-100 text-blue-700"
+                    : job.status === "en_route"
+                      ? "bg-yellow-100 text-yellow-700"
+                      : "bg-gray-100 text-gray-700"
+              }`}
+              onClick={() => onJobClick(job.id)}
+              title={`${job.status} - ${job.assignedCarer?.name || "Unassigned"}`}
+            >
+              {job.status === "completed" ? "✓" : job.status === "on_site" ? "📍" : job.status === "en_route" ? "🚗" : "📋"} {job.status}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="w-full">
+      <div className="grid grid-cols-7 gap-0 border border-gray-300 rounded-lg overflow-hidden">
+        {/* Day headers */}
+        {dayNames.map((day) => (
+          <div key={day} className="bg-gray-100 p-2 text-center text-sm font-semibold text-gray-700 border-b border-gray-300">
+            {day}
+          </div>
+        ))}
+        {/* Calendar cells */}
+        {cells}
+      </div>
+      {/* Legend */}
+      <div className="mt-4 flex flex-wrap items-center gap-4 text-xs">
+        <div className="flex items-center gap-2">
+          <div className="w-4 h-4 bg-purple-100 border border-purple-300 rounded"></div>
+          <span>Planned Occurrence</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="w-4 h-4 bg-gray-100 border border-gray-300 rounded"></div>
+          <span>Scheduled Job</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="w-4 h-4 bg-yellow-100 border border-yellow-300 rounded"></div>
+          <span>En Route</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="w-4 h-4 bg-blue-100 border border-blue-300 rounded"></div>
+          <span>On Site</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="w-4 h-4 bg-green-100 border border-green-300 rounded"></div>
+          <span>Completed</span>
         </div>
       </div>
     </div>

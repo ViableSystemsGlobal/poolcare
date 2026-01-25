@@ -4,6 +4,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { MainLayout } from "./main-layout";
 import { useAuth } from "@/contexts/auth-context";
+import { TopLoadingBar } from "@/components/ui/top-loading-bar";
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -25,13 +26,23 @@ export function AppLayout({ children }: AppLayoutProps) {
       isAuthPage
     });
     
-    // Redirect to login if not authenticated and not on auth page
-    if (!loading && !isAuthenticated && !isAuthPage) {
-      console.log("❌ Not authenticated, redirecting to login");
-      router.push("/auth/login");
+    // Only redirect when loading is complete
+    if (loading) {
+      return; // Wait for auth check to complete
     }
+    
+    // Redirect to login if not authenticated and not on auth page
+    if (!isAuthenticated && !isAuthPage) {
+      console.log("❌ Not authenticated, redirecting to login");
+      // Only redirect if we're not already going to login
+      if (pathname !== "/auth/login") {
+        router.push("/auth/login");
+      }
+      return;
+    }
+    
     // Redirect to dashboard if authenticated and on login page
-    if (!loading && isAuthenticated && pathname === "/auth/login") {
+    if (isAuthenticated && pathname === "/auth/login") {
       console.log("✅ Authenticated on login page, redirecting to dashboard");
       router.push("/dashboard");
     }
@@ -55,6 +66,11 @@ export function AppLayout({ children }: AppLayoutProps) {
     return null;
   }
 
-  return <MainLayout>{children}</MainLayout>;
+  return (
+    <>
+      <TopLoadingBar />
+      <MainLayout>{children}</MainLayout>
+    </>
+  );
 }
 

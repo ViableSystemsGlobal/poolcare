@@ -1,12 +1,13 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Plus, Search, Calendar, Edit, Trash2, UserPlus, Clock, MapPin, CheckCircle, XCircle, AlertCircle, FileText, Users, Download, MoreVertical } from "lucide-react";
+import { Plus, Search, Calendar, Edit, Trash2, UserPlus, Clock, MapPin, CheckCircle, XCircle, AlertCircle, FileText, Users, Download, MoreVertical, Filter, List, Grid, ArrowUpDown, ChevronLeft, ChevronRight } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
+import { useToast } from "@/hooks/use-toast";
 import {
   Table,
   TableBody,
@@ -82,6 +83,8 @@ interface Carer {
 
 export default function JobsPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const { toast } = useToast();
   const { getThemeClasses } = useTheme();
   const theme = getThemeClasses();
 
@@ -91,8 +94,10 @@ export default function JobsPage() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("");
+  // Initialize dateFilter from URL params if present
   const [dateFilter, setDateFilter] = useState<string>(""); // Empty = show all dates
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [isCreatingJob, setIsCreatingJob] = useState(false);
   const [editingJob, setEditingJob] = useState<Job | null>(null);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [jobToDelete, setJobToDelete] = useState<Job | null>(null);
@@ -103,6 +108,18 @@ export default function JobsPage() {
   const [isCancelDialogOpen, setIsCancelDialogOpen] = useState(false);
   const [jobToCancel, setJobToCancel] = useState<Job | null>(null);
   const [selectedJobs, setSelectedJobs] = useState<Set<string>>(new Set());
+  const [viewMode, setViewMode] = useState<"grouped" | "table">("table"); // "grouped" or "table"
+  const [sortBy, setSortBy] = useState<"time" | "status" | "carer">("time");
+  const [showPast, setShowPast] = useState(false);
+  const [showAllJobs, setShowAllJobs] = useState(false); // Track if "All Jobs" is selected
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
+  const [pagination, setPagination] = useState<{
+    page: number;
+    limit: number;
+    total: number;
+    pages: number;
+  } | null>(null);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -140,11 +157,45 @@ export default function JobsPage() {
     completedJobs: 0,
   });
 
+  // Initialize and update dateFilter from URL params
+  useEffect(() => {
+    const dateParam = searchParams?.get("date") || "";
+    if (dateParam !== dateFilter) {
+      setDateFilter(dateParam);
+      // If no date param, set showAllJobs to true (default to "All Jobs" view)
+      if (!dateParam) {
+        setShowAllJobs(true);
+      } else {
+        setShowAllJobs(false);
+      }
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
+    setCurrentPage(1); // Reset to page 1 when filters change
+  }, [statusFilter, dateFilter, showPast, showAllJobs]);
+
   useEffect(() => {
     fetchJobs();
     fetchPools();
     fetchCarers();
-  }, [statusFilter, dateFilter]);
+  }, [statusFilter, dateFilter, showPast, showAllJobs, currentPage, pageSize]);
+
+  // Helper function to set date filter and update URL
+  const handleDateFilterChange = (date: string) => {
+    setDateFilter(date);
+    if (date) {
+      setShowAllJobs(false); // Clear "All Jobs" when a specific date is selected
+      router.push(`/jobs?date=${date}`);
+    } else {
+      router.push("/jobs");
+    }
+  };
+
+  // Helper function to get today's date in YYYY-MM-DD format
+  const getTodayDate = () => {
+    return new Date().toISOString().split("T")[0];
+  };
 
   useEffect(() => {
     // Client-side search filtering
@@ -165,20 +216,61 @@ export default function JobsPage() {
       setLoading(true);
       const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
       const params = new URLSearchParams();
-      if (dateFilter) params.append("date", dateFilter);
+      if (dateFilter) {
+        params.append("date", dateFilter);
+      } else if (showPast) {
+        // If showing past, explicitly request all jobs (no date restriction)
+        params.append("upcoming", "false"); // Explicitly tell API to return all jobs (no date filter)
+      } else if (showAllJobs) {
+        // If "All Jobs" is selected, fetch all jobs without date restriction
+        params.append("upcoming", "false"); // Get all jobs (past, present, and future)
+      } else {
+        // Default: only get upcoming jobs (from today onwards)
+        const today = new Date().toISOString().split("T")[0];
+        params.append("date", today);
+        params.append("upcoming", "true"); // Signal to API to include future dates
+      }
       if (statusFilter && statusFilter !== "__all__") params.append("status", statusFilter);
-      params.append("limit", "100");
+      params.append("limit", pageSize.toString());
+      params.append("page", currentPage.toString());
 
       const response = await fetch(`${API_URL}/jobs?${params}`, {
         headers: {
           Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
         },
+        cache: "no-store", // Prevent Next.js from caching this request
       });
 
       if (response.ok) {
         const data = await response.json();
-        setJobs(data.items || []);
-        calculateMetrics(data.items || []);
+        const fetchedJobs = data.items || [];
+        console.log(`[Jobs Fetch] Fetched ${fetchedJobs.length} jobs, showPast: ${showPast}, upcoming param: ${params.get("upcoming")}`);
+        if (showPast && fetchedJobs.length > 0) {
+          const now = new Date();
+          now.setHours(0, 0, 0, 0);
+          const pastCount = fetchedJobs.filter((job: any) => {
+            const jobDate = new Date(job.windowStart);
+            jobDate.setHours(0, 0, 0, 0);
+            return jobDate < now;
+          }).length;
+          console.log(`[Jobs Fetch] Past jobs in fetched data: ${pastCount} out of ${fetchedJobs.length}`);
+        }
+        setJobs(fetchedJobs);
+        calculateMetrics(fetchedJobs);
+        
+        // Set pagination data
+        if (data.total !== undefined) {
+          const total = data.total;
+          const pages = Math.ceil(total / pageSize);
+          setPagination({
+            page: data.page || currentPage,
+            limit: data.limit || pageSize,
+            total,
+            pages,
+          });
+        } else {
+          setPagination(null);
+        }
       }
     } catch (error) {
       console.error("Failed to fetch jobs:", error);
@@ -194,6 +286,7 @@ export default function JobsPage() {
         headers: {
           Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
         },
+        cache: "no-store",
       });
       if (response.ok) {
         const data = await response.json();
@@ -211,6 +304,7 @@ export default function JobsPage() {
         headers: {
           Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
         },
+        cache: "no-store",
       });
       if (response.ok) {
         const data = await response.json();
@@ -249,15 +343,48 @@ export default function JobsPage() {
   };
 
   const handleCreate = async () => {
+    // Prevent multiple submissions
+    if (isCreatingJob) {
+      return;
+    }
+
     try {
+      setIsCreatingJob(true);
       const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
       
-      // Convert datetime-local format to ISO string
-      const windowStartISO = formData.windowStart ? new Date(formData.windowStart).toISOString() : null;
-      const windowEndISO = formData.windowEnd ? new Date(formData.windowEnd).toISOString() : null;
+      if (!formData.poolId || !formData.windowStart || !formData.windowEnd) {
+        toast({
+          title: "Error",
+          description: "Please fill in all required fields (Pool, Start Time, End Time)",
+          variant: "destructive",
+        });
+        setIsCreatingJob(false);
+        return;
+      }
 
-      if (!windowStartISO || !windowEndISO) {
-        alert("Please provide both start and end times");
+      // Convert datetime-local format to ISO string
+      // datetime-local format: "YYYY-MM-DDTHH:mm"
+      // We need to ensure it's a valid ISO 8601 string
+      let windowStartISO: string;
+      let windowEndISO: string;
+      
+      try {
+        // If the string doesn't have timezone info, treat it as local time
+        const startDate = new Date(formData.windowStart);
+        const endDate = new Date(formData.windowEnd);
+        
+        if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+          throw new Error("Invalid date format");
+        }
+        
+        windowStartISO = startDate.toISOString();
+        windowEndISO = endDate.toISOString();
+      } catch (error) {
+        toast({
+          title: "Error",
+          description: "Invalid date format. Please check your date and time inputs.",
+          variant: "destructive",
+        });
         return;
       }
 
@@ -267,9 +394,14 @@ export default function JobsPage() {
         windowEnd: windowEndISO,
       };
 
-      if (formData.planId) payload.planId = formData.planId;
-      if (formData.assignedCarerId && formData.assignedCarerId !== "__none__") payload.assignedCarerId = formData.assignedCarerId;
-      if (formData.notes) payload.notes = formData.notes;
+      // Only include optional fields if they have values (not empty strings)
+      if (formData.planId && formData.planId.trim()) payload.planId = formData.planId;
+      if (formData.assignedCarerId && formData.assignedCarerId !== "__none__" && formData.assignedCarerId.trim()) {
+        payload.assignedCarerId = formData.assignedCarerId;
+      }
+      if (formData.notes && formData.notes.trim()) payload.notes = formData.notes;
+
+      console.log("Creating job with payload:", payload);
 
       const response = await fetch(`${API_URL}/jobs`, {
         method: "POST",
@@ -286,14 +418,29 @@ export default function JobsPage() {
       if (response.ok) {
         setIsCreateDialogOpen(false);
         resetForm();
+        setIsCreatingJob(false);
         await fetchJobs();
-        alert("Job created successfully!");
+        toast({
+          title: "Success",
+          description: "Job created successfully",
+          variant: "success",
+        });
       } else {
         let errorMessage = "Unknown error";
+        let errorDetails: any = null;
+        
         if (isJson) {
           try {
             const error = await response.json();
-            errorMessage = error.error || error.details || error.message || "Unknown error";
+            errorMessage = error.message || error.error || "Unknown error";
+            errorDetails = error;
+            
+            // Handle validation errors (array of constraint violations)
+            if (error.message && Array.isArray(error.message)) {
+              errorMessage = error.message.map((m: any) => 
+                typeof m === 'string' ? m : Object.values(m.constraints || {}).join(', ')
+              ).join('; ');
+            }
           } catch (e) {
             errorMessage = `HTTP ${response.status}: ${response.statusText}`;
           }
@@ -301,11 +448,24 @@ export default function JobsPage() {
           const text = await response.text();
           errorMessage = text || `HTTP ${response.status}: ${response.statusText}`;
         }
-        alert(`Failed to create job: ${errorMessage}`);
+        
+        console.error("Job creation error:", { status: response.status, error: errorDetails || errorMessage });
+        
+        toast({
+          title: "Error",
+          description: errorMessage,
+          variant: "destructive",
+        });
       }
     } catch (error: any) {
       console.error("Failed to create job:", error);
-      alert(`Failed to create job: ${error.message || "Unknown error"}`);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to create job",
+        variant: "destructive",
+      });
+    } finally {
+      setIsCreatingJob(false);
     }
   };
 
@@ -567,13 +727,111 @@ export default function JobsPage() {
     console.log("Job recommendation completed:", id);
   };
 
-  const filteredJobs = searchQuery
-    ? jobs.filter((job) =>
+  const filteredJobs = (() => {
+    const now = new Date();
+    now.setHours(0, 0, 0, 0); // Start of today
+    
+    let result = jobs;
+
+    // Filter by date range based on showPast and showAllJobs flags
+    if (showAllJobs) {
+      // Show all jobs (no date filtering) - already fetched from API
+      result = jobs;
+    } else if (showPast) {
+      // Show only past jobs (before today)
+      console.log(`[Jobs Filter] Filtering for past jobs. Total jobs: ${result.length}, now: ${now.toISOString()}`);
+      result = result.filter((job) => {
+        const jobDate = new Date(job.windowStart);
+        jobDate.setHours(0, 0, 0, 0);
+        const isPast = jobDate < now;
+        if (!isPast && result.length < 10) {
+          console.log(`[Jobs Filter] Job ${job.id} is not past: ${jobDate.toISOString()} >= ${now.toISOString()}`);
+        }
+        return isPast;
+      });
+      console.log(`[Jobs Filter] Past jobs after filtering: ${result.length}`);
+    } else {
+      // Show only upcoming jobs (windowStart >= today)
+      // Exclude ALL past jobs, regardless of status
+      result = result.filter((job) => {
+        const jobDate = new Date(job.windowStart);
+        jobDate.setHours(0, 0, 0, 0);
+        
+        // Only include jobs that are today or in the future
+        return jobDate >= now;
+      });
+    }
+
+    // Apply search filter
+    if (searchQuery) {
+      result = result.filter((job) =>
         job.pool?.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
         job.pool?.client?.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
         job.pool?.address?.toLowerCase().includes(searchQuery.toLowerCase())
-      )
-    : jobs;
+      );
+    }
+
+    // Apply status filter
+    if (statusFilter && statusFilter !== "__all__") {
+      result = result.filter((job) => job.status === statusFilter);
+    }
+
+    // Apply date filter if specified
+    if (dateFilter) {
+      const filterDate = new Date(dateFilter);
+      filterDate.setHours(0, 0, 0, 0);
+      const nextDay = new Date(filterDate);
+      nextDay.setDate(nextDay.getDate() + 1);
+      
+      result = result.filter((job) => {
+        const jobDate = new Date(job.windowStart);
+        return jobDate >= filterDate && jobDate < nextDay;
+      });
+    }
+
+    // Apply sorting
+    result = [...result].sort((a, b) => {
+      if (sortBy === "time") {
+        return new Date(a.windowStart).getTime() - new Date(b.windowStart).getTime();
+      } else if (sortBy === "status") {
+        const statusOrder: Record<string, number> = {
+          scheduled: 1,
+          en_route: 2,
+          on_site: 3,
+          completed: 4,
+          cancelled: 5,
+          failed: 6,
+        };
+        return (statusOrder[a.status] || 99) - (statusOrder[b.status] || 99);
+      } else if (sortBy === "carer") {
+        const aName = a.assignedCarer?.name || "zzz_unassigned";
+        const bName = b.assignedCarer?.name || "zzz_unassigned";
+        return aName.localeCompare(bName);
+      }
+      return 0;
+    });
+
+    return result;
+  })();
+
+  // Group jobs by date
+  const groupedJobsByDate = filteredJobs.reduce((acc, job) => {
+    const date = new Date(job.windowStart);
+    const dateKey = date.toISOString().split("T")[0]; // YYYY-MM-DD
+    if (!acc[dateKey]) {
+      acc[dateKey] = [];
+    }
+    acc[dateKey].push(job);
+    return acc;
+  }, {} as Record<string, Job[]>);
+
+  // Sort date groups (today first, then future dates, then past dates)
+  const sortedDateKeys = Object.keys(groupedJobsByDate).sort((a, b) => {
+    const today = new Date().toISOString().split("T")[0];
+    if (a === today) return -1;
+    if (b === today) return 1;
+    return a.localeCompare(b);
+  });
 
   // Selection handlers
   const handleSelectAll = (checked: boolean) => {
@@ -667,6 +925,8 @@ export default function JobsPage() {
 
   const allSelected = filteredJobs.length > 0 && selectedJobs.size === filteredJobs.length;
   const someSelected = selectedJobs.size > 0 && selectedJobs.size < filteredJobs.length;
+  const isTodayActive = dateFilter === getTodayDate() && !showPast && !showAllJobs;
+  const isAllActive = showAllJobs && !dateFilter && !showPast;
 
   return (
     <div className="space-y-6">
@@ -685,6 +945,106 @@ export default function JobsPage() {
           <Plus className="h-4 w-4 mr-2" />
           New Job
         </Button>
+      </div>
+
+      {/* Filter and View Controls */}
+      <div className="flex items-center justify-between gap-4 flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button
+            variant={isAllActive && !showPast ? "default" : "outline"}
+            size="sm"
+            onClick={() => {
+              setShowPast(false);
+              setShowAllJobs(true);
+              handleDateFilterChange("");
+            }}
+            className={isAllActive && !showPast ? "" : "border-gray-300"}
+          >
+            <Filter className="h-4 w-4 mr-2" />
+            All Jobs
+          </Button>
+          <Button
+            variant={isTodayActive ? "default" : "outline"}
+            size="sm"
+            onClick={() => {
+              setShowPast(false);
+              setShowAllJobs(false);
+              handleDateFilterChange(getTodayDate());
+            }}
+            className={isTodayActive ? "" : "border-gray-300"}
+          >
+            <Calendar className="h-4 w-4 mr-2" />
+            Today
+          </Button>
+          <Button
+            variant={showPast ? "default" : "outline"}
+            size="sm"
+            onClick={() => {
+              setShowPast(true);
+              setShowAllJobs(false);
+              setDateFilter("");
+            }}
+            className={showPast ? "" : "border-gray-300"}
+          >
+            <Clock className="h-4 w-4 mr-2" />
+            Past
+          </Button>
+          {dateFilter && dateFilter !== getTodayDate() && (
+            <div className="text-sm text-gray-600 flex items-center gap-2">
+              <span>Showing jobs for: <span className="font-medium">{new Date(dateFilter).toLocaleDateString()}</span></span>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  handleDateFilterChange("");
+                  setShowAllJobs(true);
+                }}
+                className="h-6 px-2 text-xs"
+              >
+                Clear
+              </Button>
+            </div>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2">
+          <Select value={sortBy} onValueChange={(value: "time" | "status" | "carer") => setSortBy(value)}>
+            <SelectTrigger className="w-[150px]">
+              <SelectValue>
+                <div className="flex items-center gap-2">
+                  <ArrowUpDown className="h-4 w-4" />
+                  Sort by {sortBy === "time" ? "Time" : sortBy === "status" ? "Status" : "Carer"}
+                </div>
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="time">Sort by Time</SelectItem>
+              <SelectItem value="status">Sort by Status</SelectItem>
+              <SelectItem value="carer">Sort by Carer</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <div className="flex items-center border rounded-md">
+            <Button
+              variant={viewMode === "grouped" ? "default" : "ghost"}
+              size="sm"
+              onClick={() => setViewMode("grouped")}
+              className="rounded-r-none border-r"
+            >
+              <Grid className="h-4 w-4" />
+            </Button>
+            <Button
+              variant={viewMode === "table" ? "default" : "ghost"}
+              size="sm"
+              onClick={() => setViewMode("table")}
+              className="rounded-l-none"
+            >
+              <List className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      </div>
+
         <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
           <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
@@ -764,17 +1124,23 @@ export default function JobsPage() {
               </div>
 
               <div className="flex justify-end gap-2 mt-4">
-                <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
+                <Button 
+                  variant="outline" 
+                  onClick={() => setIsCreateDialogOpen(false)}
+                  disabled={isCreatingJob}
+                >
                   Cancel
                 </Button>
-                <Button onClick={handleCreate} disabled={!formData.poolId || !formData.windowStart || !formData.windowEnd}>
-                  Create Job
+                <Button 
+                  onClick={handleCreate} 
+                  disabled={!formData.poolId || !formData.windowStart || !formData.windowEnd || isCreatingJob}
+                >
+                  {isCreatingJob ? "Creating..." : "Create Job"}
                 </Button>
               </div>
             </div>
           </DialogContent>
         </Dialog>
-      </div>
 
       {/* AI Recommendation and Metrics Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -846,7 +1212,9 @@ export default function JobsPage() {
       {/* Jobs Table */}
       <Card>
         <CardHeader>
-          <CardTitle>All Jobs ({filteredJobs.length})</CardTitle>
+          <CardTitle>
+            All Jobs {pagination ? `(${pagination.total} total)` : `(${filteredJobs.length})`}
+          </CardTitle>
           <CardDescription>Manage and view all service jobs</CardDescription>
         </CardHeader>
         <CardContent>
@@ -948,7 +1316,10 @@ export default function JobsPage() {
               <Input
                 type="date"
                 value={dateFilter}
-                onChange={(e) => setDateFilter(e.target.value)}
+                onChange={(e) => {
+                  setDateFilter(e.target.value);
+                  setShowAllJobs(false); // Clear "All Jobs" when a specific date is selected
+                }}
                 className="w-[200px]"
                 title={dateFilter ? `Filtering: ${dateFilter}` : "Click to filter by date, or leave empty for all dates"}
               />
@@ -990,7 +1361,161 @@ export default function JobsPage() {
                 </Button>
               )}
             </div>
+          ) : viewMode === "grouped" ? (
+            // Grouped Card View
+            <div className="space-y-6">
+              {sortedDateKeys.map((dateKey) => {
+                const dateJobs = groupedJobsByDate[dateKey];
+                const date = new Date(dateKey);
+                const isToday = dateKey === new Date().toISOString().split("T")[0];
+                const isPast = date < new Date() && !isToday;
+                
+                return (
+                  <div key={dateKey} className="space-y-3">
+                    <div className="flex items-center gap-3">
+                      <h3 className={`text-lg font-semibold ${isToday ? "text-blue-600" : isPast ? "text-gray-500" : "text-gray-900"}`}>
+                        {isToday ? "Today" : date.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" })}
+                      </h3>
+                      <span className="text-sm text-gray-500">({dateJobs.length} {dateJobs.length === 1 ? "job" : "jobs"})</span>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {dateJobs.map((job) => (
+                        <Card
+                          key={job.id}
+                          className="cursor-pointer hover:shadow-md transition-shadow"
+                          onClick={(e) => {
+                            if (!(e.target as HTMLElement).closest("button")) {
+                              router.push(`/jobs/${job.id}`);
+                            }
+                          }}
+                        >
+                          <CardContent className="p-4">
+                            <div className="flex items-start justify-between mb-3">
+                              <div className="flex-1">
+                                <h4 className="font-semibold text-gray-900 mb-1">
+                                  {job.pool?.name || "Unnamed Pool"}
+                                </h4>
+                                <p className="text-sm text-gray-600 mb-1">
+                                  {job.pool?.client?.name || "No Client"}
+                                </p>
+                                {job.pool?.address && (
+                                  <p className="text-xs text-gray-400 flex items-center gap-1">
+                                    <MapPin className="h-3 w-3" />
+                                    {job.pool.address}
+                                  </p>
+                                )}
+                              </div>
+                              <span
+                                className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusBadge(job.status)}`}
+                              >
+                                {job.status.replace("_", " ")}
+                              </span>
+                            </div>
+
+                            <div className="space-y-2 text-sm">
+                              <div className="flex items-center gap-2 text-gray-600">
+                                <Clock className="h-4 w-4" />
+                                <span>
+                                  {new Date(job.windowStart).toLocaleTimeString([], {
+                                    hour: "2-digit",
+                                    minute: "2-digit",
+                                  })}{" "}
+                                  - {new Date(job.windowEnd).toLocaleTimeString([], {
+                                    hour: "2-digit",
+                                    minute: "2-digit",
+                                  })}
+                                </span>
+                              </div>
+
+                              <div className="flex items-center gap-2 text-gray-600">
+                                {job.assignedCarer ? (
+                                  <>
+                                    <UserPlus className="h-4 w-4" />
+                                    <span>{job.assignedCarer.name || "Unnamed Carer"}</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <UserPlus className="h-4 w-4 text-gray-400" />
+                                    <span className="text-gray-400">Unassigned</span>
+                                  </>
+                                )}
+                              </div>
+
+                              {job.etaMinutes && (
+                                <div className="flex items-center gap-2 text-gray-600">
+                                  <MapPin className="h-4 w-4" />
+                                  <span>ETA: {job.etaMinutes} min</span>
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="flex items-center gap-2 mt-4 pt-3 border-t" onClick={(e) => e.stopPropagation()}>
+                              {!job.assignedCarer ? (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="flex-1"
+                                  onClick={() => {
+                                    setJobToAssign(job);
+                                    setAssignFormData({ carerId: "" });
+                                    setIsAssignDialogOpen(true);
+                                  }}
+                                >
+                                  <UserPlus className="h-3 w-3 mr-1" />
+                                  Assign
+                                </Button>
+                              ) : (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="flex-1"
+                                  onClick={() => handleUnassign(job.id)}
+                                >
+                                  <XCircle className="h-3 w-3 mr-1" />
+                                  Unassign
+                                </Button>
+                              )}
+                              {job.status === "scheduled" && (
+                                <>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => {
+                                      setJobToReschedule(job);
+                                      setRescheduleFormData({
+                                        windowStart: job.windowStart.slice(0, 16),
+                                        windowEnd: job.windowEnd.slice(0, 16),
+                                        reason: "",
+                                      });
+                                      setIsRescheduleDialogOpen(true);
+                                    }}
+                                  >
+                                    <Clock className="h-3 w-3" />
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => {
+                                      setJobToCancel(job);
+                                      setCancelFormData({ code: "OTHER", reason: "" });
+                                      setIsCancelDialogOpen(true);
+                                    }}
+                                  >
+                                    <XCircle className="h-3 w-3" />
+                                  </Button>
+                                </>
+                              )}
+                            </div>
+                          </CardContent>
+                        </Card>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           ) : (
+            // Table View
             <div className="rounded-md border">
               <Table>
                 <TableHeader>
@@ -1137,6 +1662,87 @@ export default function JobsPage() {
                   ))}
                 </TableBody>
               </Table>
+            </div>
+          )}
+
+          {/* Pagination */}
+          {pagination && pagination.pages > 1 && (
+            <div className="border-t px-6 py-4 mt-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Label htmlFor="pageSize" className="text-sm">
+                    Items per page:
+                  </Label>
+                  <Select
+                    value={pageSize.toString()}
+                    onValueChange={(value) => {
+                      setPageSize(parseInt(value));
+                      setCurrentPage(1);
+                    }}
+                  >
+                    <SelectTrigger className="w-[80px]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="25">25</SelectItem>
+                      <SelectItem value="50">50</SelectItem>
+                      <SelectItem value="100">100</SelectItem>
+                      <SelectItem value="200">200</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <span className="text-sm text-gray-600">
+                    {pagination
+                      ? `Showing ${(currentPage - 1) * pageSize + 1} - ${Math.min(currentPage * pageSize, pagination.total)} of ${pagination.total} jobs`
+                      : `(${filteredJobs.length} jobs)`}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                    disabled={currentPage === 1 || loading}
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                    Previous
+                  </Button>
+                  <div className="flex items-center gap-1">
+                    {Array.from({ length: Math.min(5, pagination.pages) }, (_, i) => {
+                      let pageNum: number;
+                      if (pagination.pages <= 5) {
+                        pageNum = i + 1;
+                      } else if (currentPage <= 3) {
+                        pageNum = i + 1;
+                      } else if (currentPage >= pagination.pages - 2) {
+                        pageNum = pagination.pages - 4 + i;
+                      } else {
+                        pageNum = currentPage - 2 + i;
+                      }
+                      return (
+                        <Button
+                          key={pageNum}
+                          variant={currentPage === pageNum ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => setCurrentPage(pageNum)}
+                          disabled={loading}
+                          className="min-w-[40px]"
+                        >
+                          {pageNum}
+                        </Button>
+                      );
+                    })}
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCurrentPage((p) => Math.min(pagination.pages, p + 1))}
+                    disabled={currentPage === pagination.pages || loading}
+                  >
+                    Next
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
             </div>
           )}
         </CardContent>

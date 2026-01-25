@@ -44,5 +44,10 @@ export class TemplatesController {
   ) {
     return this.templatesService.update(user.org_id, id, dto);
   }
+
+  @Get("default-checklist")
+  async getDefaultChecklist() {
+    return this.templatesService.getDefaultChecklist();
+  }
 }
 

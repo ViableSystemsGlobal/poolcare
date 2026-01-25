@@ -24,10 +24,17 @@ import {
 import { useTheme } from "@/contexts/theme-context";
 import { SkeletonMetricCard } from "@/components/ui/skeleton";
 
+interface ChecklistItem {
+  id?: string;
+  label: string;
+  required: boolean;
+  photoRequired?: boolean;
+}
+
 interface VisitTemplate {
   id: string;
   name: string;
-  checklist: string[];
+  checklist: ChecklistItem[];
   targets?: {
     ph?: { min: number; max: number };
     chlorine?: { min: number; max: number };
@@ -226,13 +233,29 @@ export default function VisitTemplateDetailPage() {
                       <TableRow>
                         <TableHead className="w-12">#</TableHead>
                         <TableHead>Task</TableHead>
+                        <TableHead className="w-24">Required</TableHead>
+                        <TableHead className="w-32">Photo Required</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {template.checklist.map((task, index) => (
-                        <TableRow key={index}>
+                        <TableRow key={task.id || index}>
                           <TableCell className="font-medium">{index + 1}</TableCell>
-                          <TableCell>{task}</TableCell>
+                          <TableCell>{task.label}</TableCell>
+                          <TableCell>
+                            {task.required ? (
+                              <span className="text-green-600 font-medium">Yes</span>
+                            ) : (
+                              <span className="text-gray-400">No</span>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            {task.photoRequired ? (
+                              <span className="text-blue-600 font-medium">Yes</span>
+                            ) : (
+                              <span className="text-gray-400">No</span>
+                            )}
+                          </TableCell>
                         </TableRow>
                       ))}
                     </TableBody>

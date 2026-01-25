@@ -6,6 +6,9 @@ import { OtpService } from "./otp.service";
 import { OtpRequestDto, OtpVerifyDto } from "./dto";
 import * as bcrypt from "bcryptjs";
 
+// In-memory store for dev OTP codes (only in development)
+export const devOtpStore = new Map<string, { code: string; expiresAt: Date }>();
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -56,6 +59,14 @@ export class AuthService {
     const expiresAt = new Date(Date.now() + ttlSeconds * 1000);
     const cooldownAt = new Date(Date.now() + cooldownSeconds * 1000);
 
+    // Store in dev store for easy access (development only)
+    if (process.env.NODE_ENV !== "production") {
+      const key = `${dto.channel}:${dto.target}`;
+      devOtpStore.set(key, { code, expiresAt });
+      // Clean up expired entries
+      setTimeout(() => devOtpStore.delete(key), ttlSeconds * 1000);
+    }
+
     await prisma.otpRequest.create({
       data: {
         channel: dto.channel,
@@ -68,21 +79,94 @@ export class AuthService {
       },
     });
 
-      // Send OTP via SMS or Email
+      // Send OTP via SMS and/or Email
       try {
-        // Get first org or create default (for OTP, org doesn't matter much since user will join org after login)
+        // Check if user exists to see if they have both phone and email AND get their org
+        const existingUser = await prisma.user.findFirst({
+          where:
+            dto.channel === "phone"
+              ? { phone: dto.target }
+              : { email: dto.target },
+          include: {
+            memberships: {
+              include: {
+                org: true,
+              },
+            },
+          },
+        });
+
+        // Use the user's org if they exist, otherwise use first org
+        let orgId: string | null = null;
+        if (existingUser && existingUser.memberships.length > 0) {
+          // Use the user's first org (they should have at least one)
+          orgId = existingUser.memberships[0].orgId;
+          console.log(`[OTP] Using user's org ${orgId} for SMS/Email settings`);
+        } else {
+          // User doesn't exist yet, get first org as fallback
         const firstOrg = await prisma.organization.findFirst({
           orderBy: { createdAt: "asc" },
         });
-        const orgId = firstOrg?.id || null;
+          orgId = firstOrg?.id || null;
+          console.log(`[OTP] Using first org ${orgId} as fallback for new user`);
+        }
+
+        const sendResults: string[] = [];
+        let primarySuccess = false;
         
+        // Send to primary channel
+        try {
         await this.otpService.sendOtp(dto.channel, dto.target, code, orgId || undefined);
+          sendResults.push(`${dto.channel}:${dto.target}`);
+          primarySuccess = true;
         console.log(`[OTP] ${dto.channel}:${dto.target} → Code sent successfully`);
+        } catch (error: any) {
+          console.error(`[OTP] Failed to send to primary channel ${dto.channel}:${dto.target}:`, error.message);
+        }
+
+        // Always try the other channel if user exists and has it
+        // OR if primary failed, try to find user by other means and send there
+        if (existingUser) {
+          const otherChannel = dto.channel === "phone" ? "email" : "phone";
+          const otherTarget = dto.channel === "phone" ? existingUser.email : existingUser.phone;
+          
+          if (otherTarget) {
+            try {
+              await this.otpService.sendOtp(otherChannel as "phone" | "email", otherTarget, code, orgId || undefined);
+              sendResults.push(`${otherChannel}:${otherTarget}`);
+              console.log(`[OTP] ${otherChannel}:${otherTarget} → Code sent successfully (dual channel)`);
+            } catch (error: any) {
+              console.error(`[OTP] Failed to send to secondary channel ${otherChannel}:${otherTarget}:`, error.message);
+              // Don't fail if secondary channel fails
+            }
+          }
+        } else if (!primarySuccess && dto.channel === "phone") {
+          // If primary (SMS) failed and user doesn't exist yet, try to find by email pattern
+          // This is a fallback - if phone fails, we can't really find the user
+          // But we'll log the code in dev mode
+        }
+
+        // In development, always log the code for easy testing
+        if (process.env.NODE_ENV === "development" || process.env.NODE_ENV !== "production") {
+          console.log(`\n🔐 [DEV] OTP CODE for ${dto.channel}:${dto.target} → ${code}`);
+          if (sendResults.length > 1) {
+            console.log(`📧 [DEV] Code also sent to: ${sendResults.slice(1).join(", ")}\n`);
+          } else if (!primarySuccess) {
+            console.log(`⚠️  [DEV] Primary channel failed, but code is: ${code}\n`);
+          } else {
+            console.log();
+          }
+        }
+        
+        // Warn if no channels succeeded
+        if (sendResults.length === 0) {
+          console.warn(`⚠️  [OTP] WARNING: Failed to send OTP via any channel. Code: ${code} (logged in dev mode)`);
+        }
       } catch (error: any) {
-        console.error(`[OTP] Failed to send to ${dto.channel}:${dto.target}:`, error.message);
+        console.error(`[OTP] Failed to send OTP:`, error.message);
         // In development, still log the code even if sending fails
-        if (process.env.NODE_ENV === "development") {
-          console.log(`[OTP] ${dto.channel}:${dto.target} → Code: ${code} (send failed, logged for dev)`);
+        if (process.env.NODE_ENV === "development" || process.env.NODE_ENV !== "production") {
+          console.log(`\n🔐 [DEV] OTP CODE for ${dto.channel}:${dto.target} → ${code} (send failed, logged for dev)\n`);
         }
         // Don't throw error - OTP is stored, user can retry sending if needed
       }
@@ -95,6 +179,7 @@ export class AuthService {
   }
 
   async verifyOtp(dto: OtpVerifyDto) {
+    console.log('[AuthService] Verifying OTP for:', dto.channel, dto.target);
     const maxAttempts = this.configService.get<number>("OTP_MAX_ATTEMPTS") || 5;
 
     const otpRequest = await prisma.otpRequest.findFirst({
@@ -111,15 +196,21 @@ export class AuthService {
     });
 
     if (!otpRequest) {
+      console.log('[AuthService] No valid OTP request found');
       throw new UnauthorizedException("Invalid or expired code");
     }
 
+    console.log('[AuthService] Found OTP request, attempts:', otpRequest.attempts, 'max:', maxAttempts);
+
     if (otpRequest.attempts >= maxAttempts) {
+      console.log('[AuthService] Too many attempts');
       throw new UnauthorizedException("Too many attempts. Please request a new code");
     }
 
+    console.log('[AuthService] Comparing code...');
     const isValid = await bcrypt.compare(dto.code, otpRequest.codeHash);
     if (!isValid) {
+      console.log('[AuthService] Code comparison failed, incrementing attempts');
       await prisma.otpRequest.update({
         where: { id: otpRequest.id },
         data: { attempts: { increment: 1 } },
@@ -127,71 +218,110 @@ export class AuthService {
       throw new UnauthorizedException("Invalid code");
     }
 
-    // Mark as used
-    await prisma.otpRequest.update({
-      where: { id: otpRequest.id },
-      data: { usedAt: new Date() },
-    });
+    console.log('[AuthService] Code is valid, proceeding with login');
 
-    // Find or create user
-    let user = await prisma.user.findFirst({
-      where:
-        dto.channel === "phone"
-          ? { phone: dto.target }
-          : { email: dto.target },
-    });
+    try {
+      // Mark as used
+      await prisma.otpRequest.update({
+        where: { id: otpRequest.id },
+        data: { usedAt: new Date() },
+      });
 
-    if (!user) {
-      user = await prisma.user.create({
-        data:
+      // Find or create user
+      let user = await prisma.user.findFirst({
+        where:
           dto.channel === "phone"
             ? { phone: dto.target }
             : { email: dto.target },
       });
-    }
 
-    // Find or create org membership (first org or create default)
-    let membership = await prisma.orgMember.findFirst({
-      where: { userId: user.id },
-      include: { org: true },
-    });
+      if (!user) {
+        console.log('[AuthService] Creating new user for:', dto.target);
+        try {
+          user = await prisma.user.create({
+            data:
+              dto.channel === "phone"
+                ? { phone: dto.target }
+                : { email: dto.target },
+          });
+          console.log('[AuthService] User created:', user.id);
+        } catch (error: any) {
+          console.error('[AuthService] Failed to create user:', error);
+          console.error('[AuthService] Error code:', error.code);
+          console.error('[AuthService] Error meta:', error.meta);
+          throw new BadRequestException(`Failed to create user: ${error.message}`);
+        }
+      } else {
+        console.log('[AuthService] Found existing user:', user.id);
+      }
 
-    if (!membership) {
-      // Create default org for new user
-      const org = await prisma.organization.create({
-        data: { name: `${user.phone || user.email}'s Organization` },
-      });
-      membership = await prisma.orgMember.create({
-        data: {
-          orgId: org.id,
-          userId: user.id,
-          role: "ADMIN",
-        },
+      // Find or create org membership (first org or create default)
+      let membership = await prisma.orgMember.findFirst({
+        where: { userId: user.id },
         include: { org: true },
       });
+
+      if (!membership) {
+        console.log('[AuthService] Creating default org for user');
+        try {
+          // Create default org for new user
+          const org = await prisma.organization.create({
+            data: { name: `${user.phone || user.email}'s Organization` },
+          });
+          console.log('[AuthService] Org created:', org.id);
+          membership = await prisma.orgMember.create({
+            data: {
+              orgId: org.id,
+              userId: user.id,
+              role: "ADMIN",
+            },
+            include: { org: true },
+          });
+          console.log('[AuthService] Membership created');
+        } catch (error: any) {
+          console.error('[AuthService] Failed to create org/membership:', error);
+          console.error('[AuthService] Error code:', error.code);
+          console.error('[AuthService] Error meta:', error.meta);
+          throw new BadRequestException(`Failed to create organization: ${error.message}`);
+        }
+      } else {
+        console.log('[AuthService] Found existing membership');
+      }
+
+      // Issue JWT
+      const jwtSecret = this.configService.get<string>("JWT_SECRET") || "dev-secret-change-in-prod";
+      const token = this.jwtService.sign(
+        {
+          sub: user.id,
+          org_id: membership.orgId,
+          role: membership.role,
+        },
+        {
+          secret: jwtSecret,
+          expiresIn: this.configService.get<string>("JWT_EXPIRES_IN") || "7d",
+        }
+      );
+
+      console.log('[AuthService] JWT issued successfully');
+
+      return {
+        token,
+        user: {
+          id: user.id,
+          phone: user.phone,
+          email: user.email,
+          name: user.name,
+        },
+        org: {
+          id: membership.org.id,
+          name: membership.org.name,
+        },
+        role: membership.role,
+      };
+    } catch (error: any) {
+      console.error('[AuthService] Error during user/org creation:', error);
+      throw error;
     }
-
-    // Issue JWT
-    const token = this.jwtService.sign({
-      sub: user.id,
-      org_id: membership.orgId,
-      role: membership.role,
-    });
-
-    return {
-      token,
-      user: {
-        id: user.id,
-        phone: user.phone,
-        email: user.email,
-        name: user.name,
-      },
-      org: {
-        id: membership.org.id,
-        name: membership.org.name,
-      },
-      role: membership.role,
-    };
   }
 
   private generateOtp(): string {

@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsNumber, IsObject, IsUUID } from "class-validator";
+import { IsString, IsOptional, IsNumber, IsObject, IsUUID, IsArray } from "class-validator";
 
 export class CreatePoolDto {
   @IsUUID()
@@ -11,6 +11,11 @@ export class CreatePoolDto {
   @IsOptional()
   @IsString()
   address?: string;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  imageUrls?: string[];
 
   @IsOptional()
   @IsNumber()

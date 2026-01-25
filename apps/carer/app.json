@@ -3,25 +3,34 @@
     "name": "PoolCare Carer",
     "slug": "poolcare-carer",
     "version": "1.0.0",
+    "sdkVersion": "54.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "splash": {
       "image": "./assets/splash.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ea580c"
+      "backgroundColor": "#14b8a6"
     },
     "assetBundlePatterns": ["**/*"],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.poolcare.carer"
+      "bundleIdentifier": "com.poolcare.carer",
+      "config": {
+        "googleMapsApiKey": ""
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ea580c"
+        "backgroundColor": "#14b8a6"
       },
       "package": "com.poolcare.carer",
+      "config": {
+        "googleMaps": {
+          "apiKey": ""
+        }
+      },
       "permissions": [
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION",
@@ -34,6 +43,7 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
+      "expo-router",
       [
         "expo-location",
         {

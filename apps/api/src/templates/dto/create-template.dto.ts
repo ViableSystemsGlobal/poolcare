@@ -1,11 +1,11 @@
-import { IsString, IsObject, IsOptional, IsInt, Min } from "class-validator";
+import { IsString, IsArray, IsObject, IsOptional, IsInt, Min } from "class-validator";
 
 export class CreateTemplateDto {
   @IsString()
   name: string;
 
-  @IsObject()
-  checklist: any; // Array of {id, label, required?, photoRequired?}
+  @IsArray()
+  checklist: any[]; // Array of {id, label, required?, photoRequired?}
 
   @IsOptional()
   @IsObject()

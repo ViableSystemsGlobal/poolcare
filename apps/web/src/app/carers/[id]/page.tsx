@@ -49,6 +49,7 @@ interface Carer {
   id: string;
   name?: string;
   phone?: string;
+  imageUrl?: string;
   homeBaseLat?: number;
   homeBaseLng?: number;
   ratePerVisitCents?: number;
@@ -103,18 +104,42 @@ export default function CarerDetailPage() {
   const [formData, setFormData] = useState({
     name: "",
     phone: "",
+    imageUrl: "",
     homeBaseLat: "",
     homeBaseLng: "",
     ratePerVisitCents: "",
     currency: "GHS",
     active: true,
   });
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [uploadingImage, setUploadingImage] = useState(false);
 
   useEffect(() => {
     if (carerId) {
       fetchCarerData();
     }
   }, [carerId]);
+
+  // Refresh form data when edit dialog opens
+  useEffect(() => {
+    if (isEditDialogOpen && carer) {
+      setFormData({
+        name: carer.name || "",
+        phone: carer.phone || carer.user?.phone || "",
+        imageUrl: carer.imageUrl || "",
+        homeBaseLat: carer.homeBaseLat?.toString() || "",
+        homeBaseLng: carer.homeBaseLng?.toString() || "",
+        ratePerVisitCents: carer.ratePerVisitCents
+          ? (carer.ratePerVisitCents / 100).toString()
+          : "",
+        currency: carer.currency || "GHS",
+        active: carer.active,
+      });
+      setImageFile(null);
+      setImagePreview(carer.imageUrl || null);
+    }
+  }, [isEditDialogOpen, carer]);
 
   const fetchCarerData = async () => {
     try {
@@ -135,14 +160,17 @@ export default function CarerDetailPage() {
             setFormData({
               name: carerData.name || "",
               phone: carerData.phone || carerData.user?.phone || "",
+              imageUrl: carerData.imageUrl || "",
               homeBaseLat: carerData.homeBaseLat?.toString() || "",
               homeBaseLng: carerData.homeBaseLng?.toString() || "",
               ratePerVisitCents: carerData.ratePerVisitCents
                 ? (carerData.ratePerVisitCents / 100).toString()
                 : "",
-              currency: carerData.currency || "USD",
+              currency: carerData.currency || "GHS",
               active: carerData.active,
             });
+            setImageFile(null);
+            setImagePreview(carerData.imageUrl || null);
       }
 
       // Fetch jobs for this carer
@@ -175,8 +203,82 @@ export default function CarerDetailPage() {
     }
   };
 
+  const uploadImage = async (): Promise<string | null> => {
+    if (!imageFile) return null;
+
+    try {
+      setUploadingImage(true);
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+      const uploadFormData = new FormData();
+      uploadFormData.append("image", imageFile);
+
+      const response = await fetch(`${API_URL}/carers/upload-image`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
+        },
+        body: uploadFormData,
+      });
+
+      if (!response.ok) {
+        let errorMessage = "Failed to upload image";
+        try {
+          const error = await response.json();
+          errorMessage = error.error || error.message || errorMessage;
+        } catch (e) {
+          errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+        }
+        throw new Error(errorMessage);
+      }
+
+      const data = await response.json();
+      return data.imageUrl;
+    } catch (error: any) {
+      console.error("Failed to upload image:", error);
+      const errorMessage = error.message || "Unknown error";
+      alert(`Failed to upload image: ${errorMessage}`);
+      return null;
+    } finally {
+      setUploadingImage(false);
+    }
+  };
+
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      // Validate file type
+      if (!file.type.startsWith("image/")) {
+        alert("Please select an image file");
+        return;
+      }
+      // Validate file size (5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        alert("Image size must be less than 5MB");
+        return;
+      }
+      setImageFile(file);
+      // Create preview
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setImagePreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
   const handleUpdate = async () => {
     try {
+      // Upload image first if a new one was selected
+      let imageUrl = formData.imageUrl;
+      if (imageFile) {
+        const uploadedUrl = await uploadImage();
+        if (uploadedUrl) {
+          imageUrl = uploadedUrl;
+        } else {
+          return; // Stop if upload failed
+        }
+      }
+
       const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
       const payload: any = {
         name: formData.name || null,
@@ -184,13 +286,22 @@ export default function CarerDetailPage() {
         active: formData.active,
       };
 
-      if (formData.homeBaseLat) {
-        payload.homeBaseLat = parseFloat(formData.homeBaseLat);
+      if (imageUrl && imageUrl.trim()) {
+        payload.imageUrl = imageUrl.trim();
       }
 
-      if (formData.homeBaseLng) {
-        payload.homeBaseLng = parseFloat(formData.homeBaseLng);
+      // Home base should be nested in homeBase object
+      if (formData.homeBaseLat || formData.homeBaseLng) {
+        payload.homeBase = {};
+        if (formData.homeBaseLat) {
+          payload.homeBase.lat = parseFloat(formData.homeBaseLat);
+        }
+        if (formData.homeBaseLng) {
+          payload.homeBase.lng = parseFloat(formData.homeBaseLng);
+        }
       }
+      
+      // Payment rate fields
       if (formData.ratePerVisitCents) {
         payload.ratePerVisitCents = parseFloat(formData.ratePerVisitCents) * 100; // Convert to cents
       } else {
@@ -275,9 +386,25 @@ export default function CarerDetailPage() {
             <ArrowLeft className="h-4 w-4 mr-2" />
             Back
           </Button>
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">{carer.name || "Unnamed Carer"}</h1>
-            <p className="text-gray-600 mt-1">Carer profile and job assignments</p>
+          <div className="flex items-center gap-4">
+            {carer.imageUrl ? (
+              <img
+                src={carer.imageUrl}
+                alt={carer.name || "Carer"}
+                className="w-16 h-16 rounded-full object-cover border-2 border-gray-200"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).style.display = 'none';
+                }}
+              />
+            ) : (
+              <div className="w-16 h-16 rounded-full bg-gray-200 flex items-center justify-center">
+                <UserCheck className="h-8 w-8 text-gray-400" />
+              </div>
+            )}
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900">{carer.name || "Unnamed Carer"}</h1>
+              <p className="text-gray-600 mt-1">Carer profile and job assignments</p>
+            </div>
           </div>
         </div>
         <Button onClick={() => setIsEditDialogOpen(true)}>
@@ -593,6 +720,35 @@ export default function CarerDetailPage() {
               />
             </div>
 
+            <div className="grid gap-2">
+              <Label htmlFor="edit-image">Profile Image</Label>
+              <Input
+                id="edit-image"
+                type="file"
+                accept="image/*"
+                onChange={handleImageSelect}
+                disabled={uploadingImage}
+              />
+              <p className="text-xs text-gray-500">
+                Upload a profile image (max 5MB, JPG, PNG, WEBP, GIF)
+              </p>
+              {(imagePreview || formData.imageUrl) && (
+                <div className="mt-2">
+                  <img
+                    src={imagePreview || formData.imageUrl || ""}
+                    alt="Preview"
+                    className="w-20 h-20 rounded-full object-cover border-2 border-gray-200"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).style.display = 'none';
+                    }}
+                  />
+                </div>
+              )}
+              {uploadingImage && (
+                <p className="text-xs text-blue-600">Uploading image...</p>
+              )}
+            </div>
+
             <div className="grid grid-cols-2 gap-4">
               <div className="grid gap-2">
                 <Label htmlFor="edit-lat">Home Base Latitude</Label>
@@ -614,6 +770,40 @@ export default function CarerDetailPage() {
                   value={formData.homeBaseLng}
                   onChange={(e) => setFormData({ ...formData, homeBaseLng: e.target.value })}
                 />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-2">
+                <Label htmlFor="edit-rate">Rate Per Visit</Label>
+                <Input
+                  id="edit-rate"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={formData.ratePerVisitCents}
+                  onChange={(e) => setFormData({ ...formData, ratePerVisitCents: e.target.value })}
+                  placeholder="0.00"
+                />
+                <p className="text-xs text-gray-500">Amount per visit (e.g., 50.00)</p>
+              </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="edit-currency">Currency</Label>
+                <Select
+                  value={formData.currency}
+                  onValueChange={(value) => setFormData({ ...formData, currency: value })}
+                >
+                  <SelectTrigger id="edit-currency">
+                    <SelectValue placeholder="Select currency" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="GHS">GHS (Ghana Cedis)</SelectItem>
+                    <SelectItem value="USD">USD (US Dollars)</SelectItem>
+                    <SelectItem value="EUR">EUR (Euros)</SelectItem>
+                    <SelectItem value="GBP">GBP (British Pounds)</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
 

@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsInt, IsNumber, IsEnum, IsDateString, IsObject, ValidateNested } from "class-validator";
+import { IsString, IsOptional, IsInt, IsNumber, IsEnum, IsDateString, IsObject, ValidateNested, IsBoolean } from "class-validator";
 import { Type } from "class-transformer";
 
 class WindowDto {
@@ -13,7 +13,7 @@ export class CreatePlanDto {
   @IsString()
   poolId: string;
 
-  @IsEnum(["weekly", "biweekly", "monthly"])
+  @IsEnum(["weekly", "biweekly", "monthly", "once_week", "twice_week", "once_month", "twice_month"])
   frequency: string;
 
   @IsOptional()
@@ -67,5 +67,19 @@ export class CreatePlanDto {
   @IsOptional()
   @IsString()
   notes?: string;
+
+  // Subscription fields
+  @IsOptional()
+  @IsString()
+  @IsEnum(["per_visit", "monthly", "quarterly", "annually"])
+  billingType?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  autoRenew?: boolean;
+
+  @IsOptional()
+  @IsString()
+  templateId?: string; // Create from subscription template
 }
 

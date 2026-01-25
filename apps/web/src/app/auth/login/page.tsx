@@ -18,6 +18,7 @@ export default function LoginPage() {
   const [otp, setOtp] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [devOtpCode, setDevOtpCode] = useState<string | null>(null);
 
   const handleRequestOtp = async () => {
     if (!target) {
@@ -33,6 +34,20 @@ export default function LoginPage() {
       const result = await api.requestOtp(channel, target);
       console.log("OTP request successful:", result);
       setStep("otp");
+      
+      // In development, fetch the OTP code to display
+      if (process.env.NODE_ENV === "development" || process.env.NODE_ENV !== "production") {
+        setTimeout(async () => {
+          try {
+            const checkResult = await api.checkOtpCode(channel, target);
+            if (checkResult.exists && checkResult.code) {
+              setDevOtpCode(checkResult.code);
+            }
+          } catch (err) {
+            // Ignore errors, just don't show the code
+          }
+        }, 500);
+      }
     } catch (err: any) {
       console.error("OTP request error:", err);
       setError(err.message || "Failed to send OTP. Please try again.");
@@ -52,8 +67,11 @@ export default function LoginPage() {
 
     try {
       const result = await api.verifyOtp(channel, target, otp);
-      login(result.token, result.user, result.org);
+      console.log("✅ OTP verification successful:", result);
+      // Include role in user object
+      login(result.token, { ...result.user, role: result.role }, result.org);
     } catch (err: any) {
+      console.error("❌ OTP verification failed:", err);
       setError(err.message || "Invalid OTP. Please try again.");
     } finally {
       setLoading(false);
@@ -169,6 +187,13 @@ export default function LoginPage() {
                 <p className="text-xs text-gray-500 text-center">
                   Code sent to {target}
                 </p>
+                {devOtpCode && (
+                  <div className="bg-orange-50 border-2 border-orange-300 rounded-lg p-3 text-center">
+                    <p className="text-xs text-orange-700 font-semibold mb-1">🔐 Development OTP Code:</p>
+                    <p className="text-2xl font-mono font-bold text-orange-900 tracking-widest">{devOtpCode}</p>
+                    <p className="text-xs text-orange-600 mt-1">Use this code to log in</p>
+                  </div>
+                )}
               </div>
 
               <Button
@@ -192,6 +217,7 @@ export default function LoginPage() {
                   setStep("channel");
                   setOtp("");
                   setError(null);
+                  setDevOtpCode(null);
                 }}
                 className="w-full"
                 disabled={loading}

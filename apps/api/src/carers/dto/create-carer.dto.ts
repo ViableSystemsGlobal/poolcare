@@ -27,6 +27,10 @@ export class CreateCarerDto {
   email?: string;
 
   @IsOptional()
+  @IsString()
+  imageUrl?: string;
+
+  @IsOptional()
   @ValidateNested()
   @Type(() => HomeBaseDto)
   homeBase?: HomeBaseDto;

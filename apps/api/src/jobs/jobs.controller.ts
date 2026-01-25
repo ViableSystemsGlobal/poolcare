@@ -15,6 +15,7 @@ import { RolesGuard } from "../auth/guards/roles.guard";
 import { Roles } from "../auth/decorators/roles.decorator";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import {
+  CreateJobDto,
   AssignJobDto,
   RescheduleJobDto,
   CancelJobDto,
@@ -22,6 +23,7 @@ import {
   ArriveJobDto,
   CompleteJobDto,
   FailJobDto,
+  ReportWeatherDto,
 } from "./dto";
 
 @Controller("jobs")
@@ -39,17 +41,33 @@ export class JobsController {
     @Query("status") status?: string,
     @Query("carerId") carerId?: string,
     @Query("clientId") clientId?: string,
+    @Query("poolId") poolId?: string,
+    @Query("planId") planId?: string,
+    @Query("upcoming") upcoming?: string,
     @Query("page") page?: string,
     @Query("limit") limit?: string
   ) {
-    return this.jobsService.list(user.org_id, user.role, user.sub, {
+    return this.jobsService.list(user.org_id, user.role, (user as any).sub, {
       date,
       status,
       carerId,
       clientId,
+      poolId,
+      planId,
+      upcoming: upcoming === "true" ? true : upcoming === "false" ? false : undefined,
       page: page ? parseInt(page) : 1,
       limit: limit ? parseInt(limit) : 50,
     });
+  }
+
+  @Post()
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "MANAGER")
+  async create(
+    @CurrentUser() user: { org_id: string },
+    @Body() dto: CreateJobDto
+  ) {
+    return this.jobsService.create(user.org_id, dto);
   }
 
   @Get(":id")
@@ -57,7 +75,7 @@ export class JobsController {
     @CurrentUser() user: { org_id: string; role: string; sub: string },
     @Param("id") id: string
   ) {
-    return this.jobsService.getOne(user.org_id, user.role, user.sub, id);
+    return this.jobsService.getOne(user.org_id, user.role, (user as any).sub, id);
   }
 
   @Post(":id/assign")
@@ -82,11 +100,11 @@ export class JobsController {
   @UseGuards(RolesGuard)
   @Roles("ADMIN", "MANAGER")
   async reschedule(
-    @CurrentUser() user: { org_id: string },
+    @CurrentUser() user: { org_id: string; role: string },
     @Param("id") id: string,
     @Body() dto: RescheduleJobDto
   ) {
-    return this.jobsService.reschedule(user.org_id, id, dto);
+    return this.jobsService.reschedule(user.org_id, user.role, id, dto);
   }
 
   @Post(":id/cancel")
@@ -106,7 +124,7 @@ export class JobsController {
     @Param("id") id: string,
     @Body() dto: StartJobDto
   ) {
-    return this.jobsService.start(user.org_id, user.sub, id, dto);
+    return this.jobsService.start(user.org_id, (user as any).sub, id, dto);
   }
 
   @Post(":id/arrive")
@@ -115,7 +133,7 @@ export class JobsController {
     @Param("id") id: string,
     @Body() dto: ArriveJobDto
   ) {
-    return this.jobsService.arrive(user.org_id, user.sub, id, dto);
+    return this.jobsService.arrive(user.org_id, (user as any).sub, id, dto);
   }
 
   @Post(":id/complete")
@@ -124,7 +142,7 @@ export class JobsController {
     @Param("id") id: string,
     @Body() dto: CompleteJobDto
   ) {
-    return this.jobsService.complete(user.org_id, user.sub, id, dto);
+    return this.jobsService.complete(user.org_id, (user as any).sub, id, dto);
   }
 
   @Post(":id/fail")
@@ -133,7 +151,16 @@ export class JobsController {
     @Param("id") id: string,
     @Body() dto: FailJobDto
   ) {
-    return this.jobsService.fail(user.org_id, user.sub, id, dto);
+    return this.jobsService.fail(user.org_id, (user as any).sub, id, dto);
+  }
+
+  @Post(":id/weather")
+  async reportWeather(
+    @CurrentUser() user: { org_id: string; sub: string },
+    @Param("id") id: string,
+    @Body() dto: ReportWeatherDto
+  ) {
+    return this.jobsService.reportWeather(user.org_id, (user as any).sub, id, dto);
   }
 
   // Dispatch endpoints
@@ -147,8 +174,57 @@ export class JobsController {
   @Post("dispatch/apply")
   @UseGuards(RolesGuard)
   @Roles("ADMIN", "MANAGER")
-  async applyOptimization(@CurrentUser() user: { org_id: string }, @Body() body: { optimizationId: string }) {
-    return this.dispatchService.applyOptimization(user.org_id, body.optimizationId);
+  async applyOptimization(
+    @CurrentUser() user: { org_id: string },
+    @Body() body: { optimizationId: string; changes: Array<{ jobId: string; fromSeq: number; toSeq: number; eta: string; distanceKm: number; durationMin: number }> }
+  ) {
+    return this.dispatchService.applyOptimization(user.org_id, body.optimizationId, body.changes);
+  }
+
+  @Post(":id/recalculate-eta")
+  async recalculateETA(
+    @CurrentUser() user: { org_id: string; role: string },
+    @Param("id") id: string
+  ) {
+    // Allow carers to recalculate ETA for their own jobs, admins/managers for any job
+    if (user.role === "CARER") {
+      const job = await this.jobsService.getOne(user.org_id, user.role, (user as any).sub, id);
+      if (!job) {
+        throw new Error("Job not found");
+      }
+    }
+    return this.jobsService.recalculateETA(user.org_id, id);
+  }
+
+  @Post("recalculate-etas")
+  async recalculateCarerETAs(
+    @CurrentUser() user: { org_id: string; role: string; sub: string },
+    @Query("carerId") carerId?: string
+  ) {
+    // If carerId is provided and user is ADMIN/MANAGER, use that carerId
+    // Otherwise, if user is CARER, use their own carerId
+    let targetCarerId = carerId;
+
+    if (user.role === "CARER" && !carerId) {
+      // Get carer's own ID
+      const { prisma } = await import("@poolcare/db");
+      const carer = await prisma.carer.findFirst({
+        where: { orgId: user.org_id, userId: (user as any).sub },
+      });
+      if (!carer) {
+        throw new Error("Carer profile not found");
+      }
+      targetCarerId = carer.id;
+    } else if (user.role !== "ADMIN" && user.role !== "MANAGER") {
+      throw new Error("Access denied");
+    }
+
+    if (!targetCarerId) {
+      throw new Error("carerId is required");
+    }
+
+    const updatedCount = await this.jobsService.recalculateCarerETAs(user.org_id, targetCarerId);
+    return { updatedCount, message: `Recalculated ETA for ${updatedCount} job(s)` };
   }
 }
 

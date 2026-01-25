@@ -1,4 +1,4 @@
-import { IsString, IsObject, IsOptional, IsInt, Min } from "class-validator";
+import { IsString, IsArray, IsObject, IsOptional, IsInt, Min } from "class-validator";
 
 export class UpdateTemplateDto {
   @IsOptional()
@@ -6,8 +6,8 @@ export class UpdateTemplateDto {
   name?: string;
 
   @IsOptional()
-  @IsObject()
-  checklist?: any;
+  @IsArray()
+  checklist?: any[];
 
   @IsOptional()
   @IsObject()

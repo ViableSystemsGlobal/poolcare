@@ -6,6 +6,7 @@ import { JwtService } from "@nestjs/jwt";
 import { JwtModule } from "@nestjs/jwt";
 import { ConfigModule, ConfigService } from "@nestjs/config";
 import { NotificationsModule } from "../notifications/notifications.module";
+import { JwtAuthGuard } from "./guards/jwt-auth.guard";
 
 @Module({
   imports: [
@@ -22,8 +23,8 @@ import { NotificationsModule } from "../notifications/notifications.module";
     NotificationsModule,
   ],
   controllers: [AuthController],
-  providers: [AuthService, OtpService, JwtService],
-  exports: [AuthService],
+  providers: [AuthService, OtpService, JwtService, JwtAuthGuard],
+  exports: [AuthService, JwtModule, JwtAuthGuard],
 })
 export class AuthModule {}
 

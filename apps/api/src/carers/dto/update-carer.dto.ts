@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsBoolean, IsObject, ValidateNested } from "class-validator";
+import { IsString, IsOptional, IsBoolean, IsObject, ValidateNested, IsInt, Min } from "class-validator";
 import { Type } from "class-transformer";
 
 class HomeBaseDto {
@@ -19,6 +19,10 @@ export class UpdateCarerDto {
   phone?: string;
 
   @IsOptional()
+  @IsString()
+  imageUrl?: string;
+
+  @IsOptional()
   @ValidateNested()
   @Type(() => HomeBaseDto)
   homeBase?: HomeBaseDto;
@@ -26,5 +30,14 @@ export class UpdateCarerDto {
   @IsOptional()
   @IsBoolean()
   active?: boolean;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  ratePerVisitCents?: number;
+
+  @IsOptional()
+  @IsString()
+  currency?: string;
 }
 

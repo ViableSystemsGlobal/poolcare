@@ -3,6 +3,7 @@ import "./globals.css";
 import { ThemeProviderWrapper } from "@/components/providers/theme-provider-wrapper";
 import { AuthProvider } from "@/contexts/auth-context";
 import { AppLayout } from "@/components/layout/app-layout";
+import { Toaster } from "@/components/ui/toaster";
 
 export const metadata: Metadata = {
   title: "PoolCare Management System",
@@ -23,6 +24,7 @@ export default function RootLayout({
         <AuthProvider>
           <ThemeProviderWrapper>
             <AppLayout>{children}</AppLayout>
+            <Toaster />
           </ThemeProviderWrapper>
         </AuthProvider>
       </body>

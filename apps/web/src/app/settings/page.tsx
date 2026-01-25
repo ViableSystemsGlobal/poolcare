@@ -13,14 +13,35 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Settings, Building, DollarSign, Save, Globe, MapPin, Mail, Phone, CheckCircle } from "lucide-react";
+import { Settings, Building, DollarSign, Save, Globe, MapPin, Mail, Phone, CheckCircle, Image, Palette, Map, Loader2, Send } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useTheme } from "@/contexts/theme-context";
+
+const colorMap: { [key: string]: string } = {
+  'orange-600': '#ea580c',
+  'purple-600': '#9333ea',
+  'blue-600': '#2563eb',
+  'green-600': '#16a34a',
+  'red-600': '#dc2626',
+  'indigo-600': '#4f46e5',
+  'pink-600': '#db2777',
+  'teal-600': '#0d9488',
+};
 
 type SettingsTab = "org" | "tax" | "policies" | "integrations";
 
 interface OrgProfile {
   name: string;
   logoUrl?: string | null;
+  faviconUrl?: string | null;
+  themeColor?: string;
   timezone: string;
   address?: string | null;
   currency: string;
@@ -59,18 +80,29 @@ interface SmsSettings {
   apiUrl: string;
 }
 
+interface GoogleMapsSettings {
+  apiKey: string;
+  enabled: boolean;
+}
+
 export default function SettingsPage() {
-  const { getThemeClasses } = useTheme();
+  const { getThemeClasses, setThemeColor, setCustomLogo } = useTheme();
   const theme = getThemeClasses();
   const [activeTab, setActiveTab] = useState<SettingsTab>("org");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [testEmailDialogOpen, setTestEmailDialogOpen] = useState(false);
+  const [testEmailAddress, setTestEmailAddress] = useState("");
+  const [sendingTestEmail, setSendingTestEmail] = useState(false);
+  const [testEmailResult, setTestEmailResult] = useState<{ success: boolean; message: string } | null>(null);
 
   // Organization Profile
   const [orgProfile, setOrgProfile] = useState<OrgProfile>({
     name: "",
     logoUrl: null,
+    faviconUrl: null,
+    themeColor: "orange",
     timezone: "Africa/Accra",
     address: null,
     currency: "GHS",
@@ -78,6 +110,12 @@ export default function SettingsPage() {
     supportPhone: null,
     locale: "en",
   });
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [logoPreview, setLogoPreview] = useState<string | null>(null);
+  const [faviconFile, setFaviconFile] = useState<File | null>(null);
+  const [faviconPreview, setFaviconPreview] = useState<string | null>(null);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [uploadingFavicon, setUploadingFavicon] = useState(false);
 
   // Tax Settings
   const [taxSettings, setTaxSettings] = useState<TaxSettings>({
@@ -112,6 +150,15 @@ export default function SettingsPage() {
     apiUrl: "https://deywuro.com/api/sms",
   });
 
+  // Google Maps Settings
+  const [googleMapsSettings, setGoogleMapsSettings] = useState<GoogleMapsSettings>({
+    apiKey: "",
+    enabled: false,
+  });
+  const [verifyingApiKey, setVerifyingApiKey] = useState(false);
+  const [testingApiKey, setTestingApiKey] = useState(false);
+  const [apiKeyTestResult, setApiKeyTestResult] = useState<{ success: boolean; message: string } | null>(null);
+
   useEffect(() => {
     fetchSettings();
   }, []);
@@ -121,7 +168,7 @@ export default function SettingsPage() {
       setLoading(true);
       const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
 
-      const [orgRes, taxRes, smtpRes, smsRes] = await Promise.all([
+      const [orgRes, taxRes, smtpRes, smsRes, googleMapsRes] = await Promise.all([
         fetch(`${API_URL}/settings/org`, {
           headers: {
             Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
@@ -142,18 +189,47 @@ export default function SettingsPage() {
             Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
           },
         }),
+        fetch(`${API_URL}/settings/integrations/google-maps`, {
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
+          },
+        }),
       ]);
 
       if (orgRes.ok) {
         const orgData = await orgRes.json();
         if (orgData.profile) {
           setOrgProfile(orgData.profile);
+          setLogoPreview(orgData.profile.logoUrl || null);
+          setFaviconPreview(orgData.profile.faviconUrl || null);
+          // Update theme context with saved values
+          if (orgData.profile.themeColor) {
+            setThemeColor(orgData.profile.themeColor as any);
+          }
+          if (orgData.profile.logoUrl) {
+            setCustomLogo(orgData.profile.logoUrl);
+          }
+          // Update favicon if exists
+          if (orgData.profile.faviconUrl) {
+            const link = document.querySelector("link[rel='icon']") as HTMLLinkElement;
+            if (link) {
+              link.href = orgData.profile.faviconUrl;
+            } else {
+              const newLink = document.createElement("link");
+              newLink.rel = "icon";
+              newLink.href = orgData.profile.faviconUrl;
+              document.head.appendChild(newLink);
+            }
+          }
         }
       }
 
       if (taxRes.ok) {
         const taxData = await taxRes.json();
         setTaxSettings(taxData);
+      } else if (taxRes.status === 404) {
+        // Tax settings endpoint doesn't exist yet, use defaults
+        console.log("Tax settings endpoint not found, using defaults");
       }
 
       if (smtpRes.ok) {
@@ -193,6 +269,25 @@ export default function SettingsPage() {
       } else if (smsRes.status === 404) {
         // Settings not found, use defaults
       }
+
+      if (googleMapsRes.ok) {
+        const googleMapsData = await googleMapsRes.json();
+        if (googleMapsData.settings) {
+          // Check if API key was previously saved (stored in localStorage)
+          const googleMapsKeySet = localStorage.getItem("google_maps_key_set") === "true";
+          
+          setGoogleMapsSettings((prev) => ({
+            ...googleMapsData.settings,
+            // If API key was previously set but API returns masked (for security),
+            // show placeholder dots instead of clearing it
+            apiKey: googleMapsData.settings.apiKey 
+              ? googleMapsData.settings.apiKey 
+              : (googleMapsKeySet ? "***" : prev.apiKey || ""),
+          }));
+        }
+      } else if (googleMapsRes.status === 404) {
+        // Settings not found, use defaults
+      }
     } catch (error) {
       console.error("Failed to fetch settings:", error);
     } finally {
@@ -200,10 +295,146 @@ export default function SettingsPage() {
     }
   };
 
+  const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setLogoFile(file);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setLogoPreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleFaviconChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setFaviconFile(file);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setFaviconPreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const uploadLogo = async (): Promise<string | null> => {
+    if (!logoFile) return null;
+
+    try {
+      setUploadingLogo(true);
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+      const uploadFormData = new FormData();
+      uploadFormData.append("logo", logoFile);
+
+      const response = await fetch(`${API_URL}/settings/upload-logo`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
+        },
+        body: uploadFormData,
+      });
+
+      if (!response.ok) {
+        let errorMessage = "Failed to upload logo";
+        try {
+          const error = await response.json();
+          errorMessage = error.error || error.message || errorMessage;
+        } catch (e) {
+          errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+        }
+        throw new Error(errorMessage);
+      }
+
+      const data = await response.json();
+      setOrgProfile({ ...orgProfile, logoUrl: data.logoUrl });
+      setLogoFile(null);
+      // Update ThemeContext immediately so sidebar updates
+      setCustomLogo(data.logoUrl);
+      localStorage.setItem('customLogo', data.logoUrl);
+      return data.logoUrl;
+    } catch (error: any) {
+      console.error("Failed to upload logo:", error);
+      alert(`Failed to upload logo: ${error.message || "Unknown error"}`);
+      return null;
+    } finally {
+      setUploadingLogo(false);
+    }
+  };
+
+  const uploadFavicon = async (): Promise<string | null> => {
+    if (!faviconFile) return null;
+
+    try {
+      setUploadingFavicon(true);
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+      const uploadFormData = new FormData();
+      uploadFormData.append("favicon", faviconFile);
+
+      const response = await fetch(`${API_URL}/settings/upload-favicon`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
+        },
+        body: uploadFormData,
+      });
+
+      if (!response.ok) {
+        let errorMessage = "Failed to upload favicon";
+        try {
+          const error = await response.json();
+          errorMessage = error.error || error.message || errorMessage;
+        } catch (e) {
+          errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+        }
+        throw new Error(errorMessage);
+      }
+
+      const data = await response.json();
+      setOrgProfile({ ...orgProfile, faviconUrl: data.faviconUrl });
+      setFaviconFile(null);
+      
+      // Update favicon in the document
+      const link = document.querySelector("link[rel='icon']") as HTMLLinkElement;
+      if (link) {
+        link.href = data.faviconUrl;
+      } else {
+        const newLink = document.createElement("link");
+        newLink.rel = "icon";
+        newLink.href = data.faviconUrl;
+        document.head.appendChild(newLink);
+      }
+      
+      // Store favicon URL in localStorage
+      localStorage.setItem('faviconUrl', data.faviconUrl);
+      
+      return data.faviconUrl;
+    } catch (error: any) {
+      console.error("Failed to upload favicon:", error);
+      alert(`Failed to upload favicon: ${error.message || "Unknown error"}`);
+      return null;
+    } finally {
+      setUploadingFavicon(false);
+    }
+  };
+
   const handleSaveOrg = async () => {
     try {
       setSaving(true);
       setSaveSuccess(false);
+      
+      // Upload logo and favicon first if files were selected
+      if (logoFile) {
+        const logoUrl = await uploadLogo();
+        if (!logoUrl) return; // Stop if upload failed
+      }
+      
+      if (faviconFile) {
+        const faviconUrl = await uploadFavicon();
+        if (!faviconUrl) return; // Stop if upload failed
+      }
+
       const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
 
       const response = await fetch(`${API_URL}/settings/org`, {
@@ -226,6 +457,14 @@ export default function SettingsPage() {
           // Update local state with returned data
           if (data.profile) {
             setOrgProfile(data.profile);
+            // Update theme color in context
+            if (data.profile.themeColor) {
+              setThemeColor(data.profile.themeColor as any);
+            }
+            // Update logo in context
+            if (data.profile.logoUrl) {
+              setCustomLogo(data.profile.logoUrl);
+            }
           }
         }
         setSaveSuccess(true);
@@ -372,12 +611,137 @@ export default function SettingsPage() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
+                {/* Branding Section */}
+                <div className="space-y-4 pb-6 border-b">
+                  <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                    <Palette className="h-5 w-5" />
+                    Branding & Appearance
+                  </h3>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {/* Logo Upload */}
+                    <div className="space-y-2">
+                      <Label htmlFor="logo" className="flex items-center gap-2">
+                        <Image className="h-4 w-4" />
+                        Sidebar Logo
+                      </Label>
+                      <div className="flex items-center gap-4">
+                        <div className="flex-1">
+                          <Input
+                            id="logo"
+                            type="file"
+                            accept="image/*"
+                            onChange={handleLogoChange}
+                            className="cursor-pointer"
+                          />
+                          <p className="text-xs text-gray-500 mt-1">Upload logo for sidebar (max 2MB)</p>
+                        </div>
+                        {logoPreview && (
+                          <div className="relative">
+                            <img
+                              src={logoPreview}
+                              alt="Logo preview"
+                              className="w-16 h-16 rounded object-contain border-2 border-gray-200"
+                            />
+                          </div>
+                        )}
+                      </div>
+                      {uploadingLogo && (
+                        <p className="text-sm text-gray-500">Uploading logo...</p>
+                      )}
+                    </div>
+
+                    {/* Favicon Upload */}
+                    <div className="space-y-2">
+                      <Label htmlFor="favicon" className="flex items-center gap-2">
+                        <Image className="h-4 w-4" />
+                        Favicon
+                      </Label>
+                      <div className="flex items-center gap-4">
+                        <div className="flex-1">
+                          <Input
+                            id="favicon"
+                            type="file"
+                            accept=".ico,.png,.svg"
+                            onChange={handleFaviconChange}
+                            className="cursor-pointer"
+                          />
+                          <p className="text-xs text-gray-500 mt-1">Upload favicon (max 1MB, .ico, .png, or .svg)</p>
+                        </div>
+                        {faviconPreview && (
+                          <div className="relative">
+                            <img
+                              src={faviconPreview}
+                              alt="Favicon preview"
+                              className="w-8 h-8 rounded object-contain border-2 border-gray-200"
+                            />
+                          </div>
+                        )}
+                      </div>
+                      {uploadingFavicon && (
+                        <p className="text-sm text-gray-500">Uploading favicon...</p>
+                      )}
+                    </div>
+
+                    {/* Theme Color Picker */}
+                    <div className="space-y-2 md:col-span-2">
+                      <Label htmlFor="theme-color" className="flex items-center gap-2">
+                        <Palette className="h-4 w-4" />
+                        Theme Color
+                      </Label>
+                      <div className="flex items-center gap-3">
+                        <div className="flex gap-2 flex-wrap">
+                          {['orange', 'purple', 'blue', 'green', 'red', 'indigo', 'pink', 'teal'].map((color) => (
+                            <button
+                              key={color}
+                              type="button"
+                              onClick={() => setOrgProfile({ ...orgProfile, themeColor: color })}
+                              className={`w-10 h-10 rounded-full border-2 transition-all ${
+                                orgProfile.themeColor === color
+                                  ? 'border-gray-900 scale-110'
+                                  : 'border-gray-300 hover:border-gray-400'
+                              }`}
+                              style={{
+                                backgroundColor: colorMap[`${color}-600`] || '#ea580c'
+                              }}
+                              title={color.charAt(0).toUpperCase() + color.slice(1)}
+                            />
+                          ))}
+                        </div>
+                        <div className="flex-1">
+                          <Input
+                            id="theme-color"
+                            type="color"
+                            value={colorMap[`${orgProfile.themeColor || 'orange'}-600`] || '#ea580c'}
+                            onChange={(e) => {
+                              // Find closest matching color
+                              const hex = e.target.value;
+                              const closest = Object.entries(colorMap).reduce((prev, [key, value]) => {
+                                const prevDiff = Math.abs(
+                                  parseInt(prev[1].slice(1), 16) - parseInt(hex.slice(1), 16)
+                                );
+                                const currDiff = Math.abs(
+                                  parseInt(value.slice(1), 16) - parseInt(hex.slice(1), 16)
+                                );
+                                return currDiff < prevDiff ? [key, value] : prev;
+                              }, ['orange-600', '#ea580c'])[0].split('-')[0];
+                              setOrgProfile({ ...orgProfile, themeColor: closest });
+                            }}
+                            className="w-20 h-10 cursor-pointer"
+                          />
+                          <p className="text-xs text-gray-500 mt-1">Or pick a custom color</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-2">
                     <Label htmlFor="org-name">Organization Name *</Label>
                     <Input
                       id="org-name"
-                      value={orgProfile.name}
+                      value={orgProfile.name || ""}
                       onChange={(e) =>
                         setOrgProfile({ ...orgProfile, name: e.target.value })
                       }
@@ -710,7 +1074,7 @@ export default function SettingsPage() {
                       <Label htmlFor="smtp-host">SMTP Host</Label>
                       <Input
                         id="smtp-host"
-                        value={smtpSettings.host}
+                        value={smtpSettings.host || ""}
                         onChange={(e) =>
                           setSmtpSettings({ ...smtpSettings, host: e.target.value })
                         }
@@ -741,7 +1105,7 @@ export default function SettingsPage() {
                       <Input
                         id="smtp-user"
                         type="email"
-                        value={smtpSettings.user}
+                        value={smtpSettings.user || ""}
                         onChange={(e) =>
                           setSmtpSettings({ ...smtpSettings, user: e.target.value })
                         }
@@ -754,7 +1118,7 @@ export default function SettingsPage() {
                       <Input
                         id="smtp-password"
                         type="password"
-                        value={smtpSettings.password === "••••••••" ? "" : smtpSettings.password}
+                        value={smtpSettings.password === "••••••••" ? "" : (smtpSettings.password || "")}
                         onChange={(e) => {
                           const newPassword = e.target.value;
                           setSmtpSettings({ ...smtpSettings, password: newPassword });
@@ -783,7 +1147,7 @@ export default function SettingsPage() {
                       <Input
                         id="smtp-from"
                         type="email"
-                        value={smtpSettings.from}
+                        value={smtpSettings.from || ""}
                         onChange={(e) =>
                           setSmtpSettings({ ...smtpSettings, from: e.target.value })
                         }
@@ -795,7 +1159,7 @@ export default function SettingsPage() {
                       <Label htmlFor="smtp-from-name">From Name</Label>
                       <Input
                         id="smtp-from-name"
-                        value={smtpSettings.fromName}
+                        value={smtpSettings.fromName || ""}
                         onChange={(e) =>
                           setSmtpSettings({ ...smtpSettings, fromName: e.target.value })
                         }
@@ -826,6 +1190,18 @@ export default function SettingsPage() {
                         <span className="text-sm font-medium">Settings saved successfully!</span>
                       </div>
                     )}
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setTestEmailDialogOpen(true);
+                        setTestEmailResult(null);
+                        setTestEmailAddress("");
+                      }}
+                      disabled={saving}
+                    >
+                      <Send className="h-4 w-4 mr-2" />
+                      Test Email
+                    </Button>
                     <Button
                       onClick={async () => {
                         try {
@@ -926,7 +1302,7 @@ export default function SettingsPage() {
                       <Label htmlFor="sms-api-url">API URL</Label>
                       <Input
                         id="sms-api-url"
-                        value={smsSettings.apiUrl}
+                        value={smsSettings.apiUrl || ""}
                         onChange={(e) =>
                           setSmsSettings({ ...smsSettings, apiUrl: e.target.value })
                         }
@@ -938,7 +1314,7 @@ export default function SettingsPage() {
                       <Label htmlFor="sms-username">Username</Label>
                       <Input
                         id="sms-username"
-                        value={smsSettings.username}
+                        value={smsSettings.username || ""}
                         onChange={(e) =>
                           setSmsSettings({ ...smsSettings, username: e.target.value })
                         }
@@ -951,22 +1327,24 @@ export default function SettingsPage() {
                       <Input
                         id="sms-password"
                         type="password"
-                        value={smsSettings.password === "••••••••" ? "" : smsSettings.password}
+                        value={smsSettings.password === "••••••••" ? "" : (smsSettings.password || "")}
                         onChange={(e) => {
                           const newPassword = e.target.value;
                           setSmsSettings({ ...smsSettings, password: newPassword });
-                          // Clear the placeholder flag if user starts typing
-                          if (newPassword && localStorage.getItem("sms_password_set") === "true") {
-                            localStorage.removeItem("sms_password_set");
-                          }
                         }}
                         onFocus={(e) => {
-                          // Clear placeholder when user focuses on the field
+                          // Clear masked value when user focuses to enter new password
                           if (smsSettings.password === "••••••••") {
                             setSmsSettings({ ...smsSettings, password: "" });
                           }
                         }}
-                        placeholder={localStorage.getItem("sms_password_set") === "true" ? "Password is saved (click to change)" : "Enter Deywuro password"}
+                        placeholder={smsSettings.password === "••••••••" || localStorage.getItem("sms_password_set") === "true" ? "Password is saved (enter new to change)" : "Enter Deywuro password"}
+                      />
+                      {smsSettings.password === "••••••••" && (
+                        <p className="text-xs text-green-600 mt-1">
+                          ✓ Password is saved. Enter a new password to change it.
+                        </p>
+                      )}
                       />
                       {smsSettings.password === "••••••••" && (
                         <p className="text-xs text-gray-500">
@@ -979,7 +1357,7 @@ export default function SettingsPage() {
                       <Label htmlFor="sms-sender-id">Sender ID</Label>
                       <Input
                         id="sms-sender-id"
-                        value={smsSettings.senderId}
+                        value={smsSettings.senderId || ""}
                         onChange={(e) =>
                           setSmsSettings({ ...smsSettings, senderId: e.target.value })
                         }
@@ -1014,14 +1392,26 @@ export default function SettingsPage() {
                           const API_URL =
                             process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
 
-                          // Only send password if it was actually changed (not empty)
-                          const settingsToSend = {
-                            ...smsSettings,
-                            // Only include password if it's not empty
-                            ...(smsSettings.password && smsSettings.password.trim() !== "" 
-                              ? { password: smsSettings.password } 
-                              : {}),
+                          // Only send password if it was actually changed (not empty or masked)
+                          // If password is empty, don't include it in the request (preserves existing password)
+                          const isMaskedPassword = smsSettings.password === "••••••••" || 
+                                                   smsSettings.password === "***" || 
+                                                   smsSettings.password === "******";
+                          const hasNewPassword = smsSettings.password && 
+                                                 smsSettings.password.trim() !== "" && 
+                                                 !isMaskedPassword;
+                          
+                          const settingsToSend: any = {
+                            provider: smsSettings.provider,
+                            username: smsSettings.username,
+                            senderId: smsSettings.senderId,
+                            apiEndpoint: smsSettings.apiUrl,
                           };
+                          
+                          // Only include password if user actually entered a new one
+                          if (hasNewPassword) {
+                            settingsToSend.password = smsSettings.password.trim();
+                          }
 
                           const response = await fetch(`${API_URL}/settings/integrations/sms`, {
                             method: "PATCH",
@@ -1040,15 +1430,24 @@ export default function SettingsPage() {
                                 localStorage.setItem("sms_password_set", "true");
                               }
                               
-                              // Don't overwrite password if API returns empty (for security)
-                              setSmsSettings((prev) => ({
-                                ...data.settings,
-                                // If we just saved with a password, keep it in state
-                                // Otherwise, if password was previously set, show placeholder
-                                password: settingsToSend.password && settingsToSend.password.trim() !== ""
-                                  ? settingsToSend.password // Keep the password we just saved
-                                  : (data.settings.password || prev.password || (localStorage.getItem("sms_password_set") === "true" ? "••••••••" : "")),
-                              }));
+                              // Update settings - preserve password state correctly
+                              setSmsSettings((prev) => {
+                                const newSettings = { ...data.settings };
+                                // If we just saved with a new password, clear it from state (for security)
+                                // Otherwise, if password exists, show masked value
+                                if (settingsToSend.password && settingsToSend.password.trim() !== "") {
+                                  // Password was just saved - show masked value
+                                  newSettings.password = "••••••••";
+                                  localStorage.setItem("sms_password_set", "true");
+                                } else if (data.settings.password === "***" || prev.password === "••••••••" || localStorage.getItem("sms_password_set") === "true") {
+                                  // Password exists but wasn't changed - keep masked value
+                                  newSettings.password = "••••••••";
+                                } else {
+                                  // No password saved
+                                  newSettings.password = "";
+                                }
+                                return newSettings;
+                              });
                             }
                             setSaveSuccess(true);
                             setTimeout(() => setSaveSuccess(false), 3000);
@@ -1071,10 +1470,401 @@ export default function SettingsPage() {
                   </div>
                 </CardContent>
               </Card>
+
+              {/* Google Maps Configuration */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Map className="h-5 w-5" />
+                    Google Maps Configuration
+                  </CardTitle>
+                  <CardDescription>
+                    Configure Google Maps API key for geocoding, distance calculations, and geofencing
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-2 md:col-span-2">
+                      <Label htmlFor="google-maps-api-key">Google Maps API Key</Label>
+                      <div className="flex gap-2">
+                        <Input
+                          id="google-maps-api-key"
+                          type="password"
+                          value={googleMapsSettings.apiKey === "***" ? "" : (googleMapsSettings.apiKey || "")}
+                          onChange={(e) => {
+                            const newApiKey = e.target.value;
+                            setGoogleMapsSettings({ ...googleMapsSettings, apiKey: newApiKey });
+                            setApiKeyTestResult(null); // Clear test result when key changes
+                          }}
+                          onFocus={(e) => {
+                            // Clear masked value when user focuses to enter new key
+                            if (googleMapsSettings.apiKey === "***") {
+                              setGoogleMapsSettings({ ...googleMapsSettings, apiKey: "" });
+                            }
+                          }}
+                          placeholder={googleMapsSettings.apiKey === "***" || localStorage.getItem("google_maps_key_set") === "true" ? "API key is saved (enter new to change)" : "Enter Google Maps API key"}
+                          className="flex-1"
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={async () => {
+                            try {
+                              setTestingApiKey(true);
+                              setApiKeyTestResult(null);
+                              
+                              const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+                              
+                              // Get the API key to test
+                              let keyToTest = googleMapsSettings.apiKey;
+                              
+                              // If key is masked or empty, test the saved org key (don't pass apiKey param)
+                              // If user entered a new key, test that one
+                              const isMaskedOrEmpty = keyToTest === "***" || !keyToTest || keyToTest.trim() === "";
+                              
+                              const response = await fetch(`${API_URL}/maps/verify-api-key`, {
+                                method: "POST",
+                                headers: {
+                                  "Content-Type": "application/json",
+                                  Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
+                                },
+                                body: JSON.stringify(isMaskedOrEmpty ? {} : { apiKey: keyToTest }),
+                              });
+                              
+                              const data = await response.json();
+                              
+                              if (data.valid) {
+                                setApiKeyTestResult({
+                                  success: true,
+                                  message: "✓ API key is valid and working! Geocoding API is enabled and accessible."
+                                });
+                              } else {
+                                let errorMsg = data.message || "API key verification failed";
+                                
+                                // Provide helpful guidance for common errors
+                                if (errorMsg.includes("REQUEST_DENIED")) {
+                                  errorMsg = "API key is configured but request was denied. Please check: 1) Geocoding API is enabled in Google Cloud Console, 2) API key restrictions allow server-side requests, 3) API key has Geocoding API permission.";
+                                } else if (errorMsg.includes("not configured")) {
+                                  errorMsg = "No API key configured. Please enter and save your Google Maps API key first.";
+                                }
+                                
+                                setApiKeyTestResult({
+                                  success: false,
+                                  message: errorMsg
+                                });
+                              }
+                            } catch (error: any) {
+                              setApiKeyTestResult({
+                                success: false,
+                                message: error.message || "Failed to test API key. Please check your connection."
+                              });
+                            } finally {
+                              setTestingApiKey(false);
+                            }
+                          }}
+                          disabled={testingApiKey}
+                          className="whitespace-nowrap"
+                        >
+                          {testingApiKey ? (
+                            <>
+                              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                              Testing...
+                            </>
+                          ) : (
+                            "Test API Key"
+                          )}
+                        </Button>
+                      </div>
+                      {apiKeyTestResult && (
+                        <p className={`text-xs mt-1 ${apiKeyTestResult.success ? "text-green-600" : "text-red-600"}`}>
+                          {apiKeyTestResult.message}
+                        </p>
+                      )}
+                      {googleMapsSettings.apiKey === "***" && !apiKeyTestResult && (
+                        <p className="text-xs text-green-600 mt-1">
+                          ✓ API key is saved. Enter a new key to change it.
+                        </p>
+                      )}
+                      <p className="text-xs text-gray-500">
+                        Get your API key from{" "}
+                        <a
+                          href="https://console.cloud.google.com/google/maps-apis"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-blue-600 hover:underline"
+                        >
+                          Google Cloud Console
+                        </a>
+                      </p>
+                    </div>
+
+                    <div className="flex items-center space-x-2">
+                      <input
+                        type="checkbox"
+                        id="google-maps-enabled"
+                        checked={googleMapsSettings.enabled}
+                        onChange={(e) =>
+                          setGoogleMapsSettings({ ...googleMapsSettings, enabled: e.target.checked })
+                        }
+                        className="h-4 w-4 rounded border-gray-300"
+                      />
+                      <Label htmlFor="google-maps-enabled" className="text-sm font-normal">
+                        Enable Google Maps integration
+                      </Label>
+                    </div>
+                  </div>
+
+                  <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
+                    <div className="text-sm text-blue-800">
+                      <p className="mb-2">
+                        <strong>Note:</strong> Google Maps API is used for:
+                      </p>
+                      <ul className="list-disc list-inside mt-2 space-y-1 mb-4">
+                        <li>Geocoding addresses to GPS coordinates</li>
+                        <li>Accurate distance calculations for geofencing</li>
+                        <li>ETA calculations for job assignments</li>
+                        <li>Route optimization</li>
+                      </ul>
+                      <p className="mb-2">
+                        Make sure to enable the following APIs in Google Cloud Console:
+                      </p>
+                      <ul className="list-disc list-inside mt-2 space-y-1">
+                        <li>Geocoding API</li>
+                        <li>Distance Matrix API</li>
+                        <li>Directions API</li>
+                      </ul>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end gap-3 pt-4 border-t">
+                    {saveSuccess && (
+                      <div className="flex items-center gap-2 text-green-600 mr-auto">
+                        <CheckCircle className="h-5 w-5" />
+                        <span className="text-sm font-medium">Settings saved successfully!</span>
+                      </div>
+                    )}
+                    <Button
+                      onClick={async () => {
+                        try {
+                          setSaving(true);
+                          setVerifyingApiKey(true);
+                          setSaveSuccess(false);
+                          const API_URL =
+                            process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+
+                          // Only send API key if it was actually changed (not empty or masked)
+                          const isMaskedKey = googleMapsSettings.apiKey === "***" || 
+                                             googleMapsSettings.apiKey === "******";
+                          const hasNewKey = googleMapsSettings.apiKey && 
+                                            googleMapsSettings.apiKey.trim() !== "" && 
+                                            !isMaskedKey;
+                          
+                          const settingsToSend: any = {
+                            enabled: googleMapsSettings.enabled,
+                          };
+                          
+                          // Only include API key if user actually entered a new one
+                          if (hasNewKey) {
+                            settingsToSend.apiKey = googleMapsSettings.apiKey.trim();
+                          }
+
+                          const response = await fetch(`${API_URL}/settings/integrations/google-maps`, {
+                            method: "PATCH",
+                            headers: {
+                              "Content-Type": "application/json",
+                              Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
+                            },
+                            body: JSON.stringify({ settings: settingsToSend }),
+                          });
+
+                          if (response.ok) {
+                            const data = await response.json();
+                            if (data.settings) {
+                              // If API key was provided in the save, mark it as set in localStorage
+                              if (settingsToSend.apiKey && settingsToSend.apiKey.trim() !== "") {
+                                localStorage.setItem("google_maps_key_set", "true");
+                              }
+                              
+                              // Update settings - preserve API key state correctly
+                              setGoogleMapsSettings((prev) => {
+                                const newSettings = { ...data.settings };
+                                // If we just saved with a new key, show masked value
+                                if (settingsToSend.apiKey && settingsToSend.apiKey.trim() !== "") {
+                                  // API key was just saved - show masked value
+                                  newSettings.apiKey = "***";
+                                  localStorage.setItem("google_maps_key_set", "true");
+                                } else if (data.settings.apiKey === "***" || prev.apiKey === "***" || localStorage.getItem("google_maps_key_set") === "true") {
+                                  // API key exists but wasn't changed - keep masked value
+                                  newSettings.apiKey = "***";
+                                } else {
+                                  // No API key saved
+                                  newSettings.apiKey = "";
+                                }
+                                return newSettings;
+                              });
+                            }
+                            setSaveSuccess(true);
+                            setTimeout(() => setSaveSuccess(false), 3000);
+                          } else {
+                            const error = await response.json();
+                            alert(`Failed to save: ${error.message || error.error || "Unknown error"}`);
+                          }
+                        } catch (error: any) {
+                          alert(`Failed to save: ${error.message || "Unknown error"}`);
+                        } finally {
+                          setSaving(false);
+                          setVerifyingApiKey(false);
+                        }
+                      }}
+                      disabled={saving || verifyingApiKey}
+                      className={`bg-${theme.primary} hover:bg-${theme.primary}/90`}
+                    >
+                      <Save className="h-4 w-4 mr-2" />
+                      {verifyingApiKey ? "Verifying..." : saving ? "Saving..." : "Save Google Maps Settings"}
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
             </div>
           )}
         </>
       )}
+
+      {/* Test Email Dialog */}
+      <Dialog open={testEmailDialogOpen} onOpenChange={setTestEmailDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Send Test Email</DialogTitle>
+            <DialogDescription>
+              Enter an email address to send a test email and verify your SMTP configuration.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="test-email">Email Address</Label>
+              <Input
+                id="test-email"
+                type="email"
+                placeholder="test@example.com"
+                value={testEmailAddress}
+                onChange={(e) => setTestEmailAddress(e.target.value)}
+                disabled={sendingTestEmail}
+              />
+            </div>
+            {testEmailResult && (
+              <div
+                className={`p-3 rounded-md ${
+                  testEmailResult.success
+                    ? "bg-green-50 text-green-800 border border-green-200"
+                    : "bg-red-50 text-red-800 border border-red-200"
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  {testEmailResult.success ? (
+                    <CheckCircle className="h-5 w-5" />
+                  ) : (
+                    <Mail className="h-5 w-5" />
+                  )}
+                  <span className="text-sm font-medium">{testEmailResult.message}</span>
+                </div>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setTestEmailDialogOpen(false);
+                setTestEmailResult(null);
+                setTestEmailAddress("");
+              }}
+              disabled={sendingTestEmail}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={async () => {
+                if (!testEmailAddress || !testEmailAddress.includes("@")) {
+                  setTestEmailResult({
+                    success: false,
+                    message: "Please enter a valid email address",
+                  });
+                  return;
+                }
+
+                try {
+                  setSendingTestEmail(true);
+                  setTestEmailResult(null);
+                  const API_URL =
+                    process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+
+                  const response = await fetch(`${API_URL}/email/send`, {
+                    method: "POST",
+                    headers: {
+                      "Content-Type": "application/json",
+                      Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
+                    },
+                    body: JSON.stringify({
+                      to: testEmailAddress,
+                      subject: "PoolCare - Test Email",
+                      html: `
+                        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+                          <h2 style="color: #ea580c; margin-bottom: 20px;">Test Email from PoolCare</h2>
+                          <p>This is a test email to verify your SMTP configuration is working correctly.</p>
+                          <p>If you received this email, your email settings are configured properly!</p>
+                          <hr style="margin: 20px 0; border: none; border-top: 1px solid #e5e7eb;" />
+                          <p style="color: #6b7280; font-size: 12px;">
+                            This email was sent from your PoolCare account at ${new Date().toLocaleString()}.
+                          </p>
+                        </div>
+                      `,
+                      text: "This is a test email to verify your SMTP configuration is working correctly. If you received this email, your email settings are configured properly!",
+                    }),
+                  });
+
+                  if (response.ok) {
+                    setTestEmailResult({
+                      success: true,
+                      message: `Test email sent successfully to ${testEmailAddress}! Please check your inbox.`,
+                    });
+                    // Clear the email address after successful send
+                    setTimeout(() => {
+                      setTestEmailAddress("");
+                    }, 2000);
+                  } else {
+                    const error = await response.json();
+                    setTestEmailResult({
+                      success: false,
+                      message: error.error || error.message || "Failed to send test email. Please check your SMTP settings.",
+                    });
+                  }
+                } catch (error: any) {
+                  setTestEmailResult({
+                    success: false,
+                    message: error.message || "Failed to send test email. Please check your SMTP settings and try again.",
+                  });
+                } finally {
+                  setSendingTestEmail(false);
+                }
+              }}
+              disabled={sendingTestEmail || !testEmailAddress}
+              className={`bg-${theme.primary} hover:bg-${theme.primary}/90`}
+            >
+              {sendingTestEmail ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Sending...
+                </>
+              ) : (
+                <>
+                  <Send className="h-4 w-4 mr-2" />
+                  Send Test Email
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

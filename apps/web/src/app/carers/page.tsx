@@ -39,6 +39,7 @@ interface Carer {
   userId: string;
   name?: string;
   phone?: string;
+  imageUrl?: string;
   homeBaseLat?: number;
   homeBaseLng?: number;
   ratePerVisitCents?: number;
@@ -82,12 +83,17 @@ export default function CarersPage() {
     userId: "",
     name: "",
     phone: "",
+    email: "",
+    imageUrl: "",
     homeBaseLat: "",
     homeBaseLng: "",
     ratePerVisitCents: "",
     currency: "GHS",
     active: true,
   });
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [uploadingImage, setUploadingImage] = useState(false);
 
   useEffect(() => {
     fetchCarers();
@@ -220,30 +226,124 @@ export default function CarersPage() {
       userId: "",
       name: "",
       phone: "",
+      email: "",
+      imageUrl: "",
       homeBaseLat: "",
       homeBaseLng: "",
       ratePerVisitCents: "",
       currency: "USD",
       active: true,
     });
+    setImageFile(null);
+    setImagePreview(null);
+  };
+
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      // Validate file type
+      if (!file.type.startsWith("image/")) {
+        alert("Please select an image file");
+        return;
+      }
+      // Validate file size (5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        alert("Image size must be less than 5MB");
+        return;
+      }
+      setImageFile(file);
+      // Create preview
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setImagePreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const uploadImage = async (): Promise<string | null> => {
+    if (!imageFile) return null;
+
+    try {
+      setUploadingImage(true);
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+      const formData = new FormData();
+      formData.append("image", imageFile);
+
+      const response = await fetch(`${API_URL}/carers/upload-image`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
+        },
+        body: formData,
+      });
+
+      if (!response.ok) {
+        let errorMessage = "Failed to upload image";
+        try {
+          const error = await response.json();
+          errorMessage = error.error || error.message || errorMessage;
+        } catch (e) {
+          errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+        }
+        throw new Error(errorMessage);
+      }
+
+      const data = await response.json();
+      return data.imageUrl;
+    } catch (error: any) {
+      console.error("Failed to upload image:", error);
+      const errorMessage = error.message || "Unknown error";
+      alert(`Failed to upload image: ${errorMessage}`);
+      return null;
+    } finally {
+      setUploadingImage(false);
+    }
   };
 
   const handleCreate = async () => {
     try {
+      // Upload image first if selected
+      let imageUrl = formData.imageUrl;
+      if (imageFile) {
+        const uploadedUrl = await uploadImage();
+        if (uploadedUrl) {
+          imageUrl = uploadedUrl;
+        } else {
+          return; // Stop if upload failed
+        }
+      }
+
       const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
       const payload: any = {
         name: formData.name,
-        phone: formData.phone,
         active: formData.active,
       };
 
-      if (formData.userId) payload.userId = formData.userId;
-      if (formData.homeBaseLat) payload.homeBaseLat = parseFloat(formData.homeBaseLat);
-      if (formData.homeBaseLng) payload.homeBaseLng = parseFloat(formData.homeBaseLng);
-      if (formData.ratePerVisitCents) {
-        payload.ratePerVisitCents = parseFloat(formData.ratePerVisitCents) * 100; // Convert to cents
+      // Only include userId if provided
+      if (formData.userId && formData.userId.trim()) {
+        payload.userId = formData.userId.trim();
       }
-      if (formData.currency) payload.currency = formData.currency;
+
+      // Include phone/email if provided (for auto-creating user)
+      if (formData.phone && formData.phone.trim()) {
+        payload.phone = formData.phone.trim();
+      }
+      if (formData.email && formData.email.trim()) {
+        payload.email = formData.email.trim();
+      }
+      
+      if (imageUrl && imageUrl.trim()) {
+        payload.imageUrl = imageUrl.trim();
+      }
+      
+      // Home base should be nested in homeBase object
+      if (formData.homeBaseLat || formData.homeBaseLng) {
+        payload.homeBase = {};
+        if (formData.homeBaseLat) payload.homeBase.lat = parseFloat(formData.homeBaseLat);
+        if (formData.homeBaseLng) payload.homeBase.lng = parseFloat(formData.homeBaseLng);
+      }
+      // Note: ratePerVisitCents and currency are not in the CreateCarerDto, so we'll skip them
 
       const response = await fetch(`${API_URL}/carers`, {
         method: "POST",
@@ -288,12 +388,16 @@ export default function CarersPage() {
       userId: carer.userId,
       name: carer.name || "",
       phone: carer.phone || carer.user?.phone || "",
+      email: carer.user?.email || "",
+      imageUrl: carer.imageUrl || "",
       homeBaseLat: carer.homeBaseLat?.toString() || "",
       homeBaseLng: carer.homeBaseLng?.toString() || "",
       ratePerVisitCents: carer.ratePerVisitCents ? (carer.ratePerVisitCents / 100).toString() : "",
       currency: carer.currency || "USD",
       active: carer.active,
     });
+    setImageFile(null);
+    setImagePreview(carer.imageUrl || null);
   };
 
   const handleUpdate = async () => {
@@ -315,6 +419,9 @@ export default function CarersPage() {
         payload.ratePerVisitCents = null; // Allow clearing the rate
       }
       if (formData.currency) payload.currency = formData.currency;
+      if (formData.imageUrl && formData.imageUrl.trim()) {
+        payload.imageUrl = formData.imageUrl.trim();
+      }
 
       const response = await fetch(`${API_URL}/carers/${editingCarer.id}`, {
         method: "PATCH",
@@ -594,6 +701,7 @@ export default function CarersPage() {
                         aria-label="Select all"
                       />
                     </TableHead>
+                    <TableHead className="w-16">Image</TableHead>
                     <TableHead>Name</TableHead>
                     <TableHead>Contact</TableHead>
                     <TableHead>Status</TableHead>
@@ -618,6 +726,22 @@ export default function CarersPage() {
                           onClick={(e) => e.stopPropagation()}
                           aria-label={`Select carer ${carer.name || carer.id}`}
                         />
+                      </TableCell>
+                      <TableCell>
+                        {carer.imageUrl ? (
+                          <img
+                            src={carer.imageUrl}
+                            alt={carer.name || "Carer"}
+                            className="w-10 h-10 rounded-full object-cover"
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).style.display = 'none';
+                            }}
+                          />
+                        ) : (
+                          <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center">
+                            <Users className="h-5 w-5 text-gray-400" />
+                          </div>
+                        )}
                       </TableCell>
                       <TableCell className="font-medium">
                         {carer.name || carer.user?.name || "Unnamed Carer"}
@@ -719,15 +843,19 @@ export default function CarersPage() {
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="grid gap-2">
-              <Label htmlFor="userId">User ID *</Label>
+              <Label htmlFor="userId">User ID (Optional)</Label>
               <Input
                 id="userId"
-                placeholder="UUID of existing user"
+                placeholder="UUID of existing user (leave empty to create new user)"
                 value={formData.userId}
                 onChange={(e) => setFormData({ ...formData, userId: e.target.value })}
                 disabled={!!editingCarer}
               />
-              <p className="text-xs text-gray-500">User must exist in system. For now, provide existing user ID.</p>
+              <p className="text-xs text-gray-500">
+                {formData.userId 
+                  ? "Will link to existing user with this ID" 
+                  : "Leave empty to automatically create a new user from phone/email below"}
+              </p>
             </div>
 
             <div className="grid gap-2">
@@ -740,16 +868,62 @@ export default function CarersPage() {
               />
             </div>
 
-            <div className="grid gap-2">
-              <Label htmlFor="phone">Phone</Label>
-              <Input
-                id="phone"
-                type="tel"
-                placeholder="+233501234567"
-                value={formData.phone}
-                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-              />
+            <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-2">
+                <Label htmlFor="phone">Phone</Label>
+                <Input
+                  id="phone"
+                  type="tel"
+                  placeholder="+233501234567"
+                  value={formData.phone}
+                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="email">Email</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="carer@example.com"
+                  value={formData.email}
+                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                />
+              </div>
             </div>
+
+            <div className="grid gap-2">
+              <Label htmlFor="image">Profile Image</Label>
+              <Input
+                id="image"
+                type="file"
+                accept="image/*"
+                onChange={handleImageSelect}
+                disabled={uploadingImage}
+              />
+              <p className="text-xs text-gray-500">
+                Upload a profile image (max 5MB, JPG, PNG, WEBP, GIF)
+              </p>
+              {(imagePreview || formData.imageUrl) && (
+                <div className="mt-2">
+                  <img
+                    src={imagePreview || formData.imageUrl || ""}
+                    alt="Preview"
+                    className="w-20 h-20 rounded-full object-cover border-2 border-gray-200"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).style.display = 'none';
+                    }}
+                  />
+                </div>
+              )}
+              {uploadingImage && (
+                <p className="text-xs text-blue-600">Uploading image...</p>
+              )}
+            </div>
+            {!formData.userId && (
+              <p className="text-xs text-gray-500">
+                Provide at least phone or email to automatically create a user account for this carer.
+              </p>
+            )}
 
             <div className="grid grid-cols-2 gap-4">
               <div className="grid gap-2">
@@ -831,7 +1005,7 @@ export default function CarersPage() {
               }}>
                 Cancel
               </Button>
-              <Button onClick={editingCarer ? handleUpdate : handleCreate} disabled={!formData.userId}>
+              <Button onClick={editingCarer ? handleUpdate : handleCreate} disabled={!formData.name || (!formData.userId && !formData.phone && !formData.email)}>
                 {editingCarer ? "Save Changes" : "Create Carer"}
               </Button>
             </div>

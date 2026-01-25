@@ -2,10 +2,11 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Plus, Search, Calendar, Edit, Trash2, Pause, PlayCircle, FastForward, DollarSign, Clock, FileText, Droplet, Download } from "lucide-react";
+import { Plus, Search, Calendar, Edit, Trash2, Pause, PlayCircle, FastForward, DollarSign, Clock, FileText, Droplet, Download, Info } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Table,
@@ -19,6 +20,7 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -38,6 +40,7 @@ import { formatCurrencyForDisplay } from "@/lib/utils";
 
 export default function PlansPage() {
   const router = useRouter();
+  const { toast } = useToast();
   const { getThemeClasses } = useTheme();
   const theme = getThemeClasses();
 
@@ -48,6 +51,8 @@ export default function PlansPage() {
   const [statusFilter, setStatusFilter] = useState<string>("");
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [selectedPlans, setSelectedPlans] = useState<Set<string>>(new Set());
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   
   // Metrics state
   const [metrics, setMetrics] = useState({
@@ -73,12 +78,57 @@ export default function PlansPage() {
     startsOn: "",
     endsOn: "",
     notes: "",
+    billingType: "per_visit",
+    autoRenew: false,
+    templateId: "",
   });
+
+  const [subscriptionTemplates, setSubscriptionTemplates] = useState<any[]>([]);
+  const [useTemplate, setUseTemplate] = useState(false);
 
   useEffect(() => {
     fetchPools();
     fetchPlans();
+    fetchSubscriptionTemplates();
   }, [statusFilter]);
+
+  // Auto-fill form when template is selected
+  useEffect(() => {
+    if (useTemplate && formData.templateId) {
+      const selectedTemplate = subscriptionTemplates.find((t) => t.id === formData.templateId);
+      if (selectedTemplate) {
+        setFormData((prev) => ({
+          ...prev,
+          frequency: selectedTemplate.frequency || prev.frequency,
+          priceCents: selectedTemplate.priceCents ? (selectedTemplate.priceCents / 100).toString() : prev.priceCents,
+          currency: selectedTemplate.currency || prev.currency,
+          taxPct: selectedTemplate.taxPct?.toString() || prev.taxPct,
+          discountPct: selectedTemplate.discountPct?.toString() || prev.discountPct,
+          serviceDurationMin: selectedTemplate.serviceDurationMin?.toString() || prev.serviceDurationMin,
+          visitTemplateId: selectedTemplate.visitTemplateId || prev.visitTemplateId,
+          billingType: selectedTemplate.billingType || prev.billingType,
+          autoRenew: false, // Default to false, user can override
+        }));
+      }
+    }
+  }, [formData.templateId, useTemplate, subscriptionTemplates]);
+
+  const fetchSubscriptionTemplates = async () => {
+    try {
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+      const response = await fetch(`${API_URL}/subscription-templates`, {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
+        },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setSubscriptionTemplates(data.items || []);
+      }
+    } catch (error) {
+      console.error("Failed to fetch subscription templates:", error);
+    }
+  };
 
   useEffect(() => {
     // Client-side search filtering
@@ -131,14 +181,22 @@ export default function PlansPage() {
   };
 
   // Bulk actions
-  const handleBulkDelete = async () => {
+  const handleBulkDeleteClick = () => {
     if (selectedPlans.size === 0) return;
-    if (!confirm(`Delete ${selectedPlans.size} plan(s)? This cannot be undone.`)) return;
+    setIsDeleteDialogOpen(true);
+  };
+
+  const handleBulkDeleteConfirm = async () => {
+    if (selectedPlans.size === 0) return;
 
     try {
+      setDeleting(true);
       const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
-      await Promise.all(
-        Array.from(selectedPlans).map((planId) =>
+      const count = selectedPlans.size;
+      const planIds = Array.from(selectedPlans);
+      
+      const results = await Promise.allSettled(
+        planIds.map((planId) =>
           fetch(`${API_URL}/service-plans/${planId}`, {
             method: "DELETE",
             headers: {
@@ -147,11 +205,36 @@ export default function PlansPage() {
           })
         )
       );
+
+      // Check for failures
+      const failures = results.filter((result) => result.status === "rejected" || (result.status === "fulfilled" && !result.value.ok));
+      
+      if (failures.length > 0) {
+        console.error("Some plans failed to delete:", failures);
+        toast({
+          title: "Partial Success",
+          description: `${count - failures.length} of ${count} plan(s) deleted successfully`,
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Success",
+          description: `${count} plan(s) deleted successfully`,
+        });
+      }
+
       setSelectedPlans(new Set());
+      setIsDeleteDialogOpen(false);
       await fetchPlans();
     } catch (error) {
       console.error("Failed to delete plans:", error);
-      alert("Failed to delete some plans");
+      toast({
+        title: "Error",
+        description: "Failed to delete plans. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -237,7 +320,11 @@ export default function PlansPage() {
       startsOn: "",
       endsOn: "",
       notes: "",
+      billingType: "per_visit",
+      autoRenew: false,
+      templateId: "",
     });
+    setUseTemplate(false);
   };
 
   const handleCreate = async () => {
@@ -255,13 +342,21 @@ export default function PlansPage() {
 
       if (formData.frequency === "weekly" || formData.frequency === "biweekly") {
         if (!formData.dow) {
-          alert("Day of week is required for weekly/biweekly plans");
+          toast({
+            title: "Validation Error",
+            description: "Day of week is required for weekly/biweekly plans",
+            variant: "destructive",
+          });
           return;
         }
         payload.dow = formData.dow;
       } else if (formData.frequency === "monthly") {
         if (!formData.dom) {
-          alert("Day of month is required for monthly plans");
+          toast({
+            title: "Validation Error",
+            description: "Day of month is required for monthly plans",
+            variant: "destructive",
+          });
           return;
         }
         payload.dom = parseInt(formData.dom);
@@ -278,7 +373,18 @@ export default function PlansPage() {
       if (formData.endsOn) payload.endsOn = formData.endsOn;
       if (formData.notes) payload.notes = formData.notes;
 
-      const response = await fetch(`${API_URL}/service-plans`, {
+      // Subscription fields
+      if (formData.billingType) payload.billingType = formData.billingType;
+      if (formData.autoRenew) payload.autoRenew = formData.autoRenew;
+      if (formData.templateId && useTemplate) {
+        payload.templateId = formData.templateId;
+      }
+
+      const url = formData.templateId && useTemplate
+        ? `${API_URL}/service-plans/from-template/${formData.templateId}`
+        : `${API_URL}/service-plans`;
+
+      const response = await fetch(url, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -291,14 +397,26 @@ export default function PlansPage() {
         setIsCreateDialogOpen(false);
         resetForm();
         await fetchPlans(); // Refresh plans list
-        alert("Service plan created successfully!");
+        toast({
+          title: "Success",
+          description: "Service plan created successfully!",
+          variant: "success",
+        });
       } else {
         const error = await response.json();
-        alert(`Failed to create plan: ${error.error || error.details || "Unknown error"}`);
+        toast({
+          title: "Error",
+          description: `Failed to create plan: ${error.error || error.details || "Unknown error"}`,
+          variant: "destructive",
+        });
       }
     } catch (error) {
       console.error("Failed to create plan:", error);
-      alert("Failed to create plan");
+      toast({
+        title: "Error",
+        description: "Failed to create plan",
+        variant: "destructive",
+      });
     }
   };
 
@@ -310,13 +428,22 @@ export default function PlansPage() {
           <h1 className="text-2xl font-bold text-gray-900">Service Plans</h1>
           <p className="text-gray-600 mt-1">Manage recurring maintenance schedules</p>
         </div>
-        <Button onClick={() => {
-          resetForm();
-          setIsCreateDialogOpen(true);
-        }}>
-          <Plus className="h-4 w-4 mr-2" />
-          New Plan
-        </Button>
+        <div className="flex gap-2">
+          <Button 
+            variant="outline"
+            onClick={() => router.push("/subscription-templates")}
+          >
+            <FileText className="h-4 w-4 mr-2" />
+            Manage Templates
+          </Button>
+          <Button onClick={() => {
+            resetForm();
+            setIsCreateDialogOpen(true);
+          }}>
+            <Plus className="h-4 w-4 mr-2" />
+            New Plan
+          </Button>
+        </div>
         <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
           <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
@@ -341,6 +468,117 @@ export default function PlansPage() {
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+
+              {/* Subscription Settings - Moved to Top */}
+              <div className="border-t pt-4 mt-2">
+                <h3 className="text-lg font-semibold mb-4">Subscription Settings</h3>
+                
+                <div className="grid gap-4">
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                    <div className="flex items-start space-x-3">
+                      <Info className="h-5 w-5 text-blue-600 mt-0.5" />
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-blue-900 mb-1">
+                          Quick Start: Use a Template
+                        </p>
+                        <p className="text-xs text-blue-700">
+                          Select a subscription template to quickly create a plan with pre-configured settings. 
+                          You can also create a custom plan manually below.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="useTemplate"
+                      checked={useTemplate}
+                      onCheckedChange={(checked) => {
+                        setUseTemplate(checked === true);
+                        if (!checked) {
+                          setFormData({ ...formData, templateId: "" });
+                        }
+                      }}
+                    />
+                    <Label htmlFor="useTemplate" className="cursor-pointer font-medium">
+                      Create from subscription template
+                    </Label>
+                  </div>
+
+                  {useTemplate && (
+                    <div className="grid gap-2">
+                      <Label htmlFor="templateId">Subscription Template *</Label>
+                      <Select
+                        value={formData.templateId}
+                        onValueChange={(value) => setFormData({ ...formData, templateId: value })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select a template">
+                            {formData.templateId && (() => {
+                              const selectedTemplate = subscriptionTemplates.find((t) => t.id === formData.templateId);
+                              if (selectedTemplate) {
+                                const formattedPrice = `${formatCurrencyForDisplay(selectedTemplate.currency || "GHS")}${((selectedTemplate.priceCents || 0) / 100).toFixed(2)}`;
+                                return `${selectedTemplate.name} - ${selectedTemplate.billingType} (${formattedPrice})`;
+                              }
+                              return "Select a template";
+                            })()}
+                          </SelectValue>
+                        </SelectTrigger>
+                        <SelectContent>
+                          {subscriptionTemplates.filter((t) => t.isActive).map((template) => {
+                            const formattedPrice = `${formatCurrencyForDisplay(template.currency || "GHS")}${((template.priceCents || 0) / 100).toFixed(2)}`;
+                            return (
+                              <SelectItem key={template.id} value={template.id}>
+                                {template.name} - {template.billingType} ({formattedPrice})
+                              </SelectItem>
+                            );
+                          })}
+                        </SelectContent>
+                      </Select>
+                      {formData.templateId && (
+                        <p className="text-xs text-gray-500 mt-1">
+                          Template fields will be pre-filled. You can override any value before creating the plan.
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  {!useTemplate && (
+                    <>
+                      <div className="grid gap-2">
+                        <Label htmlFor="billingType">Billing Type</Label>
+                        <Select
+                          value={formData.billingType}
+                          onValueChange={(value) => setFormData({ ...formData, billingType: value })}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="per_visit">Per Visit</SelectItem>
+                            <SelectItem value="monthly">Monthly</SelectItem>
+                            <SelectItem value="quarterly">Quarterly</SelectItem>
+                            <SelectItem value="annually">Annually</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      {formData.billingType !== "per_visit" && (
+                        <div className="flex items-center space-x-2">
+                          <Checkbox
+                            id="autoRenew"
+                            checked={formData.autoRenew}
+                            onCheckedChange={(checked) => setFormData({ ...formData, autoRenew: checked === true })}
+                          />
+                          <Label htmlFor="autoRenew" className="cursor-pointer">
+                            Auto-renew subscription
+                          </Label>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
               </div>
 
               <div className="grid gap-2">
@@ -646,7 +884,8 @@ export default function PlansPage() {
                 <Button
                   size="sm"
                   variant="destructive"
-                  onClick={handleBulkDelete}
+                  onClick={handleBulkDeleteClick}
+                  disabled={selectedPlans.size === 0}
                 >
                   <Trash2 className="h-4 w-4 mr-2" />
                   Delete
@@ -728,6 +967,7 @@ export default function PlansPage() {
                     <TableHead>Service Window</TableHead>
                     <TableHead>Next Visit</TableHead>
                     <TableHead>Price</TableHead>
+                    <TableHead>Billing</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Jobs</TableHead>
                   </TableRow>
@@ -779,7 +1019,31 @@ export default function PlansPage() {
                         )}
                       </TableCell>
                       <TableCell>
-                        {plan.priceCents ? `${formatCurrencyForDisplay(plan.currency || "GHS")}${(plan.priceCents / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "N/A"}
+                        {formatCurrencyForDisplay(plan.priceCents || 0, plan.currency || "GHS")}
+                      </TableCell>
+                      <TableCell>
+                        <div className="text-sm">
+                          {plan.billingType === "per_visit" ? (
+                            <span className="text-gray-600">Per Visit</span>
+                          ) : (
+                            <div>
+                              <div className="font-medium capitalize">{plan.billingType}</div>
+                              {plan.nextBillingDate && (
+                                <div className="text-xs text-gray-500">
+                                  Next: {new Date(plan.nextBillingDate).toLocaleDateString()}
+                                </div>
+                              )}
+                              {plan.autoRenew && (
+                                <div className="text-xs text-green-600">Auto-renew</div>
+                              )}
+                            </div>
+                          )}
+                          {plan.template && (
+                            <div className="text-xs text-blue-600 mt-1">
+                              From: {plan.template.name}
+                            </div>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell>
                         <span
@@ -803,6 +1067,43 @@ export default function PlansPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Service Plans</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete {selectedPlans.size} service plan(s)? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setIsDeleteDialogOpen(false)}
+              disabled={deleting}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleBulkDeleteConfirm}
+              disabled={deleting}
+            >
+              {deleting ? (
+                <>
+                  <span className="mr-2">Deleting...</span>
+                </>
+              ) : (
+                <>
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Delete
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

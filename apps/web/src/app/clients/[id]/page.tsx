@@ -23,6 +23,9 @@ import {
   DollarSign,
   Bell,
   Clock,
+  UserPlus,
+  X,
+  Home,
 } from "lucide-react";
 import {
   Select,
@@ -50,12 +53,14 @@ import { useTheme } from "@/contexts/theme-context";
 import { SkeletonMetricCard } from "@/components/ui/skeleton";
 import { formatCurrencyForDisplay } from "@/lib/utils";
 import { Checkbox } from "@/components/ui/checkbox";
+import { useToast } from "@/hooks/use-toast";
 
 interface Client {
   id: string;
   name: string;
   email?: string;
   phone?: string;
+  imageUrl?: string;
   billingAddress?: string;
   preferredChannels?: string[];
   createdAt: string;
@@ -105,24 +110,52 @@ interface Quote {
   };
 }
 
+interface Household {
+  id: string;
+  name: string;
+  primaryClientId: string;
+  members: Array<{
+    id: string;
+    name: string;
+    email?: string;
+    phone?: string;
+  }>;
+  primaryClient: {
+    id: string;
+    name: string;
+  };
+}
+
 export default function ClientDetailPage() {
   const params = useParams();
   const router = useRouter();
   const { getThemeClasses } = useTheme();
   const theme = getThemeClasses();
+  const { toast } = useToast();
   const clientId = params.id as string;
 
   const [loading, setLoading] = useState(true);
   const [client, setClient] = useState<Client | null>(null);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [quotes, setQuotes] = useState<Quote[]>([]);
+  const [household, setHousehold] = useState<Household | null>(null);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [isCreateHouseholdDialogOpen, setIsCreateHouseholdDialogOpen] = useState(false);
+  const [isInviteMemberDialogOpen, setIsInviteMemberDialogOpen] = useState(false);
   const [formData, setFormData] = useState({
     name: "",
     email: "",
     phone: "",
     billingAddress: "",
     preferredChannels: ["WHATSAPP"],
+  });
+  const [householdFormData, setHouseholdFormData] = useState({
+    name: "",
+  });
+  const [inviteFormData, setInviteFormData] = useState({
+    name: "",
+    email: "",
+    phone: "",
   });
 
   useEffect(() => {
@@ -197,6 +230,25 @@ export default function ClientDetailPage() {
       } else {
         setQuotes([]);
       }
+
+      // Fetch household data if client belongs to one
+      try {
+        const householdRes = await fetch(`${API_URL}/clients/${clientId}/household`, {
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
+          },
+        });
+        if (householdRes.ok) {
+          const householdData = await householdRes.json();
+          setHousehold(householdData);
+        } else if (householdRes.status !== 404) {
+          // 404 is expected if client doesn't belong to a household
+          console.error("Failed to fetch household:", householdRes.statusText);
+        }
+      } catch (error) {
+        // Silently fail if household doesn't exist
+        console.log("Client does not belong to a household");
+      }
     } catch (error) {
       console.error("Failed to fetch client data:", error);
     } finally {
@@ -219,13 +271,205 @@ export default function ClientDetailPage() {
       if (response.ok) {
         setIsEditDialogOpen(false);
         await fetchClientData();
+        toast({
+          title: "Success",
+          description: "Client updated successfully",
+          variant: "default",
+        });
       } else {
         const error = await response.json();
-        alert(`Failed to update client: ${error.error || "Unknown error"}`);
+        toast({
+          title: "Error",
+          description: error.error || "Failed to update client",
+          variant: "destructive",
+        });
       }
     } catch (error) {
       console.error("Failed to update client:", error);
-      alert("Failed to update client");
+      toast({
+        title: "Error",
+        description: "Failed to update client",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleCreateHousehold = async () => {
+    console.log("handleCreateHousehold called", { householdFormData, clientId });
+    
+    if (!householdFormData.name.trim()) {
+      toast({
+        title: "Validation Error",
+        description: "Household name is required",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+      const token = localStorage.getItem("auth_token");
+      
+      if (!token) {
+        toast({
+          title: "Authentication Error",
+          description: "Please log in again",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      console.log("Making API call to:", `${API_URL}/clients/${clientId}/household`);
+      
+      const response = await fetch(`${API_URL}/clients/${clientId}/household`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(householdFormData),
+      });
+
+      console.log("API response status:", response.status);
+
+      if (response.ok) {
+        const data = await response.json();
+        console.log("Household created:", data);
+        setIsCreateHouseholdDialogOpen(false);
+        setHouseholdFormData({ name: "" });
+        await fetchClientData();
+        toast({
+          title: "Success",
+          description: "Household created successfully",
+          variant: "default",
+        });
+      } else {
+        const error = await response.json().catch(() => ({ error: `HTTP ${response.status}: ${response.statusText}` }));
+        console.error("API error:", error);
+        toast({
+          title: "Error",
+          description: error.error || error.message || "Failed to create household",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error("Failed to create household:", error);
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to create household",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleInviteMember = async () => {
+    console.log("handleInviteMember called", { inviteFormData, clientId });
+    
+    if (!inviteFormData.name.trim() || (!inviteFormData.email?.trim() && !inviteFormData.phone?.trim())) {
+      toast({
+        title: "Validation Error",
+        description: "Name and at least one contact method (email or phone) are required",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+      const token = localStorage.getItem("auth_token");
+      
+      if (!token) {
+        toast({
+          title: "Authentication Error",
+          description: "Please log in again",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      console.log("Making API call to:", `${API_URL}/clients/${clientId}/household/invite`);
+      
+      const response = await fetch(`${API_URL}/clients/${clientId}/household/invite`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          name: inviteFormData.name.trim(),
+          email: inviteFormData.email?.trim() || undefined,
+          phone: inviteFormData.phone?.trim() || undefined,
+        }),
+      });
+
+      console.log("API response status:", response.status);
+
+      if (response.ok) {
+        const data = await response.json();
+        console.log("Member invited:", data);
+        setIsInviteMemberDialogOpen(false);
+        setInviteFormData({ name: "", email: "", phone: "" });
+        await fetchClientData();
+        toast({
+          title: "Success",
+          description: "Household member invited successfully",
+          variant: "default",
+        });
+      } else {
+        const error = await response.json().catch(() => ({ error: `HTTP ${response.status}: ${response.statusText}` }));
+        console.error("API error:", error);
+        toast({
+          title: "Error",
+          description: error.error || error.message || "Failed to invite member",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error("Failed to invite member:", error);
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to invite member",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleRemoveMember = async (memberId: string) => {
+    if (!confirm("Are you sure you want to remove this member from the household?")) {
+      return;
+    }
+
+    try {
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+      const response = await fetch(`${API_URL}/clients/${clientId}/household/members/${memberId}`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
+        },
+      });
+
+      if (response.ok) {
+        await fetchClientData();
+        toast({
+          title: "Success",
+          description: "Member removed from household",
+          variant: "default",
+        });
+      } else {
+        const error = await response.json();
+        toast({
+          title: "Error",
+          description: error.error || "Failed to remove member",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error("Failed to remove member:", error);
+      toast({
+        title: "Error",
+        description: "Failed to remove member",
+        variant: "destructive",
+      });
     }
   };
 
@@ -289,15 +533,47 @@ export default function ClientDetailPage() {
             <ArrowLeft className="h-4 w-4 mr-2" />
             Back
           </Button>
+          {client.imageUrl && (
+            <div className="h-16 w-16 rounded-full overflow-hidden border-2 border-gray-200 flex-shrink-0">
+              <img
+                src={client.imageUrl}
+                alt={client.name}
+                className="h-full w-full object-cover"
+              />
+            </div>
+          )}
           <div>
             <h1 className="text-2xl font-bold text-gray-900">{client.name}</h1>
             <p className="text-gray-600 mt-1">Client details and history</p>
           </div>
         </div>
-        <Button onClick={() => setIsEditDialogOpen(true)}>
-          <Edit className="h-4 w-4 mr-2" />
-          Edit Client
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            onClick={() => router.push(`/pools?clientId=${clientId}`)}
+          >
+            <Droplet className="h-4 w-4 mr-2" />
+            View All Pools
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => router.push(`/invoices?clientId=${clientId}`)}
+          >
+            <Receipt className="h-4 w-4 mr-2" />
+            View All Invoices
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => router.push(`/quotes?clientId=${clientId}`)}
+          >
+            <FileText className="h-4 w-4 mr-2" />
+            View All Quotes
+          </Button>
+          <Button onClick={() => setIsEditDialogOpen(true)}>
+            <Edit className="h-4 w-4 mr-2" />
+            Edit Client
+          </Button>
+        </div>
       </div>
 
       {/* Metrics Cards */}
@@ -425,38 +701,116 @@ export default function ClientDetailPage() {
             </CardContent>
           </Card>
 
-          {/* Quick Actions */}
+          {/* Household Management */}
           <Card>
             <CardHeader>
-              <CardTitle>Quick Actions</CardTitle>
+              <div className="flex items-center justify-between">
+                <CardTitle className="flex items-center gap-2">
+                  <Home className="h-5 w-5" />
+                  Household
+                </CardTitle>
+                {!household && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      console.log("Create Household button clicked");
+                      setIsCreateHouseholdDialogOpen(true);
+                    }}
+                  >
+                    <UserPlus className="h-4 w-4 mr-2" />
+                    Create Household
+                  </Button>
+                )}
+              </div>
             </CardHeader>
-            <CardContent className="space-y-2">
-              <Button
-                variant="outline"
-                className="w-full justify-start"
-                onClick={() => router.push(`/pools?clientId=${clientId}`)}
-              >
-                <Droplet className="h-4 w-4 mr-2" />
-                View All Pools
-              </Button>
-              <Button
-                variant="outline"
-                className="w-full justify-start"
-                onClick={() => router.push(`/invoices?clientId=${clientId}`)}
-              >
-                <Receipt className="h-4 w-4 mr-2" />
-                View All Invoices
-              </Button>
-              <Button
-                variant="outline"
-                className="w-full justify-start"
-                onClick={() => router.push(`/quotes?clientId=${clientId}`)}
-              >
-                <FileText className="h-4 w-4 mr-2" />
-                View All Quotes
-              </Button>
+            <CardContent>
+              {household ? (
+                <div className="space-y-4">
+                  <div>
+                    <p className="text-sm font-medium text-gray-900 break-words">{household.name}</p>
+                    <p className="text-xs text-gray-500 mt-1 break-words">
+                      Primary: {household.primaryClient.name}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-gray-900 mb-2">
+                      Members ({household.members.length})
+                    </p>
+                    <div className="space-y-2">
+                      {household.members.map((member) => (
+                        <div
+                          key={member.id}
+                          className="flex items-center justify-between p-2 border rounded-lg gap-2"
+                        >
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-gray-900 break-words">{member.name}</p>
+                            {member.email && (
+                              <p className="text-xs text-gray-500 break-all">{member.email}</p>
+                            )}
+                            {member.phone && (
+                              <p className="text-xs text-gray-500 break-all">{member.phone}</p>
+                            )}
+                          </div>
+                          <div className="flex-shrink-0">
+                            {member.id === household.primaryClientId ? (
+                              <span className="text-xs bg-teal-100 text-teal-800 px-2 py-1 rounded-full whitespace-nowrap">
+                                Primary
+                              </span>
+                            ) : household.primaryClientId === clientId ? (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => handleRemoveMember(member.id)}
+                                className="text-red-600 hover:text-red-700"
+                              >
+                                <X className="h-4 w-4" />
+                              </Button>
+                            ) : null}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  {household.primaryClientId === clientId && (
+                    <Button
+                      variant="outline"
+                      className="w-full"
+                      onClick={() => setIsInviteMemberDialogOpen(true)}
+                    >
+                      <UserPlus className="h-4 w-4 mr-2" />
+                      Invite Member
+                    </Button>
+                  )}
+                </div>
+              ) : (
+                <div className="text-center py-4">
+                  <Home className="h-8 w-8 text-gray-400 mx-auto mb-2" />
+                  <p className="text-sm text-gray-600 mb-3">
+                    This client is not part of a household
+                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      console.log("Create Household button clicked (empty state)");
+                      setIsCreateHouseholdDialogOpen(true);
+                    }}
+                  >
+                    <UserPlus className="h-4 w-4 mr-2" />
+                    Create Household
+                  </Button>
+                </div>
+              )}
             </CardContent>
           </Card>
+
         </div>
 
         {/* Right Column - Pools, Invoices, Quotes */}
@@ -759,6 +1113,124 @@ export default function ClientDetailPage() {
               </Button>
               <Button onClick={handleUpdate} disabled={!formData.name.trim()}>
                 Save Changes
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Create Household Dialog */}
+      <Dialog open={isCreateHouseholdDialogOpen} onOpenChange={setIsCreateHouseholdDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Create Household</DialogTitle>
+            <DialogDescription>
+              Create a household for this client. Other family members can be invited to join.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="household-name">Household Name</Label>
+              <Input
+                id="household-name"
+                value={householdFormData.name}
+                onChange={(e) =>
+                  setHouseholdFormData({ ...householdFormData, name: e.target.value })
+                }
+                placeholder="e.g., The Smith Family"
+              />
+            </div>
+            <div className="flex justify-end gap-2 mt-4">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setIsCreateHouseholdDialogOpen(false);
+                  setHouseholdFormData({ name: "" });
+                }}
+              >
+                Cancel
+              </Button>
+              <Button onClick={handleCreateHousehold} disabled={!householdFormData.name.trim()}>
+                Create Household
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Invite Member Dialog */}
+      <Dialog open={isInviteMemberDialogOpen} onOpenChange={setIsInviteMemberDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Invite Household Member</DialogTitle>
+            <DialogDescription>
+              Invite a family member to join this household. They will receive an email and SMS
+              invitation.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="invite-name">Name *</Label>
+              <Input
+                id="invite-name"
+                value={inviteFormData.name}
+                onChange={(e) =>
+                  setInviteFormData({ ...inviteFormData, name: e.target.value })
+                }
+                placeholder="Full name"
+              />
+            </div>
+            <div>
+              <Label htmlFor="invite-email">Email</Label>
+              <Input
+                id="invite-email"
+                type="email"
+                value={inviteFormData.email}
+                onChange={(e) =>
+                  setInviteFormData({ ...inviteFormData, email: e.target.value })
+                }
+                placeholder="email@example.com"
+              />
+            </div>
+            <div>
+              <Label htmlFor="invite-phone">Phone</Label>
+              <Input
+                id="invite-phone"
+                value={inviteFormData.phone}
+                onChange={(e) =>
+                  setInviteFormData({ ...inviteFormData, phone: e.target.value })
+                }
+                placeholder="+1234567890"
+              />
+            </div>
+            <p className="text-xs text-gray-500">
+              * At least one contact method (email or phone) is required
+            </p>
+            <div className="flex justify-end gap-2 mt-4">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setIsInviteMemberDialogOpen(false);
+                  setInviteFormData({ name: "", email: "", phone: "" });
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  console.log("Send Invitation button clicked");
+                  handleInviteMember();
+                }}
+                disabled={
+                  !inviteFormData.name.trim() ||
+                  (!inviteFormData.email?.trim() && !inviteFormData.phone?.trim())
+                }
+              >
+                Send Invitation
               </Button>
             </div>
           </div>

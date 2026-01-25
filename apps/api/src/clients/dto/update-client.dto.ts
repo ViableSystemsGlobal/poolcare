@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsEnum } from "class-validator";
+import { IsString, IsOptional, IsEnum, IsArray } from "class-validator";
 
 export class UpdateClientDto {
   @IsOptional()
@@ -15,10 +15,19 @@ export class UpdateClientDto {
 
   @IsOptional()
   @IsString()
+  imageUrl?: string;
+
+  @IsOptional()
+  @IsString()
   billingAddress?: string;
 
   @IsOptional()
-  @IsEnum(["WHATSAPP", "SMS", "EMAIL"])
-  preferredChannel?: string;
+  @IsArray()
+  @IsEnum(["WHATSAPP", "SMS", "EMAIL"], { each: true })
+  preferredChannels?: string[];
+
+  @IsOptional()
+  @IsString()
+  notes?: string;
 }
 

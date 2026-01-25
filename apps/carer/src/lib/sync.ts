@@ -1,6 +1,21 @@
 import { getToken } from "./storage";
+import { Platform } from "react-native";
+import { getNetworkIp } from "./network-utils";
 
-const API_URL = process.env.EXPO_PUBLIC_API_URL || "http://localhost:4000";
+// Get network IP for mobile devices (localhost doesn't work on physical devices/simulators)
+const getApiUrl = (): string => {
+  const baseUrl = process.env.EXPO_PUBLIC_API_URL || "http://localhost:4000/api";
+  
+  // On mobile platforms, replace localhost with network IP
+  if (Platform.OS !== "web" && baseUrl.includes("localhost")) {
+    const networkIp = getNetworkIp();
+    return baseUrl.replace("localhost", networkIp);
+  }
+  
+  return baseUrl;
+};
+
+const API_URL = getApiUrl().replace("/api", ""); // Remove /api for sync.ts
 
 export async function syncData(shapes: string[] = ["jobs", "pools", "visits"], since?: number) {
   const token = await getToken();

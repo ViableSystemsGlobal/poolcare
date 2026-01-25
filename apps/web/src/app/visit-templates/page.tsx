@@ -182,8 +182,43 @@ export default function VisitTemplatesPage() {
 
       if (response.ok) {
         const data = await response.json();
-        setTemplates(data.items || []);
-        calculateMetrics(data.items || []);
+        // Ensure checklist is always an array and items are properly formatted
+        const normalizedTemplates = (data.items || []).map((template: any) => ({
+          ...template,
+          checklist: Array.isArray(template.checklist) 
+            ? template.checklist
+                .filter((item: any) => item !== null && item !== undefined)
+                .map((item: any, idx: number) => {
+                  // If item is already a proper ChecklistItem, return it
+                  if (typeof item === 'object' && 'label' in item) {
+                    return {
+                      id: item.id || `item-${idx}`,
+                      label: String(item.label || ''),
+                      required: Boolean(item.required),
+                      photoRequired: Boolean(item.photoRequired),
+                    };
+                  }
+                  // If item is a string, convert it
+                  if (typeof item === 'string') {
+                    return {
+                      id: `item-${idx}`,
+                      label: item,
+                      required: false,
+                      photoRequired: false,
+                    };
+                  }
+                  // Otherwise, create a default item
+                  return {
+                    id: `item-${idx}`,
+                    label: '',
+                    required: false,
+                    photoRequired: false,
+                  };
+                })
+            : []
+        }));
+        setTemplates(normalizedTemplates);
+        calculateMetrics(normalizedTemplates);
       }
     } catch (error) {
       console.error("Failed to fetch visit templates:", error);
@@ -219,10 +254,18 @@ export default function VisitTemplatesPage() {
   };
 
   const addChecklistItem = () => {
+    // First, clean up any malformed items
+    const cleanChecklist = formData.checklist.filter((item): item is ChecklistItem => 
+      item !== null && 
+      item !== undefined && 
+      typeof item === 'object' && 
+      'label' in item
+    );
+    
     setFormData({
       ...formData,
       checklist: [
-        ...formData.checklist,
+        ...cleanChecklist,
         {
           id: `item-${Date.now()}`,
           label: "",
@@ -233,16 +276,32 @@ export default function VisitTemplatesPage() {
     });
   };
 
-  const updateChecklistItem = (index: number, field: keyof ChecklistItem, value: any) => {
-    const updated = [...formData.checklist];
-    updated[index] = { ...updated[index], [field]: value };
+  const updateChecklistItem = (itemId: string, field: keyof ChecklistItem, value: any) => {
+    const updated = formData.checklist.map((item) => {
+      if (item && typeof item === 'object' && 'id' in item && item.id === itemId) {
+        return { ...item, [field]: value };
+      }
+      return item;
+    }).filter((item): item is ChecklistItem => 
+      item !== null && 
+      item !== undefined && 
+      typeof item === 'object' && 
+      'label' in item
+    );
     setFormData({ ...formData, checklist: updated });
   };
 
-  const removeChecklistItem = (index: number) => {
+  const removeChecklistItem = (itemId: string) => {
     setFormData({
       ...formData,
-      checklist: formData.checklist.filter((_, i) => i !== index),
+      checklist: formData.checklist
+        .filter((item) => item && typeof item === 'object' && 'id' in item && item.id !== itemId)
+        .filter((item): item is ChecklistItem => 
+          item !== null && 
+          item !== undefined && 
+          typeof item === 'object' && 
+          'label' in item
+        ),
     });
   };
 
@@ -258,8 +317,14 @@ export default function VisitTemplatesPage() {
         return;
       }
 
-      // Validate checklist items
-      const validChecklist = formData.checklist.filter((item) => item.label.trim());
+      // Validate checklist items - ensure they're valid objects with labels
+      const validChecklist = formData.checklist.filter((item) => 
+        item && 
+        typeof item === 'object' && 
+        'label' in item && 
+        typeof item.label === 'string' &&
+        item.label.trim().length > 0
+      );
       if (validChecklist.length === 0) {
         alert("At least one checklist item with a label is required");
         return;
@@ -269,7 +334,15 @@ export default function VisitTemplatesPage() {
       const payload = {
         name: formData.name.trim(),
         serviceDurationMin: formData.serviceDurationMin,
-        checklist: validChecklist.map(({ id, ...rest }) => rest), // Remove id before sending
+        checklist: validChecklist.map((item) => {
+          // Ensure we only send the necessary fields, not the id
+          const { id, ...rest } = item;
+          return {
+            label: String(rest.label || ''),
+            required: Boolean(rest.required),
+            photoRequired: Boolean(rest.photoRequired),
+          };
+        }),
         targets: Object.keys(formData.targets).length > 0 ? formData.targets : undefined,
       };
 
@@ -315,12 +388,16 @@ export default function VisitTemplatesPage() {
     setFormData({
       name: template.name,
       serviceDurationMin: template.serviceDurationMin,
-      checklist: (template.checklist as ChecklistItem[]).map((item, index) => ({
-        id: item.id || `item-${index}`,
-        label: item.label || "",
-        required: item.required !== false,
-        photoRequired: item.photoRequired || false,
-      })),
+      checklist: Array.isArray(template.checklist)
+        ? (template.checklist as ChecklistItem[])
+            .filter((item) => item && typeof item === 'object')
+            .map((item, index) => ({
+              id: item?.id || `item-${index}`,
+              label: String(item?.label || ""),
+              required: Boolean(item?.required),
+              photoRequired: Boolean(item?.photoRequired || false),
+            }))
+        : [],
       targets: template.targets || {},
     });
   };
@@ -339,7 +416,14 @@ export default function VisitTemplatesPage() {
         return;
       }
 
-      const validChecklist = formData.checklist.filter((item) => item.label.trim());
+      // Validate checklist items - ensure they're valid objects with labels
+      const validChecklist = formData.checklist.filter((item) => 
+        item && 
+        typeof item === 'object' && 
+        'label' in item && 
+        typeof item.label === 'string' &&
+        item.label.trim().length > 0
+      );
       if (validChecklist.length === 0) {
         alert("At least one checklist item with a label is required");
         return;
@@ -349,7 +433,15 @@ export default function VisitTemplatesPage() {
       const payload = {
         name: formData.name.trim(),
         serviceDurationMin: formData.serviceDurationMin,
-        checklist: validChecklist.map(({ id, ...rest }) => rest),
+        checklist: validChecklist.map((item) => {
+          // Ensure we only send the necessary fields, not the id
+          const { id, ...rest } = item;
+          return {
+            label: String(rest.label || ''),
+            required: Boolean(rest.required),
+            photoRequired: Boolean(rest.photoRequired),
+          };
+        }),
         targets: Object.keys(formData.targets).length > 0 ? formData.targets : undefined,
       };
 
@@ -759,45 +851,56 @@ export default function VisitTemplatesPage() {
                     No checklist items. Click "Add Item" to get started.
                   </p>
                 ) : (
-                  formData.checklist.map((item, index) => (
-                    <div key={item.id || index} className="flex gap-2 items-start p-2 border rounded">
-                      <div className="flex-1 space-y-2">
-                        <Input
-                          placeholder="Checklist item label"
-                          value={item.label}
-                          onChange={(e) => updateChecklistItem(index, "label", e.target.value)}
-                        />
-                        <div className="flex items-center gap-4">
-                          <label className="flex items-center gap-2 text-sm">
-                            <input
-                              type="checkbox"
-                              checked={item.required}
-                              onChange={(e) => updateChecklistItem(index, "required", e.target.checked)}
-                              className="h-4 w-4 rounded border-gray-300"
+                  formData.checklist
+                    .filter((item): item is ChecklistItem => 
+                      item !== null && 
+                      item !== undefined && 
+                      typeof item === 'object' && 
+                      'label' in item
+                    )
+                    .map((item, index) => {
+                      // Ensure item is properly typed and not rendered directly
+                      const safeItem = item as ChecklistItem;
+                      return (
+                        <div key={safeItem.id || `item-${index}`} className="flex gap-2 items-start p-2 border rounded">
+                          <div className="flex-1 space-y-2">
+                            <Input
+                              placeholder="Checklist item label"
+                              value={safeItem?.label || ""}
+                              onChange={(e) => updateChecklistItem(safeItem.id || `item-${index}`, "label", e.target.value)}
                             />
-                            Required
-                          </label>
-                          <label className="flex items-center gap-2 text-sm">
-                            <input
-                              type="checkbox"
-                              checked={item.photoRequired || false}
-                              onChange={(e) => updateChecklistItem(index, "photoRequired", e.target.checked)}
-                              className="h-4 w-4 rounded border-gray-300"
-                            />
-                            Photo Required
-                          </label>
+                            <div className="flex items-center gap-4">
+                              <label className="flex items-center gap-2 text-sm">
+                                <input
+                                  type="checkbox"
+                                  checked={safeItem?.required || false}
+                                  onChange={(e) => updateChecklistItem(safeItem.id || `item-${index}`, "required", e.target.checked)}
+                                  className="h-4 w-4 rounded border-gray-300"
+                                />
+                                <span>Required</span>
+                              </label>
+                              <label className="flex items-center gap-2 text-sm">
+                                <input
+                                  type="checkbox"
+                                  checked={safeItem?.photoRequired || false}
+                                  onChange={(e) => updateChecklistItem(safeItem.id || `item-${index}`, "photoRequired", e.target.checked)}
+                                  className="h-4 w-4 rounded border-gray-300"
+                                />
+                                <span>Photo Required</span>
+                              </label>
+                            </div>
+                          </div>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => removeChecklistItem(safeItem.id || `item-${index}`)}
+                          >
+                            <Trash2 className="h-4 w-4 text-red-600" />
+                          </Button>
                         </div>
-                      </div>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => removeChecklistItem(index)}
-                      >
-                        <Trash2 className="h-4 w-4 text-red-600" />
-                      </Button>
-                    </div>
-                  ))
+                      );
+                    })
                 )}
               </div>
             </div>

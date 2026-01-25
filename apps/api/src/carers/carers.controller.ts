@@ -7,8 +7,13 @@ import {
   Query,
   Body,
   UseGuards,
+  UseInterceptors,
+  UploadedFile,
+  BadRequestException,
 } from "@nestjs/common";
+import { FileInterceptor } from "@nestjs/platform-express";
 import { CarersService } from "./carers.service";
+import { FilesService } from "../files/files.service";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { RolesGuard } from "../auth/guards/roles.guard";
 import { Roles } from "../auth/decorators/roles.decorator";
@@ -18,7 +23,10 @@ import { CreateCarerDto, UpdateCarerDto, RegisterDeviceTokenDto } from "./dto";
 @Controller("carers")
 @UseGuards(JwtAuthGuard)
 export class CarersController {
-  constructor(private readonly carersService: CarersService) {}
+  constructor(
+    private readonly carersService: CarersService,
+    private readonly filesService: FilesService
+  ) {}
 
   @Get()
   async list(
@@ -79,11 +87,91 @@ export class CarersController {
     return this.carersService.getMyCarer(user.org_id, user.sub);
   }
 
+  @Get("me/earnings")
+  async getMyEarnings(
+    @CurrentUser() user: { org_id: string; sub: string },
+    @Query("month") month?: string,
+    @Query("year") year?: string
+  ) {
+    return this.carersService.getMyEarnings(user.org_id, user.sub, {
+      month: month ? parseInt(month) : undefined,
+      year: year ? parseInt(year) : undefined,
+    });
+  }
+
+  @Get(":id/earnings")
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "MANAGER")
+  async getEarnings(
+    @CurrentUser() user: { org_id: string },
+    @Param("id") carerId: string,
+    @Query("month") month?: string,
+    @Query("year") year?: string
+  ) {
+    return this.carersService.getEarnings(user.org_id, carerId, {
+      month: month ? parseInt(month) : undefined,
+      year: year ? parseInt(year) : undefined,
+    });
+  }
+
   @Patch("me/carer")
   async updateMyCarer(
     @CurrentUser() user: { org_id: string; sub: string },
     @Body() dto: UpdateCarerDto
   ) {
     return this.carersService.updateMyCarer(user.org_id, user.sub, dto);
+  }
+
+  @Post(":id/current-location")
+  async updateCurrentLocation(
+    @CurrentUser() user: { org_id: string; sub: string },
+    @Param("id") carerId: string,
+    @Body() body: { lat: number; lng: number }
+  ) {
+    return this.carersService.updateCurrentLocation(
+      user.org_id,
+      user.sub,
+      carerId,
+      body.lat,
+      body.lng
+    );
+  }
+
+  @Post(":id/home-base")
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "MANAGER")
+  async updateHomeBase(
+    @CurrentUser() user: { org_id: string },
+    @Param("id") carerId: string,
+    @Body() body: { address?: string; lat?: number; lng?: number }
+  ) {
+    return this.carersService.updateHomeBase(user.org_id, carerId, body);
+  }
+
+  @Post("upload-image")
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "MANAGER")
+  @UseInterceptors(FileInterceptor("image"))
+  async uploadImage(
+    @CurrentUser() user: { org_id: string },
+    @UploadedFile() file: Express.Multer.File
+  ) {
+    if (!file) {
+      throw new BadRequestException("No file uploaded");
+    }
+
+    try {
+      const imageUrl = await this.filesService.uploadImage(
+        user.org_id,
+        file,
+        "carer",
+        "profile"
+      );
+
+      return { imageUrl };
+    } catch (error: any) {
+      console.error("Image upload error:", error);
+      throw new BadRequestException(error.message || "Failed to upload image");
+    }
   }
 }

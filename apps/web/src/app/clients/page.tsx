@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Plus, Search, Users, Edit, Trash2, Eye, Mail, Phone, MapPin, MessageSquare, Droplet, FileText, Download } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { DashboardAICard } from "@/components/dashboard-ai-card";
+import { useToast } from "@/hooks/use-toast";
 import {
   Table,
   TableBody,
@@ -38,6 +39,7 @@ interface Client {
   name?: string;
   email?: string;
   phone?: string;
+  imageUrl?: string;
   billingAddress?: string;
   preferredChannels?: string[];
   tags?: string[];
@@ -51,6 +53,7 @@ interface Client {
 
 export default function ClientsPage() {
   const router = useRouter();
+  const { toast } = useToast();
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
@@ -71,10 +74,14 @@ export default function ClientsPage() {
     name: "",
     email: "",
     phone: "",
+    imageUrl: "",
     billingAddress: "",
     preferredChannels: ["WHATSAPP"],
     notes: "",
   });
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [uploadingImage, setUploadingImage] = useState(false);
 
   useEffect(() => {
     fetchClients();
@@ -130,9 +137,18 @@ export default function ClientsPage() {
       );
       setSelectedClients(new Set());
       await fetchClients();
-    } catch (error) {
+      toast({
+        title: "Success",
+        description: `${selectedClients.size} client(s) deleted successfully`,
+        variant: "success",
+      });
+    } catch (error: any) {
       console.error("Failed to delete clients:", error);
-      alert("Failed to delete some clients");
+      toast({
+        title: "Error",
+        description: error.message || "Failed to delete some clients",
+        variant: "destructive",
+      });
     }
   };
 
@@ -182,27 +198,55 @@ export default function ClientsPage() {
 
   const handleCreate = async () => {
     try {
+      // Upload image first if a new one was selected
+      let imageUrl = formData.imageUrl;
+      if (imageFile) {
+        const uploadedUrl = await uploadImage();
+        if (uploadedUrl) {
+          imageUrl = uploadedUrl;
+        } else {
+          return; // Stop if upload failed
+        }
+      }
+
       const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+      const payload = {
+        ...formData,
+        imageUrl: imageUrl || undefined,
+      };
       const response = await fetch(`${API_URL}/clients`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
         },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(payload),
       });
 
       if (response.ok) {
         setIsCreateDialogOpen(false);
         resetForm();
         fetchClients();
+        toast({
+          title: "Success",
+          description: "Client created successfully",
+          variant: "success",
+        });
       } else {
         const error = await response.json();
-        alert(`Failed to create client: ${error.error || "Unknown error"}`);
+        toast({
+          title: "Error",
+          description: error.error || "Failed to create client",
+          variant: "destructive",
+        });
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Failed to create client:", error);
-      alert("Failed to create client");
+      toast({
+        title: "Error",
+        description: error.message || "Failed to create client",
+        variant: "destructive",
+      });
     }
   };
 
@@ -210,32 +254,60 @@ export default function ClientsPage() {
     if (!editingClient) return;
 
     try {
+      // Upload image first if a new one was selected
+      let imageUrl = formData.imageUrl;
+      if (imageFile) {
+        const uploadedUrl = await uploadImage();
+        if (uploadedUrl) {
+          imageUrl = uploadedUrl;
+        } else {
+          return; // Stop if upload failed
+        }
+      }
+
       const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+      const payload = {
+        ...formData,
+        imageUrl: imageUrl || undefined,
+      };
       const response = await fetch(`${API_URL}/clients/${editingClient.id}`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
         },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(payload),
       });
 
       if (response.ok) {
         setEditingClient(null);
         resetForm();
         fetchClients();
+        toast({
+          title: "Success",
+          description: "Client updated successfully",
+          variant: "success",
+        });
       } else {
         const error = await response.json();
-        alert(`Failed to update client: ${error.error || "Unknown error"}`);
+        toast({
+          title: "Error",
+          description: error.error || "Failed to update client",
+          variant: "destructive",
+        });
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Failed to update client:", error);
-      alert("Failed to update client");
+      toast({
+        title: "Error",
+        description: error.message || "Failed to update client",
+        variant: "destructive",
+      });
     }
   };
 
   const handleDelete = async (clientId: string) => {
-    if (!confirm("Are you sure you want to delete this client? This will also delete all associated pools.")) return;
+    if (!window.confirm("Are you sure you want to delete this client? This will also delete all associated pools.")) return;
 
     try {
       const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
@@ -248,12 +320,26 @@ export default function ClientsPage() {
 
       if (response.ok) {
         fetchClients();
+        toast({
+          title: "Success",
+          description: "Client deleted successfully",
+          variant: "success",
+        });
       } else {
-        alert("Failed to delete client");
+        const error = await response.json();
+        toast({
+          title: "Error",
+          description: error.error || "Failed to delete client",
+          variant: "destructive",
+        });
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Failed to delete client:", error);
-      alert("Failed to delete client");
+      toast({
+        title: "Error",
+        description: error.message || "Failed to delete client",
+        variant: "destructive",
+      });
     }
   };
 
@@ -262,10 +348,13 @@ export default function ClientsPage() {
       name: "",
       email: "",
       phone: "",
+      imageUrl: "",
       billingAddress: "",
       preferredChannels: ["WHATSAPP"],
       notes: "",
     });
+    setImageFile(null);
+    setImagePreview(null);
   };
 
   const openEditDialog = (client: Client) => {
@@ -274,10 +363,110 @@ export default function ClientsPage() {
       name: client.name || "",
       email: client.email || "",
       phone: client.phone || "",
+      imageUrl: client.imageUrl || "",
       billingAddress: client.billingAddress || "",
       preferredChannels: client.preferredChannels || ["WHATSAPP"],
       notes: client.notes || "",
     });
+    setImageFile(null);
+    setImagePreview(client.imageUrl || null);
+  };
+
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    const validTypes = ["image/jpeg", "image/jpg", "image/png", "image/webp", "image/gif"];
+    if (!validTypes.includes(file.type)) {
+      toast({
+        title: "Invalid file type",
+        description: "Please select an image file (JPEG, PNG, WebP, or GIF)",
+        variant: "destructive",
+      });
+      e.target.value = ""; // Reset input
+      return;
+    }
+
+    // Validate file size (5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      toast({
+        title: "File too large",
+        description: "Image must be less than 5MB. Please choose a smaller file.",
+        variant: "destructive",
+      });
+      e.target.value = ""; // Reset input
+      return;
+    }
+
+    setImageFile(file);
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setImagePreview(reader.result as string);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const uploadImage = async (): Promise<string | null> => {
+    if (!imageFile) return null;
+
+    try {
+      setUploadingImage(true);
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+      const uploadFormData = new FormData();
+      uploadFormData.append("image", imageFile);
+
+      const response = await fetch(`${API_URL}/clients/upload-image`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
+        },
+        body: uploadFormData,
+      });
+
+      if (!response.ok) {
+        let errorMessage = "Failed to upload image";
+        let errorTitle = "Upload Error";
+        try {
+          const error = await response.json();
+          const errorText = error.error || error.message || errorMessage;
+          
+          // Parse file size validation errors
+          if (errorText.includes("5242880") || errorText.includes("size") || errorText.includes("less than")) {
+            errorTitle = "File too large";
+            errorMessage = "Image must be less than 5MB. Please choose a smaller file.";
+          } else if (errorText.includes("file type") || errorText.includes("format")) {
+            errorTitle = "Invalid file type";
+            errorMessage = "Please select an image file (JPEG, PNG, WebP, or GIF)";
+          } else {
+            errorMessage = errorText;
+          }
+        } catch (e) {
+          errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+        }
+        throw new Error(errorMessage);
+      }
+
+      const data = await response.json();
+      return data.imageUrl;
+    } catch (error: any) {
+      console.error("Failed to upload image:", error);
+      const errorMessage = error.message || "Failed to upload image";
+      const errorTitle = errorMessage.includes("too large") || errorMessage.includes("5MB") 
+        ? "File too large" 
+        : errorMessage.includes("file type") || errorMessage.includes("format")
+        ? "Invalid file type"
+        : "Upload Error";
+      
+      toast({
+        title: errorTitle,
+        description: errorMessage,
+        variant: "destructive",
+      });
+      return null;
+    } finally {
+      setUploadingImage(false);
+    }
   };
 
   const getPreferredChannelIcon = (channel?: string) => {
@@ -559,7 +748,20 @@ export default function ClientsPage() {
                         />
                       </TableCell>
                       <TableCell className="font-medium">
-                        {client.name || "Unnamed Client"}
+                        <div className="flex items-center gap-3">
+                          {client.imageUrl ? (
+                            <img
+                              src={client.imageUrl}
+                              alt={client.name || "Client"}
+                              className="w-10 h-10 rounded-full object-cover"
+                            />
+                          ) : (
+                            <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center">
+                              <Users className="h-5 w-5 text-gray-400" />
+                            </div>
+                          )}
+                          <span>{client.name || "Unnamed Client"}</span>
+                        </div>
                       </TableCell>
                       <TableCell>
                         <div className="space-y-1">
@@ -694,6 +896,34 @@ export default function ClientsPage() {
             </div>
 
             <div className="grid gap-2">
+              <Label htmlFor="image">Profile Image</Label>
+              <div className="flex items-center gap-4">
+                <div className="flex-1">
+                  <Input
+                    id="image"
+                    type="file"
+                    accept="image/*"
+                    onChange={handleImageChange}
+                    className="cursor-pointer"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">Upload a profile image (max 5MB)</p>
+                </div>
+                {imagePreview && (
+                  <div className="relative">
+                    <img
+                      src={imagePreview}
+                      alt="Preview"
+                      className="w-20 h-20 rounded-full object-cover border-2 border-gray-200"
+                    />
+                  </div>
+                )}
+              </div>
+              {uploadingImage && (
+                <p className="text-sm text-gray-500">Uploading...</p>
+              )}
+            </div>
+
+            <div className="grid gap-2">
               <Label htmlFor="billingAddress">Billing Address</Label>
               <Input
                 id="billingAddress"
@@ -804,6 +1034,33 @@ export default function ClientsPage() {
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
               />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="edit-image">Profile Image</Label>
+              <div className="flex items-center gap-4">
+                <div className="flex-1">
+                  <Input
+                    id="edit-image"
+                    type="file"
+                    accept="image/*"
+                    onChange={handleImageChange}
+                    className="cursor-pointer"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">Upload a profile image (max 5MB)</p>
+                </div>
+                {imagePreview && (
+                  <div className="relative">
+                    <img
+                      src={imagePreview}
+                      alt="Preview"
+                      className="w-20 h-20 rounded-full object-cover border-2 border-gray-200"
+                    />
+                  </div>
+                )}
+              </div>
+              {uploadingImage && (
+                <p className="text-sm text-gray-500">Uploading...</p>
+              )}
             </div>
 
             <div className="grid grid-cols-2 gap-4">

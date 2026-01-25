@@ -1,5 +1,7 @@
 import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from "@nestjs/common";
 import { prisma } from "@poolcare/db";
+import { JobsService } from "../jobs/jobs.service";
+import { NotificationsService } from "../notifications/notifications.service";
 import {
   CreateQuoteDto,
   UpdateQuoteDto,
@@ -10,7 +12,10 @@ import {
 
 @Injectable()
 export class QuotesService {
-  constructor() {}
+  constructor(
+    private readonly jobsService: JobsService,
+    private readonly notificationsService: NotificationsService
+  ) {}
 
   private calculateTotals(items: any[]): { subtotalCents: number; taxCents: number; totalCents: number } {
     let subtotalCents = 0;
@@ -91,6 +96,14 @@ export class QuotesService {
         payload: { items: dto.items } as any,
       },
     });
+
+    // Send notification to client about new quote
+    try {
+      await this.notificationsService.notifyQuoteReady(quote.clientId, quote.id, orgId);
+    } catch (error) {
+      // Don't fail quote creation if notification fails
+      console.error(`Failed to send quote notification:`, error);
+    }
 
     return quote;
   }
@@ -290,17 +303,126 @@ export class QuotesService {
         approvedAt: new Date(),
         approvedBy,
       },
+      include: {
+        pool: true,
+        issue: true,
+      },
     });
 
     // Audit
     await prisma.quoteAudit.create({
       data: {
         orgId,
-        quoteId: quote.id,
+        quoteId: updated.id,
         userId: approvedBy,
         action: "approve",
       },
     });
+
+    // Auto-create job from approved quote
+    try {
+      // Calculate default window: 2 days from now, 4-hour window (9 AM - 1 PM)
+      const windowStart = new Date();
+      windowStart.setDate(windowStart.getDate() + 2);
+      windowStart.setHours(9, 0, 0, 0);
+
+      const windowEnd = new Date(windowStart);
+      windowEnd.setHours(13, 0, 0, 0);
+
+      const job = await this.jobsService.create(orgId, {
+        poolId: updated.poolId,
+        quoteId: updated.id,
+        windowStart: windowStart.toISOString(),
+        windowEnd: windowEnd.toISOString(),
+        notes: `Repair job from approved quote ${quoteId}${updated.issueId ? ` (Issue: ${updated.issue?.type || 'N/A'})` : ''}`,
+      });
+
+      // Update issue status if linked
+      if (updated.issueId) {
+        await prisma.issue.update({
+          where: { id: updated.issueId },
+          data: { status: "scheduled" },
+        });
+      }
+
+      // Audit job creation
+      await prisma.quoteAudit.create({
+        data: {
+          orgId,
+          quoteId: updated.id,
+          userId: approvedBy,
+          action: "create_job",
+          payload: { jobId: job.id, autoCreated: true },
+        },
+      });
+    } catch (error) {
+      // Log error but don't fail the approval
+      console.error(`Failed to auto-create job for quote ${quoteId}:`, error);
+    }
+
+    // Send notification to managers about quote approval
+    try {
+      const managers = await prisma.orgMember.findMany({
+        where: {
+          orgId,
+          role: { in: ["ADMIN", "MANAGER"] },
+        },
+        include: {
+          user: true,
+        },
+      });
+
+      const poolName = updated.pool?.name || "Pool";
+      const totalAmount = (updated.totalCents / 100).toFixed(2);
+      const currency = updated.currency || "GHS";
+
+      for (const manager of managers) {
+        if (manager.user?.email) {
+          await this.notificationsService.send(orgId, {
+            recipientId: manager.user.id,
+            recipientType: "user",
+            channel: "email",
+            to: manager.user.email,
+            subject: `Quote Approved - ${poolName}`,
+            body: `Quote ${quoteId} has been approved by the client.\n\nPool: ${poolName}\nAmount: ${currency} ${totalAmount}\n\nA job has been automatically created.`,
+            template: "quote_approved",
+            metadata: {
+              quoteId: updated.id,
+              poolId: updated.poolId,
+              clientId: updated.clientId,
+              amount: updated.totalCents,
+              type: "quote_approved",
+            },
+          });
+        }
+
+        // Also send push notification if user has device tokens
+        if (manager.user?.id) {
+          try {
+            await this.notificationsService.send(orgId, {
+              channel: "push",
+              to: "", // Push notifications use recipientId instead
+              recipientId: manager.user.id,
+              recipientType: "user",
+              subject: "Quote Approved",
+              body: `Quote for ${poolName} (${currency} ${totalAmount}) has been approved. Job created.`,
+              template: "quote_approved",
+              metadata: {
+                quoteId: updated.id,
+                poolId: updated.poolId,
+                type: "quote_approved",
+              },
+            });
+          } catch (pushError) {
+            // Push notification failure shouldn't block
+            console.error(`Failed to send push notification for quote approval:`, pushError);
+          }
+        }
+      }
+    } catch (error) {
+      // Don't fail approval if notification fails
+      console.error(`Failed to send quote approval notifications:`, error);
+    }
 
     return updated;
   }

@@ -66,14 +66,18 @@ export class DashboardService {
     const monthlyRevenue =
       invoices.reduce((sum, inv) => sum + (inv.paidCents || 0), 0) || 0;
 
-    // Get recent activity (last 10 items)
+    // Get recent activity (last 5 items)
     const recentVisits = await prisma.visitEntry.findMany({
       where: { orgId },
       orderBy: { completedAt: "desc" },
       take: 5,
-      include: {
+      select: {
+        id: true,
+        completedAt: true,
+        createdAt: true,
         job: {
-          include: {
+          select: {
+            id: true,
             pool: {
               select: { name: true, address: true },
             },
@@ -132,15 +136,262 @@ export class DashboardService {
       })),
     ]
       .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
-      .slice(0, 10);
+      .slice(0, 5);
+
+    // Enhanced metrics - Today's Operations
+    const todayCompleted = await prisma.job.count({
+      where: {
+        orgId,
+        status: "completed",
+        windowStart: {
+          gte: today,
+          lt: tomorrow,
+        },
+      },
+    });
+
+    const todayUnassigned = await prisma.job.count({
+      where: {
+        orgId,
+        assignedCarerId: null,
+        windowStart: {
+          gte: today,
+          lt: tomorrow,
+        },
+        status: {
+          not: "cancelled",
+        },
+      },
+    });
+
+    const todayEnRoute = await prisma.job.count({
+      where: {
+        orgId,
+        status: "en_route",
+        windowStart: {
+          gte: today,
+          lt: tomorrow,
+        },
+      },
+    });
+
+    const todayOnSite = await prisma.job.count({
+      where: {
+        orgId,
+        status: "on_site",
+        windowStart: {
+          gte: today,
+          lt: tomorrow,
+        },
+      },
+    });
+
+    // Get jobs at risk (past window end and not completed)
+    const now = new Date();
+    const atRiskJobs = await prisma.job.count({
+      where: {
+        orgId,
+        windowEnd: {
+          lt: now,
+        },
+        status: {
+          notIn: ["completed", "cancelled"],
+        },
+        windowStart: {
+          gte: today,
+          lt: tomorrow,
+        },
+      },
+    });
+
+    // Operations metrics (last 30 days)
+    const thirtyDaysAgo = new Date(today);
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+    const jobsLast30Days = await prisma.job.findMany({
+      where: {
+        orgId,
+        windowStart: {
+          gte: thirtyDaysAgo,
+        },
+        status: "completed",
+      },
+      include: {
+        visit: {
+          select: {
+            arrivedAt: true,
+            completedAt: true,
+            startedAt: true,
+          },
+        },
+      },
+    });
+
+    // Calculate on-time arrival % (arrived within window)
+    const onTimeJobs = jobsLast30Days.filter((job) => {
+      if (!job.visit?.arrivedAt) return false;
+      const arrivedAt = new Date(job.visit.arrivedAt);
+      return arrivedAt <= job.windowEnd;
+    }).length;
+
+    const onTimePercentage =
+      jobsLast30Days.length > 0
+        ? Math.round((onTimeJobs / jobsLast30Days.length) * 100)
+        : 0;
+
+    // Average visit duration
+    const visitsWithDuration = jobsLast30Days
+      .map((job) => {
+        if (!job.visit?.arrivedAt || !job.visit?.completedAt) return null;
+        const duration =
+          (new Date(job.visit.completedAt).getTime() -
+            new Date(job.visit.arrivedAt).getTime()) /
+          (1000 * 60); // minutes
+        return duration;
+      })
+      .filter((d): d is number => d !== null);
+
+    const avgVisitDuration =
+      visitsWithDuration.length > 0
+        ? Math.round(
+            visitsWithDuration.reduce((sum, d) => sum + d, 0) /
+              visitsWithDuration.length
+          )
+        : 0;
+
+    // Finance metrics
+    const totalInvoiced = await prisma.invoice.aggregate({
+      where: {
+        orgId,
+        createdAt: {
+          gte: thisMonth,
+        },
+      },
+      _sum: {
+        totalCents: true,
+      },
+    });
+
+    const totalCollected = await prisma.payment.aggregate({
+      where: {
+        orgId,
+        status: "completed",
+        processedAt: {
+          gte: thisMonth,
+        },
+      },
+      _sum: {
+        amountCents: true,
+      },
+    });
+
+    // Accounts Receivable (unpaid invoices)
+    const arInvoices = await prisma.invoice.findMany({
+      where: {
+        orgId,
+        status: {
+          in: ["sent", "overdue"],
+        },
+      },
+      select: {
+        totalCents: true,
+        paidCents: true,
+      },
+    });
+
+    const accountsReceivable =
+      arInvoices.reduce(
+        (sum, inv) => sum + (inv.totalCents - (inv.paidCents || 0)),
+        0
+      ) || 0;
+
+    // Quality metrics
+    const completedVisits = await prisma.visitEntry.findMany({
+      where: {
+        orgId,
+        completedAt: {
+          gte: thirtyDaysAgo,
+        },
+      },
+      select: {
+        id: true,
+        photos: {
+          select: {
+            id: true,
+          },
+        },
+        readings: {
+          select: {
+            id: true,
+          },
+        },
+      },
+    });
+
+    const visitsWithPhotos = completedVisits.filter(
+      (v) => v.photos.length > 0
+    ).length;
+    const photoCompliance =
+      completedVisits.length > 0
+        ? Math.round((visitsWithPhotos / completedVisits.length) * 100)
+        : 0;
+
+    // Supply requests metrics
+    const pendingSupplyRequests = await prisma.supplyRequest.count({
+      where: {
+        orgId,
+        status: "pending",
+      },
+    });
+
+    const urgentSupplyRequests = await prisma.supplyRequest.count({
+      where: {
+        orgId,
+        status: "pending",
+        priority: "urgent",
+      },
+    });
 
     return {
       metrics: {
-        todayJobs,
-        totalClients,
-        activePools,
-        pendingQuotes,
-        monthlyRevenue,
+        // Today's overview
+        today: {
+          total: todayJobs,
+          completed: todayCompleted,
+          unassigned: todayUnassigned,
+          enRoute: todayEnRoute,
+          onSite: todayOnSite,
+          atRisk: atRiskJobs,
+        },
+        // Operations
+        operations: {
+          jobsCompleted30d: jobsLast30Days.length,
+          onTimePercentage,
+          avgVisitDuration,
+        },
+        // Business
+        business: {
+          totalClients,
+          activePools,
+          pendingQuotes,
+        },
+        // Finance
+        finance: {
+          monthlyRevenue,
+          monthlyInvoiced: totalInvoiced._sum.totalCents || 0,
+          monthlyCollected: totalCollected._sum.amountCents || 0,
+          accountsReceivable,
+        },
+        // Quality
+        quality: {
+          photoCompliance,
+          totalVisits30d: completedVisits.length,
+        },
+        // Supplies
+        supplies: {
+          pendingRequests: pendingSupplyRequests,
+          urgentRequests: urgentSupplyRequests,
+        },
       },
       recentActivity,
     };

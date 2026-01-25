@@ -2,12 +2,14 @@ import { useState } from "react";
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from "react-native";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { api } from "../../src/lib/api-client";
 
 export default function LoginScreen() {
   const [phone, setPhone] = useState("");
   const [otp, setOtp] = useState("");
   const [step, setStep] = useState<"phone" | "otp">("phone");
   const [loading, setLoading] = useState(false);
+  const [devOtpCode, setDevOtpCode] = useState<string | null>(null);
 
   const handleRequestOtp = async () => {
     if (!phone) {
@@ -16,12 +18,28 @@ export default function LoginScreen() {
     }
 
     setLoading(true);
-    // TODO: Call API to request OTP
-    // await fetch(`${API_URL}/api/auth/request-otp`, { ... })
-    setTimeout(() => {
+    try {
+      await api.requestOtp("phone", phone);
+      
+      // In development, try to get the OTP code for easier testing
+      if (__DEV__) {
+        try {
+          const otpCheck = await api.checkOtpCode("phone", phone);
+          if (otpCheck.exists && otpCheck.code) {
+            setDevOtpCode(otpCheck.code);
+          }
+        } catch (error) {
+          // Ignore errors in dev OTP check
+        }
+      }
+
       setStep("otp");
+      Alert.alert("Success", "OTP sent to your phone number");
+    } catch (error: any) {
+      Alert.alert("Error", error.message || "Failed to send OTP. Please try again.");
+    } finally {
       setLoading(false);
-    }, 1000);
+    }
   };
 
   const handleVerifyOtp = async () => {
@@ -31,12 +49,20 @@ export default function LoginScreen() {
     }
 
     setLoading(true);
-    // TODO: Call API to verify OTP and get JWT
-    // await fetch(`${API_URL}/api/auth/verify-otp`, { ... })
-    setTimeout(() => {
-      router.replace("/");
+    try {
+      const result = await api.verifyOtp("phone", phone, otp);
+      
+      if (result.token) {
+        // Successfully authenticated
+        router.replace("/");
+      } else {
+        throw new Error("Authentication failed");
+      }
+    } catch (error: any) {
+      Alert.alert("Error", error.message || "Invalid OTP. Please try again.");
+    } finally {
       setLoading(false);
-    }, 1000);
+    }
   };
 
   return (
@@ -81,6 +107,11 @@ export default function LoginScreen() {
                 maxLength={6}
               />
             </View>
+            {__DEV__ && devOtpCode && (
+              <View style={styles.devOtpContainer}>
+                <Text style={styles.devOtpText}>Dev OTP: {devOtpCode}</Text>
+              </View>
+            )}
             <TouchableOpacity
               style={[styles.button, loading && styles.buttonDisabled]}
               onPress={handleVerifyOtp}
@@ -144,7 +175,7 @@ const styles = StyleSheet.create({
     marginLeft: 12,
   },
   button: {
-    backgroundColor: "#ea580c",
+    backgroundColor: "#1E8449",
     padding: 16,
     borderRadius: 12,
     alignItems: "center",
@@ -162,8 +193,22 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   linkText: {
-    color: "#ea580c",
+    color: "#1E8449",
     fontSize: 14,
+  },
+  devOtpContainer: {
+    backgroundColor: "#fef3c7",
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: "#fbbf24",
+  },
+  devOtpText: {
+    color: "#92400e",
+    fontSize: 14,
+    fontWeight: "600",
+    textAlign: "center",
   },
 });
 

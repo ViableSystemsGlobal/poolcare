@@ -11,7 +11,7 @@ class WindowDto {
 
 export class UpdatePlanDto {
   @IsOptional()
-  @IsEnum(["weekly", "biweekly", "monthly"])
+  @IsEnum(["weekly", "biweekly", "monthly", "once_week", "twice_week", "once_month", "twice_month"])
   frequency?: string;
 
   @IsOptional()

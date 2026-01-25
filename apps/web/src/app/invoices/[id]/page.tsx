@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -99,6 +100,7 @@ export default function InvoiceDetailPage() {
   const router = useRouter();
   const { getThemeClasses } = useTheme();
   const theme = getThemeClasses();
+  const { toast } = useToast();
   const invoiceId = params.id as string;
 
   const [loading, setLoading] = useState(true);
@@ -207,7 +209,7 @@ export default function InvoiceDetailPage() {
       const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
       const amountCents = parseInt(paymentAmount) * 100;
 
-      const response = await fetch(`${API_URL}/payments`, {
+      const response = await fetch(`${API_URL}/invoices/payments`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -222,17 +224,41 @@ export default function InvoiceDetailPage() {
       });
 
       if (response.ok) {
+        const data = await response.json();
+        const amount = (data.amountCents / 100).toFixed(2);
+        const currency = data.currency || invoice?.currency || "GHS";
+        
+        // Close dialog and reset form
         setIsManualPaymentDialogOpen(false);
         setPaymentAmount("");
         setPaymentReference("");
+        
+        // Refresh invoice data first
         await fetchInvoice();
+        
+        // Show toast after everything is done
+        console.log("About to show toast:", { amount, currency, method: paymentMethod });
+        const toastId = toast({
+          title: "Payment recorded successfully",
+          description: `${currency} ${amount} payment recorded via ${paymentMethod}`,
+          variant: "success",
+        });
+        console.log("Toast called, ID:", toastId);
       } else {
         const error = await response.json();
-        alert(`Failed to record payment: ${error.error || "Unknown error"}`);
+        toast({
+          title: "Failed to record payment",
+          description: error.error || error.message || "Unknown error",
+          variant: "destructive",
+        });
       }
     } catch (error: any) {
       console.error("Failed to record payment:", error);
-      alert(`Failed to record payment: ${error.message || "Unknown error"}`);
+      toast({
+        title: "Failed to record payment",
+        description: error.message || "An unexpected error occurred",
+        variant: "destructive",
+      });
     }
   };
 
@@ -679,23 +705,21 @@ export default function InvoiceDetailPage() {
 
       {/* Send Invoice Dialog */}
       <Dialog open={isSendDialogOpen} onOpenChange={setIsSendDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Send Invoice</DialogTitle>
-            <DialogDescription>
-              Send invoice #{invoice.invoiceNumber} to {invoice.client?.name || "client"}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="py-4">
-            <p className="text-sm text-gray-600 mb-4">
-              This will mark the invoice as "sent" and notify the client via their preferred
-              channel.
+        <DialogContent className="sm:max-w-md [&>button]:hidden">
+          <div className="p-6">
+            <p className="text-gray-900 text-center mb-6 text-lg">
+              Send this invoice to the client?
             </p>
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setIsSendDialogOpen(false)}>
+            <div className="flex justify-end gap-3">
+              <Button
+                variant="outline"
+                onClick={() => setIsSendDialogOpen(false)}
+              >
                 Cancel
               </Button>
-              <Button onClick={handleSend}>Send Invoice</Button>
+              <Button onClick={handleSend}>
+                OK
+              </Button>
             </div>
           </div>
         </DialogContent>

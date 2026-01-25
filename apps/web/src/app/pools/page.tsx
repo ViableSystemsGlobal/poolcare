@@ -5,9 +5,10 @@ import { useRouter } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Plus, Search, Droplet, MapPin, Edit, Trash2, Eye, Users, Download } from "lucide-react";
+import { Plus, Search, Droplet, MapPin, Edit, Trash2, Eye, Users, Download, Navigation, Loader2 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { DashboardAICard } from "@/components/dashboard-ai-card";
+import { useToast } from "@/hooks/use-toast";
 import {
   Table,
   TableBody,
@@ -37,6 +38,7 @@ interface Pool {
   id: string;
   name?: string;
   address?: string;
+  imageUrls?: string[];
   lat?: number;
   lng?: number;
   volumeL?: number;
@@ -62,6 +64,7 @@ interface Client {
 
 export default function PoolsPage() {
   const router = useRouter();
+  const { toast } = useToast();
   const [pools, setPools] = useState<Pool[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
@@ -90,6 +93,13 @@ export default function PoolsPage() {
     surfaceType: "",
     notes: "",
   });
+  const [imageFiles, setImageFiles] = useState<File[]>([]);
+  const [imagePreviews, setImagePreviews] = useState<string[]>([]);
+  const [existingImageUrls, setExistingImageUrls] = useState<string[]>([]); // Existing images from pool
+  const [uploadingImages, setUploadingImages] = useState(false);
+  const [geocoding, setGeocoding] = useState(false);
+  const [gettingLocation, setGettingLocation] = useState(false);
+  const [originalAddress, setOriginalAddress] = useState<string>("");
 
   useEffect(() => {
     fetchPools();
@@ -146,9 +156,18 @@ export default function PoolsPage() {
       );
       setSelectedPools(new Set());
       await fetchPools();
-    } catch (error) {
+      toast({
+        title: "Success",
+        description: `${selectedPools.size} pool(s) deleted successfully`,
+        variant: "success",
+      });
+    } catch (error: any) {
       console.error("Failed to delete pools:", error);
-      alert("Failed to delete some pools");
+      toast({
+        title: "Error",
+        description: error.message || "Failed to delete some pools",
+        variant: "destructive",
+      });
     }
   };
 
@@ -215,32 +234,61 @@ export default function PoolsPage() {
 
   const handleCreate = async () => {
     try {
+      // Upload images first if any were selected
+      let imageUrls: string[] = [];
+      if (imageFiles.length > 0) {
+        const uploadedUrls = await uploadImages();
+        if (uploadedUrls.length === 0) {
+          return; // Stop if upload failed
+        }
+        imageUrls = uploadedUrls;
+      }
+
       const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+      const payload: any = {
+        ...formData,
+        volumeL: formData.volumeL ? parseInt(formData.volumeL) : undefined,
+        lat: formData.lat ? parseFloat(formData.lat) : undefined,
+        lng: formData.lng ? parseFloat(formData.lng) : undefined,
+      };
+
+      if (imageUrls.length > 0) {
+        payload.imageUrls = imageUrls;
+      }
+
       const response = await fetch(`${API_URL}/pools`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
         },
-        body: JSON.stringify({
-          ...formData,
-          volumeL: formData.volumeL ? parseInt(formData.volumeL) : undefined,
-          lat: formData.lat ? parseFloat(formData.lat) : undefined,
-          lng: formData.lng ? parseFloat(formData.lng) : undefined,
-        }),
+        body: JSON.stringify(payload),
       });
 
       if (response.ok) {
         setIsCreateDialogOpen(false);
         resetForm();
         fetchPools();
+        toast({
+          title: "Success",
+          description: "Pool created successfully",
+          variant: "success",
+        });
       } else {
         const error = await response.json();
-        alert(`Failed to create pool: ${error.error || "Unknown error"}`);
+        toast({
+          title: "Error",
+          description: error.error || "Failed to create pool",
+          variant: "destructive",
+        });
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Failed to create pool:", error);
-      alert("Failed to create pool");
+      toast({
+        title: "Error",
+        description: error.message || "Failed to create pool",
+        variant: "destructive",
+      });
     }
   };
 
@@ -248,32 +296,91 @@ export default function PoolsPage() {
     if (!editingPool) return;
 
     try {
+      // Upload new images first if any were selected
+      let newImageUrls: string[] = [];
+      if (imageFiles.length > 0) {
+        const uploadedUrls = await uploadImages();
+        if (uploadedUrls.length === 0) {
+          return; // Stop if upload failed
+        }
+        newImageUrls = uploadedUrls;
+      }
+
       const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+      
+      // Build payload with only valid fields (exclude clientId)
+      const payload: any = {};
+      
+      if (formData.name && formData.name.trim()) {
+        payload.name = formData.name.trim();
+      }
+      if (formData.address && formData.address.trim()) {
+        payload.address = formData.address.trim();
+      }
+      if (formData.volumeL && formData.volumeL.trim()) {
+        const volume = parseInt(formData.volumeL);
+        if (!isNaN(volume)) {
+          payload.volumeL = volume;
+        }
+      }
+      if (formData.lat && formData.lat.trim()) {
+        const lat = parseFloat(formData.lat);
+        if (!isNaN(lat)) {
+          payload.lat = lat;
+        }
+      }
+      if (formData.lng && formData.lng.trim()) {
+        const lng = parseFloat(formData.lng);
+        if (!isNaN(lng)) {
+          payload.lng = lng;
+        }
+      }
+      if (formData.surfaceType && formData.surfaceType.trim()) {
+        payload.surfaceType = formData.surfaceType.trim();
+      }
+      if (formData.notes && formData.notes.trim()) {
+        payload.notes = formData.notes.trim();
+      }
+
+      // Combine existing images (that weren't removed) with new ones
+      if (existingImageUrls.length > 0 || newImageUrls.length > 0) {
+        payload.imageUrls = [...existingImageUrls, ...newImageUrls];
+      }
+
       const response = await fetch(`${API_URL}/pools/${editingPool.id}`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
         },
-        body: JSON.stringify({
-          ...formData,
-          volumeL: formData.volumeL ? parseInt(formData.volumeL) : undefined,
-          lat: formData.lat ? parseFloat(formData.lat) : undefined,
-          lng: formData.lng ? parseFloat(formData.lng) : undefined,
-        }),
+        body: JSON.stringify(payload),
       });
 
       if (response.ok) {
         setEditingPool(null);
         resetForm();
+        setExistingImageUrls([]);
         fetchPools();
+        toast({
+          title: "Success",
+          description: "Pool updated successfully",
+          variant: "success",
+        });
       } else {
         const error = await response.json();
-        alert(`Failed to update pool: ${error.error || "Unknown error"}`);
+        toast({
+          title: "Error",
+          description: error.error || "Failed to update pool",
+          variant: "destructive",
+        });
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Failed to update pool:", error);
-      alert("Failed to update pool");
+      toast({
+        title: "Error",
+        description: error.message || "Failed to update pool",
+        variant: "destructive",
+      });
     }
   };
 
@@ -292,11 +399,19 @@ export default function PoolsPage() {
       if (response.ok) {
         fetchPools();
       } else {
-        alert("Failed to delete pool");
+        toast({
+          title: "Error",
+          description: error.error || "Failed to delete pool",
+          variant: "destructive",
+        });
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Failed to delete pool:", error);
-      alert("Failed to delete pool");
+      toast({
+        title: "Error",
+        description: error.message || "Failed to delete pool",
+        variant: "destructive",
+      });
     }
   };
 
@@ -311,20 +426,326 @@ export default function PoolsPage() {
       surfaceType: "",
       notes: "",
     });
+    setImageFiles([]);
+    setImagePreviews([]);
+    setExistingImageUrls([]);
+    setGeocoding(false);
+    setGettingLocation(false);
+    setOriginalAddress(""); // Reset original address
+  };
+
+  // Get current location using browser geolocation API
+  const handleGetCurrentLocation = () => {
+    if (!navigator.geolocation) {
+      toast({
+        title: "Error",
+        description: "Geolocation is not supported by your browser",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setGettingLocation(true);
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        try {
+          const lat = position.coords.latitude;
+          const lng = position.coords.longitude;
+          
+          // Update lat/lng in form
+          setFormData((prev) => ({
+            ...prev,
+            lat: lat.toString(),
+            lng: lng.toString(),
+          }));
+
+          // Reverse geocode to get address
+          const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+          
+          try {
+            const response = await fetch(`${API_URL}/maps/reverse-geocode`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
+              },
+              body: JSON.stringify({ lat, lng }),
+            });
+
+            if (response.ok) {
+              const data = await response.json();
+              console.log("Reverse geocode response:", data);
+              
+              // Handle the response - check for formattedAddress
+              const address = data.formattedAddress || data.address || "";
+              
+              if (address) {
+                setFormData((prev) => ({
+                  ...prev,
+                  address: address,
+                }));
+                toast({
+                  title: "Success",
+                  description: "Location retrieved and address found",
+                  variant: "success",
+                });
+              } else {
+                console.warn("No address in reverse geocode response:", data);
+                toast({
+                  title: "Location Retrieved",
+                  description: "Coordinates saved. Address lookup failed - please enter address manually.",
+                  variant: "default",
+                });
+              }
+            } else {
+              // If reverse geocoding fails, still use the coordinates
+              let errorData: any = {};
+              try {
+                errorData = await response.json();
+              } catch (e) {
+                errorData = { message: `HTTP ${response.status}` };
+              }
+              console.error("Reverse geocoding API error:", response.status, errorData);
+              
+              // Extract the helpful error message
+              const errorMessage = errorData.message || errorData.error || "API error";
+              const isRequestDenied = errorMessage.includes("REQUEST_DENIED");
+              
+              toast({
+                title: isRequestDenied ? "API Configuration Issue" : "Location Retrieved",
+                description: isRequestDenied 
+                  ? "Coordinates saved. Google Maps API is configured but request was denied. Check Settings → Integrations → Google Maps for setup instructions."
+                  : `Coordinates saved. Address lookup failed: ${errorMessage}. Please enter address manually.`,
+                variant: isRequestDenied ? "destructive" : "default",
+              });
+            }
+          } catch (fetchError: any) {
+            console.error("Reverse geocoding fetch error:", fetchError);
+            toast({
+              title: "Location Retrieved",
+              description: `Coordinates saved. Network error: ${fetchError.message || "Failed to connect"}. Please enter address manually.`,
+              variant: "default",
+            });
+          }
+        } catch (error: any) {
+          console.error("Reverse geocoding failed:", error);
+          toast({
+            title: "Location Retrieved",
+            description: `Coordinates saved. Error: ${error.message || "Failed to get address"}. Please enter address manually.`,
+            variant: "default",
+          });
+        } finally {
+          setGettingLocation(false);
+        }
+      },
+      (error) => {
+        setGettingLocation(false);
+        toast({
+          title: "Error",
+          description: error.message || "Failed to get current location",
+          variant: "destructive",
+        });
+      }
+    );
+  };
+
+  // Geocode address when user types (debounced)
+  useEffect(() => {
+    if (!formData.address || formData.address.trim().length < 5) return;
+    // Allow geocoding if address changed from original (for editing) or if no coordinates exist
+    const addressChanged = originalAddress && formData.address !== originalAddress;
+    if (formData.lat && formData.lng && !addressChanged) return; // Don't geocode if coordinates already set and address unchanged
+
+    const timeoutId = setTimeout(async () => {
+      try {
+        setGeocoding(true);
+        const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+        const response = await fetch(`${API_URL}/maps/geocode`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
+          },
+          body: JSON.stringify({ address: formData.address }),
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          setFormData((prev) => ({
+            ...prev,
+            lat: data.lat?.toString() || prev.lat,
+            lng: data.lng?.toString() || prev.lng,
+            address: data.formattedAddress || prev.address,
+          }));
+        }
+      } catch (error) {
+        console.error("Geocoding failed:", error);
+      } finally {
+        setGeocoding(false);
+      }
+    }, 1000); // Debounce for 1 second
+
+    return () => clearTimeout(timeoutId);
+  }, [formData.address, originalAddress]);
+
+  // Reverse geocode when lat/lng are manually entered
+  useEffect(() => {
+    if (!formData.lat || !formData.lng) return;
+    if (formData.address && formData.address.trim().length > 0) return; // Don't reverse geocode if address already set
+
+    const lat = parseFloat(formData.lat);
+    const lng = parseFloat(formData.lng);
+
+    if (isNaN(lat) || isNaN(lng)) return;
+
+    const timeoutId = setTimeout(async () => {
+      try {
+        setGeocoding(true);
+        const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+        const response = await fetch(`${API_URL}/maps/reverse-geocode`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
+          },
+          body: JSON.stringify({ lat, lng }),
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          setFormData((prev) => ({
+            ...prev,
+            address: data.formattedAddress || prev.address,
+          }));
+        }
+      } catch (error) {
+        console.error("Reverse geocoding failed:", error);
+      } finally {
+        setGeocoding(false);
+      }
+    }, 1000); // Debounce for 1 second
+
+    return () => clearTimeout(timeoutId);
+  }, [formData.lat, formData.lng]);
+
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length > 0) {
+      const validFiles = files.filter(file => {
+        if (!file.type.startsWith("image/")) {
+          toast({
+            title: "Error",
+            description: `${file.name} is not an image file`,
+            variant: "destructive",
+          });
+          return false;
+        }
+        if (file.size > 5 * 1024 * 1024) {
+          toast({
+            title: "Error",
+            description: `${file.name} is larger than 5MB`,
+            variant: "destructive",
+          });
+          return false;
+        }
+        return true;
+      });
+
+      setImageFiles(prev => [...prev, ...validFiles]);
+      
+      // Create previews
+      validFiles.forEach(file => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          setImagePreviews(prev => [...prev, reader.result as string]);
+        };
+        reader.readAsDataURL(file);
+      });
+    }
+  };
+
+  const removeImage = (index: number) => {
+    // Check if it's an existing image or a new file preview
+    if (index < existingImageUrls.length) {
+      // Remove existing image URL
+      setExistingImageUrls(prev => prev.filter((_, i) => i !== index));
+      setImagePreviews(prev => prev.filter((_, i) => i !== index));
+    } else {
+      // Remove new file and its preview
+      const newFileIndex = index - existingImageUrls.length;
+      setImageFiles(prev => prev.filter((_, i) => i !== newFileIndex));
+      setImagePreviews(prev => prev.filter((_, i) => i !== index));
+    }
+  };
+
+  const uploadImages = async (): Promise<string[]> => {
+    if (imageFiles.length === 0) return [];
+
+    try {
+      setUploadingImages(true);
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+      const uploadedUrls: string[] = [];
+
+      // Upload each image sequentially
+      for (const file of imageFiles) {
+        const uploadFormData = new FormData();
+        uploadFormData.append("image", file);
+
+        const response = await fetch(`${API_URL}/pools/upload-image`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
+          },
+          body: uploadFormData,
+        });
+
+        if (!response.ok) {
+          let errorMessage = "Failed to upload image";
+          try {
+            const error = await response.json();
+            errorMessage = error.error || error.message || errorMessage;
+          } catch (e) {
+            errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+          }
+          throw new Error(errorMessage);
+        }
+
+        const data = await response.json();
+        uploadedUrls.push(data.imageUrl);
+      }
+
+      return uploadedUrls;
+    } catch (error: any) {
+      console.error("Failed to upload images:", error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to upload images",
+        variant: "destructive",
+      });
+      return [];
+    } finally {
+      setUploadingImages(false);
+    }
   };
 
   const openEditDialog = (pool: Pool) => {
     setEditingPool(pool);
+    const poolAddress = pool.address || "";
+    setOriginalAddress(poolAddress); // Store original address to detect changes
     setFormData({
       clientId: pool.client?.id || "",
       name: pool.name || "",
-      address: pool.address || "",
+      address: poolAddress,
       lat: pool.lat?.toString() || "",
       lng: pool.lng?.toString() || "",
       volumeL: pool.volumeL?.toString() || "",
       surfaceType: pool.surfaceType || "",
       notes: pool.notes || "",
     });
+    // Separate existing images from new files
+    setImageFiles([]);
+    setExistingImageUrls(pool.imageUrls || []);
+    setImagePreviews(pool.imageUrls || []);
   };
 
   const formatVolume = (volumeL?: number) => {
@@ -528,7 +949,7 @@ export default function PoolsPage() {
                         aria-label="Select all"
                       />
                     </TableHead>
-                    <TableHead>Pool Name</TableHead>
+                    <TableHead>Pool</TableHead>
                     <TableHead>Client</TableHead>
                     <TableHead>Address</TableHead>
                     <TableHead>Volume</TableHead>
@@ -555,7 +976,20 @@ export default function PoolsPage() {
                         />
                       </TableCell>
                       <TableCell className="font-medium">
-                        {pool.name || "Unnamed Pool"}
+                        <div className="flex items-center gap-3">
+                          {pool.imageUrls && pool.imageUrls.length > 0 ? (
+                            <img
+                              src={pool.imageUrls[0]}
+                              alt={pool.name || "Pool"}
+                              className="w-12 h-12 rounded object-cover"
+                            />
+                          ) : (
+                            <div className="w-12 h-12 rounded bg-gray-200 flex items-center justify-center">
+                              <Droplet className="h-6 w-6 text-gray-400" />
+                            </div>
+                          )}
+                          <span>{pool.name || "Unnamed Pool"}</span>
+                        </div>
                       </TableCell>
                       <TableCell>
                         {pool.client?.name || pool.client?.email || "N/A"}
@@ -572,10 +1006,10 @@ export default function PoolsPage() {
                         )}
                       </TableCell>
                       <TableCell>
-                        {pool.lat && pool.lng ? (
+                        {pool.address ? (
                           <span className="flex items-center text-sm text-gray-600">
                             <MapPin className="h-3 w-3 mr-1" />
-                            {pool.lat.toFixed(4)}, {pool.lng.toFixed(4)}
+                            {pool.address}
                           </span>
                         ) : (
                           "Not set"
@@ -653,39 +1087,85 @@ export default function PoolsPage() {
             </div>
 
             <div className="grid gap-2">
-              <Label htmlFor="address">Address</Label>
-              <Input
-                id="address"
-                placeholder="Full address"
-                value={formData.address}
-                onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-              />
+              <div className="flex items-center justify-between">
+                <Label htmlFor="address">Address</Label>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleGetCurrentLocation}
+                  disabled={gettingLocation}
+                  className="flex items-center gap-2"
+                >
+                  {gettingLocation ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Getting Location...
+                    </>
+                  ) : (
+                    <>
+                      <Navigation className="h-4 w-4" />
+                      Get Current Location
+                    </>
+                  )}
+                </Button>
+              </div>
+              <div className="relative">
+                <Input
+                  id="address"
+                  placeholder="Full address (auto-geocoded)"
+                  value={formData.address}
+                  onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                />
+                {geocoding && (
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                    <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
+                  </div>
+                )}
+              </div>
+              <p className="text-xs text-gray-500">
+                {geocoding
+                  ? "Looking up coordinates..."
+                  : "Type an address to automatically get coordinates, or use 'Get Current Location'"}
+              </p>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="grid gap-2">
-                <Label htmlFor="lat">Latitude</Label>
-                <Input
-                  id="lat"
-                  type="number"
-                  step="any"
-                  placeholder="5.6037"
-                  value={formData.lat}
-                  onChange={(e) => setFormData({ ...formData, lat: e.target.value })}
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="lng">Longitude</Label>
-                <Input
-                  id="lng"
-                  type="number"
-                  step="any"
-                  placeholder="-0.1870"
-                  value={formData.lng}
-                  onChange={(e) => setFormData({ ...formData, lng: e.target.value })}
-                />
-              </div>
+            <div className="grid gap-2">
+              <Label htmlFor="images">Pool Images</Label>
+              <Input
+                id="images"
+                type="file"
+                accept="image/*"
+                multiple
+                onChange={handleImageChange}
+                className="cursor-pointer"
+              />
+              <p className="text-xs text-gray-500">Upload multiple images (max 5MB each)</p>
+              {uploadingImages && (
+                <p className="text-sm text-gray-500">Uploading images...</p>
+              )}
+              {imagePreviews.length > 0 && (
+                <div className="grid grid-cols-4 gap-2 mt-2">
+                  {imagePreviews.map((preview, index) => (
+                    <div key={index} className="relative group">
+                      <img
+                        src={preview}
+                        alt={`Preview ${index + 1}`}
+                        className="w-full h-24 object-cover rounded border-2 border-gray-200"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => removeImage(index)}
+                        className="absolute top-1 right-1 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
+
 
             <div className="grid grid-cols-2 gap-4">
               <div className="grid gap-2">
@@ -759,36 +1239,49 @@ export default function PoolsPage() {
             </div>
 
             <div className="grid gap-2">
-              <Label htmlFor="edit-address">Address</Label>
-              <Input
-                id="edit-address"
-                value={formData.address}
-                onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-              />
+              <div className="flex items-center justify-between">
+                <Label htmlFor="edit-address">Address</Label>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleGetCurrentLocation}
+                  disabled={gettingLocation}
+                  className="flex items-center gap-2"
+                >
+                  {gettingLocation ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Getting Location...
+                    </>
+                  ) : (
+                    <>
+                      <Navigation className="h-4 w-4" />
+                      Get Current Location
+                    </>
+                  )}
+                </Button>
+              </div>
+              <div className="relative">
+                <Input
+                  id="edit-address"
+                  placeholder="Full address (auto-geocoded)"
+                  value={formData.address}
+                  onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                />
+                {geocoding && (
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                    <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
+                  </div>
+                )}
+              </div>
+              <p className="text-xs text-gray-500">
+                {geocoding
+                  ? "Looking up coordinates..."
+                  : "Type an address to automatically get coordinates, or use 'Get Current Location'"}
+              </p>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="grid gap-2">
-                <Label htmlFor="edit-lat">Latitude</Label>
-                <Input
-                  id="edit-lat"
-                  type="number"
-                  step="any"
-                  value={formData.lat}
-                  onChange={(e) => setFormData({ ...formData, lat: e.target.value })}
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="edit-lng">Longitude</Label>
-                <Input
-                  id="edit-lng"
-                  type="number"
-                  step="any"
-                  value={formData.lng}
-                  onChange={(e) => setFormData({ ...formData, lng: e.target.value })}
-                />
-              </div>
-            </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div className="grid gap-2">
@@ -828,6 +1321,42 @@ export default function PoolsPage() {
                 onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
                 rows={3}
               />
+            </div>
+
+            <div className="grid gap-2">
+              <Label htmlFor="edit-images">Pool Images</Label>
+              <Input
+                id="edit-images"
+                type="file"
+                accept="image/*"
+                multiple
+                onChange={handleImageChange}
+                className="cursor-pointer"
+              />
+              <p className="text-xs text-gray-500">Upload multiple images (max 5MB each)</p>
+              {uploadingImages && (
+                <p className="text-sm text-gray-500">Uploading images...</p>
+              )}
+              {imagePreviews.length > 0 && (
+                <div className="grid grid-cols-4 gap-2 mt-2">
+                  {imagePreviews.map((preview, index) => (
+                    <div key={index} className="relative group">
+                      <img
+                        src={preview}
+                        alt={`Preview ${index + 1}`}
+                        className="w-full h-24 object-cover rounded border-2 border-gray-200"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => removeImage(index)}
+                        className="absolute top-1 right-1 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="flex justify-end gap-2 mt-4">

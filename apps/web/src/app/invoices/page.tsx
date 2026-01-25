@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Plus, Search, FileText, Edit, Trash2, Eye, Send, DollarSign, Download, Calendar, CheckCircle, Clock, AlertCircle } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Badge } from "@/components/ui/badge";
 import {
   Table,
   TableBody,
@@ -43,6 +44,7 @@ interface Invoice {
   poolId?: string;
   visitId?: string;
   quoteId?: string;
+  planId?: string;
   status: string;
   currency: string;
   items: any[];
@@ -55,6 +57,12 @@ interface Invoice {
   paidAt?: string;
   notes?: string;
   createdAt: string;
+  metadata?: {
+    type?: string;
+    servicePlanId?: string;
+    subscriptionBillingId?: string;
+    [key: string]: any;
+  };
   client?: {
     id: string;
     name?: string;
@@ -90,8 +98,11 @@ export default function InvoicesPage() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("");
+  const [typeFilter, setTypeFilter] = useState<string>("all"); // "all", "subscription", "regular"
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [selectedInvoices, setSelectedInvoices] = useState<Set<string>>(new Set());
+  const [isSendDialogOpen, setIsSendDialogOpen] = useState(false);
+  const [invoiceToSend, setInvoiceToSend] = useState<string | null>(null);
 
   // Metrics state
   const [metrics, setMetrics] = useState({
@@ -192,13 +203,35 @@ export default function InvoicesPage() {
     URL.revokeObjectURL(url);
   };
 
-  const filteredInvoices = searchQuery
-    ? invoices.filter((invoice) =>
+  const filteredInvoices = invoices.filter((invoice) => {
+    // Search filter
+    if (searchQuery) {
+      const matchesSearch =
         invoice.invoiceNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
         invoice.client?.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        invoice.pool?.name?.toLowerCase().includes(searchQuery.toLowerCase())
-      )
-    : invoices;
+        invoice.pool?.name?.toLowerCase().includes(searchQuery.toLowerCase());
+      if (!matchesSearch) return false;
+    }
+
+    // Type filter (subscription vs regular)
+    if (typeFilter === "subscription") {
+      const isSubscription =
+        invoice.metadata?.type === "subscription_billing" ||
+        invoice.metadata?.servicePlanId ||
+        invoice.planId ||
+        invoice.metadata?.subscriptionBillingId;
+      if (!isSubscription) return false;
+    } else if (typeFilter === "regular") {
+      const isSubscription =
+        invoice.metadata?.type === "subscription_billing" ||
+        invoice.metadata?.servicePlanId ||
+        invoice.planId ||
+        invoice.metadata?.subscriptionBillingId;
+      if (isSubscription) return false;
+    }
+
+    return true;
+  });
 
   const allSelected = filteredInvoices.length > 0 && selectedInvoices.size === filteredInvoices.length;
 
@@ -349,12 +382,17 @@ export default function InvoicesPage() {
     }
   };
 
-  const handleSend = async (invoiceId: string) => {
-    if (!confirm("Send this invoice to the client?")) return;
+  const handleSendClick = (invoiceId: string) => {
+    setInvoiceToSend(invoiceId);
+    setIsSendDialogOpen(true);
+  };
+
+  const handleSend = async () => {
+    if (!invoiceToSend) return;
 
     try {
       const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
-      const response = await fetch(`${API_URL}/invoices/${invoiceId}/send`, {
+      const response = await fetch(`${API_URL}/invoices/${invoiceToSend}/send`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -363,6 +401,8 @@ export default function InvoicesPage() {
       });
 
       if (response.ok) {
+        setIsSendDialogOpen(false);
+        setInvoiceToSend(null);
         await fetchInvoices();
       } else {
         const error = await response.json();
@@ -477,34 +517,9 @@ export default function InvoicesPage() {
           <p className="text-gray-600 mt-1">Manage invoices and track payments</p>
         </div>
         <div className="flex gap-2">
-          <Button
-            variant="outline"
-            onClick={async () => {
-              if (!confirm("Generate monthly invoices for all active service plans? This will create invoices for the previous month.")) return;
-              try {
-                const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
-                const response = await fetch(`${API_URL}/invoices/auto-generate-monthly`, {
-                  method: "POST",
-                  headers: {
-                    "Content-Type": "application/json",
-                    Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
-                  },
-                });
-                const data = await response.json();
-                if (response.ok) {
-                  alert(`Monthly invoices generated: ${data.results.generated.length} created, ${data.results.skipped.length} skipped`);
-                  await fetchInvoices();
-                } else {
-                  alert(`Failed to generate monthly invoices: ${data.error || "Unknown error"}`);
-                }
-              } catch (error: any) {
-                console.error("Failed to generate monthly invoices:", error);
-                alert(`Failed to generate monthly invoices: ${error.message || "Unknown error"}`);
-              }
-            }}
-          >
+          <Button variant="outline" onClick={() => router.push("/billing")}>
             <Calendar className="h-4 w-4 mr-2" />
-            Generate Monthly
+            Manage Subscriptions
           </Button>
           <Button
             onClick={() => {
@@ -652,6 +667,19 @@ export default function InvoicesPage() {
                 <SelectItem value="cancelled">Cancelled</SelectItem>
               </SelectContent>
             </Select>
+            <Select
+              value={typeFilter}
+              onValueChange={setTypeFilter}
+            >
+              <SelectTrigger className="w-[200px]">
+                <SelectValue placeholder="Filter by type" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Invoices</SelectItem>
+                <SelectItem value="subscription">Subscription</SelectItem>
+                <SelectItem value="regular">Regular</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
           {loading ? (
@@ -715,7 +743,16 @@ export default function InvoicesPage() {
                           />
                         </TableCell>
                         <TableCell className="font-medium">
-                          {invoice.invoiceNumber}
+                          <div className="flex items-center gap-2">
+                            <span>{invoice.invoiceNumber}</span>
+                            {(invoice.metadata?.type === "subscription_billing" ||
+                              invoice.metadata?.servicePlanId ||
+                              invoice.planId) && (
+                              <Badge variant="outline" className="text-xs">
+                                Subscription
+                              </Badge>
+                            )}
+                          </div>
                         </TableCell>
                         <TableCell>{invoice.client?.name || "N/A"}</TableCell>
                         <TableCell>{invoice.pool?.name || "N/A"}</TableCell>
@@ -765,7 +802,7 @@ export default function InvoicesPage() {
                                 <Button
                                   variant="ghost"
                                   size="sm"
-                                  onClick={() => handleSend(invoice.id)}
+                                  onClick={() => handleSendClick(invoice.id)}
                                   title="Send invoice"
                                   className="text-blue-600"
                                 >
@@ -978,9 +1015,34 @@ export default function InvoicesPage() {
                 Create Invoice
               </Button>
             </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-    </div>
-  );
-}
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Send Invoice Dialog */}
+        <Dialog open={isSendDialogOpen} onOpenChange={setIsSendDialogOpen}>
+          <DialogContent className="sm:max-w-md [&>button]:hidden">
+            <div className="p-6">
+              <p className="text-gray-900 text-center mb-6 text-lg">
+                Send this invoice to the client?
+              </p>
+              <div className="flex justify-end gap-3">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setIsSendDialogOpen(false);
+                    setInvoiceToSend(null);
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button onClick={handleSend}>
+                  OK
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+      </div>
+    );
+  }

@@ -1,8 +1,10 @@
-import { Injectable, NotFoundException, ForbiddenException } from "@nestjs/common";
+import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { prisma } from "@poolcare/db";
 import * as MinIO from "minio";
 import { v4 as uuidv4 } from "uuid";
+import * as fs from "fs";
+import * as path from "path";
 
 @Injectable()
 export class FilesService {
@@ -10,6 +12,7 @@ export class FilesService {
   private bucket: string;
 
   constructor(private readonly configService: ConfigService) {
+    // Use localhost for internal API connections
     this.minioClient = new MinIO.Client({
       endPoint: this.configService.get<string>("MINIO_ENDPOINT") || "localhost",
       port: parseInt(this.configService.get<string>("MINIO_PORT") || "9000"),
@@ -19,6 +22,25 @@ export class FilesService {
     });
 
     this.bucket = this.configService.get<string>("MINIO_BUCKET") || "poolcare";
+  }
+
+  private getNetworkIp(): string {
+    // Get the network IP from environment or extract from API URL
+    const networkIp = this.configService.get<string>("NETWORK_IP");
+    if (networkIp) return networkIp;
+    
+    const apiUrl = this.configService.get<string>("EXPO_PUBLIC_API_URL") || process.env.EXPO_PUBLIC_API_URL;
+    if (apiUrl) {
+      try {
+        const url = new URL(apiUrl);
+        return url.hostname;
+      } catch {
+        // If URL parsing fails, try to extract IP
+        const match = apiUrl.match(/(\d+\.\d+\.\d+\.\d+)/);
+        if (match) return match[1];
+      }
+    }
+    return "172.20.10.2"; // Default network IP
   }
 
   async presign(orgId: string, dto: {
@@ -45,24 +67,104 @@ export class FilesService {
     const ext = dto.fileName?.split(".").pop() || dto.contentType.split("/")[1];
     const key = `org/${orgId}/${dto.scope}/${dto.refId}/${fileId}.${ext}`;
 
-    // Generate presigned POST URL
-    const policy = new MinIO.PostPolicy();
-    policy.setBucket(this.bucket);
-    policy.setKey(key);
-    policy.setContentType(dto.contentType);
-    if (dto.sizeBytes) {
-      policy.setContentLengthRange(0, dto.sizeBytes);
+    // Generate presigned PUT URL (simpler for mobile apps)
+    try {
+      // Check if bucket exists, create if not (development only)
+      let bucketExists = false;
+      try {
+        bucketExists = await this.minioClient.bucketExists(this.bucket);
+      } catch (bucketCheckError: any) {
+        console.error("Error checking bucket existence:", bucketCheckError);
+        throw new BadRequestException(
+          `Cannot connect to MinIO. Error: ${bucketCheckError.message || "Connection failed"}. Please ensure MinIO is running on ${this.configService.get<string>("MINIO_ENDPOINT") || "localhost"}:${this.configService.get<string>("MINIO_PORT") || "9000"}`
+        );
+      }
+
+      if (!bucketExists) {
+        console.warn(`Bucket ${this.bucket} does not exist. Creating...`);
+        try {
+          await this.minioClient.makeBucket(this.bucket, "us-east-1");
+          console.log(`Bucket ${this.bucket} created successfully`);
+        } catch (bucketCreateError: any) {
+          console.error("Error creating bucket:", bucketCreateError);
+          throw new BadRequestException(
+            `Failed to create bucket: ${bucketCreateError.message || "Unknown error"}`
+          );
+        }
+      }
+
+      // Generate presigned URL - MinIO will generate it for localhost
+      // We need to create a custom presigned URL with the network IP
+      const networkIp = this.getNetworkIp();
+      const minioPort = this.configService.get<string>("MINIO_PORT") || "9000";
+      
+      // Generate presigned URL with network IP in the request
+      // We'll manually construct the URL with proper signature
+      const expiry = 10 * 60; // 10 minutes
+      
+      // Use presignedPutObject which generates the URL
+      // Then we need to replace the hostname while preserving query params
+      const uploadUrl = await this.minioClient.presignedPutObject(
+        this.bucket,
+        key,
+        expiry
+      );
+      
+      // Parse the URL to replace hostname while keeping query parameters intact
+      try {
+        const url = new URL(uploadUrl);
+        url.hostname = networkIp;
+        const mobileUploadUrl = url.toString();
+        
+        console.log("Generated presigned URL for network IP:", mobileUploadUrl.substring(0, 150) + "...");
+        
+        return {
+          uploadUrl: mobileUploadUrl,
+          key,
+          method: "PUT",
+        };
+      } catch (urlError) {
+        // Fallback: simple string replacement if URL parsing fails
+        console.warn("URL parsing failed, using string replacement:", urlError);
+        const mobileUploadUrl = uploadUrl
+          .replace(/http:\/\/localhost:/g, `http://${networkIp}:`)
+          .replace(/http:\/\/127\.0\.0\.1:/g, `http://${networkIp}:`);
+        
+        return {
+          uploadUrl: mobileUploadUrl,
+          key,
+          method: "PUT",
+        };
+      }
+    } catch (error: any) {
+      console.error("MinIO presign error:", {
+        message: error.message,
+        code: error.code,
+        stack: error.stack,
+        endpoint: this.configService.get<string>("MINIO_ENDPOINT") || "localhost",
+        port: this.configService.get<string>("MINIO_PORT") || "9000",
+        bucket: this.bucket,
+      });
+      
+      const errorMessage = error.message || "Unknown error";
+      
+      // Provide helpful error message
+      if (errorMessage.includes("ECONNREFUSED") || errorMessage.includes("connect") || error.code === "ECONNREFUSED") {
+        throw new BadRequestException(
+          `Cannot connect to MinIO storage at ${this.configService.get<string>("MINIO_ENDPOINT") || "localhost"}:${this.configService.get<string>("MINIO_PORT") || "9000"}. Please ensure MinIO is running.`
+        );
+      }
+      
+      if (error.code === "ENOTFOUND" || errorMessage.includes("getaddrinfo")) {
+        throw new BadRequestException(
+          `Cannot resolve MinIO hostname: ${this.configService.get<string>("MINIO_ENDPOINT") || "localhost"}. Please check your MINIO_ENDPOINT configuration.`
+        );
+      }
+      
+      throw new BadRequestException(
+        `Failed to generate upload URL: ${errorMessage}${error.code ? ` (code: ${error.code})` : ""}`
+      );
     }
-    policy.setExpires(new Date(Date.now() + 10 * 60 * 1000)); // 10 min
-
-    const formData = await this.minioClient.presignedPostPolicy(policy);
-
-    return {
-      url: `${this.configService.get<string>("MINIO_ENDPOINT")}:${this.configService.get<string>("MINIO_PORT")}/${this.bucket}`,
-      method: "POST",
-      fields: formData,
-      key,
-    };
   }
 
   async commit(orgId: string, dto: { key: string; scope: string; refId: string }) {
@@ -88,6 +190,37 @@ export class FilesService {
     // await this.queue.processFile(file.id);
 
     return file;
+  }
+
+  async list(orgId: string, scope?: string, refId?: string, limit: number = 100) {
+    const files = await prisma.fileObject.findMany({
+      where: {
+        orgId,
+        scope: scope || undefined,
+        refId: refId || undefined,
+        deletedAt: null,
+      },
+      orderBy: { uploadedAt: "desc" },
+      take: limit,
+    });
+
+    return files.map((f) => ({
+      id: f.id,
+      scope: f.scope,
+      refId: f.refId,
+      url: this.getPublicUrl(f.storageKey),
+      contentType: f.contentType,
+      sizeBytes: f.sizeBytes,
+      uploadedAt: f.uploadedAt,
+    }));
+  }
+
+  private getPublicUrl(key: string): string {
+    const endpoint = this.configService.get<string>("MINIO_PUBLIC_ENDPOINT") || this.configService.get<string>("MINIO_ENDPOINT") || "localhost";
+    const port = this.configService.get<string>("MINIO_PORT") || "9000";
+    const useSSL = this.configService.get<string>("MINIO_USE_SSL") === "true";
+    const protocol = useSSL ? "https" : "http";
+    return `${protocol}://${endpoint}:${port}/${this.bucket}/${key}`;
   }
 
   async sign(orgId: string, role: string, userId: string, dto: {
@@ -164,6 +297,123 @@ export class FilesService {
     });
 
     return { success: true };
+  }
+
+  async uploadImage(orgId: string, file: Express.Multer.File, scope: string, refId: string): Promise<string> {
+    try {
+      // Validate file type
+      const allowedTypes = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+      if (!allowedTypes.includes(file.mimetype)) {
+        throw new BadRequestException(`File type ${file.mimetype} not allowed. Allowed types: ${allowedTypes.join(", ")}`);
+      }
+
+      // Validate file size (max 5MB)
+      const maxSize = 5 * 1024 * 1024; // 5MB
+      if (file.size > maxSize) {
+        throw new BadRequestException(`File size ${file.size} exceeds maximum allowed size of ${maxSize} bytes`);
+      }
+
+      // Generate storage key
+      const fileId = uuidv4();
+      const ext = file.originalname.split(".").pop() || file.mimetype.split("/")[1];
+      const key = `org/${orgId}/${scope}/${refId}/${fileId}.${ext}`;
+
+      try {
+        // Ensure bucket exists
+        const bucketExists = await this.minioClient.bucketExists(this.bucket);
+        if (!bucketExists) {
+          await this.minioClient.makeBucket(this.bucket);
+        }
+
+        // Upload to MinIO
+        await this.minioClient.putObject(this.bucket, key, file.buffer, file.size, {
+          "Content-Type": file.mimetype,
+        });
+
+        // Create file record
+        const fileRecord = await prisma.fileObject.create({
+          data: {
+            orgId,
+            scope,
+            refId,
+            storageKey: key,
+            storageBucket: this.bucket,
+            contentType: file.mimetype,
+            sizeBytes: file.size,
+          },
+        });
+
+        // Return signed URL (valid for 7 days - Max allowed by MinIO)
+        const url = await this.minioClient.presignedGetObject(this.bucket, key, 7 * 24 * 60 * 60);
+
+        return url;
+      } catch (minioError: any) {
+        // Fallback to local storage if MinIO is not available
+        if (minioError.code === "ECONNREFUSED" || minioError.message?.includes("connect") || minioError.code === "ENOTFOUND") {
+          console.warn("MinIO not available, using local file storage fallback");
+          return this.uploadImageLocal(orgId, file, scope, refId, fileId, ext);
+        }
+        throw minioError;
+      }
+    } catch (error: any) {
+      console.error("MinIO upload error:", error);
+      console.error("Error details:", {
+        code: error.code,
+        message: error.message,
+        stack: error.stack,
+      });
+      
+      // Provide more specific error messages
+      if (error.code === "ECONNREFUSED" || error.message?.includes("connect") || error.message?.includes("ECONNREFUSED") || error.code === "ENOTFOUND") {
+        throw new BadRequestException(
+          "Cannot connect to storage server (MinIO). " +
+          "Please ensure MinIO is running on localhost:9000 or configure MINIO_ENDPOINT in your environment variables. " +
+          "You can start MinIO with: docker run -p 9000:9000 -p 9001:9001 minio/minio server /data --console-address ':9001'"
+        );
+      }
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      const errorMsg = error.message || error.toString();
+      throw new BadRequestException(`Failed to upload image: ${errorMsg}`);
+    }
+  }
+
+  private async uploadImageLocal(
+    orgId: string,
+    file: Express.Multer.File,
+    scope: string,
+    refId: string,
+    fileId: string,
+    ext: string
+  ): Promise<string> {
+    // Create uploads directory if it doesn't exist
+    const uploadsDir = path.join(process.cwd(), "uploads", "carers");
+    if (!fs.existsSync(uploadsDir)) {
+      fs.mkdirSync(uploadsDir, { recursive: true });
+    }
+
+    // Save file locally
+    const fileName = `${fileId}.${ext}`;
+    const filePath = path.join(uploadsDir, fileName);
+    fs.writeFileSync(filePath, file.buffer);
+
+    // Create file record with local path
+    await prisma.fileObject.create({
+      data: {
+        orgId,
+        scope,
+        refId,
+        storageKey: `local/${fileName}`,
+        storageBucket: "local",
+        contentType: file.mimetype,
+        sizeBytes: file.size,
+      },
+    });
+
+    // Return a URL that the API can serve
+    const baseUrl = this.configService.get<string>("NEXT_PUBLIC_APP_URL") || "http://localhost:4000";
+    return `${baseUrl}/api/files/local/${fileName}`;
   }
 }
 

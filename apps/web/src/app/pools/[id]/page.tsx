@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -20,6 +20,9 @@ import {
   Users,
   DollarSign,
   Activity,
+  ChevronLeft,
+  ChevronRight,
+  Receipt,
 } from "lucide-react";
 import {
   Dialog,
@@ -43,6 +46,7 @@ interface Pool {
   id: string;
   name?: string;
   address?: string;
+  imageUrls?: string[];
   lat?: number;
   lng?: number;
   volumeL?: number;
@@ -106,12 +110,40 @@ export default function PoolDetailPage() {
     surfaceType: "",
     notes: "",
   });
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const [touchStart, setTouchStart] = useState<number | null>(null);
+  const [touchEnd, setTouchEnd] = useState<number | null>(null);
+  const leftColumnRef = useRef<HTMLDivElement>(null);
+  const [rightColumnHeight, setRightColumnHeight] = useState<number | undefined>(undefined);
 
   useEffect(() => {
     if (poolId) {
       fetchPoolData();
     }
   }, [poolId]);
+
+  useEffect(() => {
+    // Update right column height when left column height changes
+    const updateHeight = () => {
+      if (leftColumnRef.current) {
+        setRightColumnHeight(leftColumnRef.current.offsetHeight);
+      }
+    };
+
+    updateHeight();
+    window.addEventListener('resize', updateHeight);
+    
+    // Use ResizeObserver for more accurate height tracking
+    const resizeObserver = new ResizeObserver(updateHeight);
+    if (leftColumnRef.current) {
+      resizeObserver.observe(leftColumnRef.current);
+    }
+
+    return () => {
+      window.removeEventListener('resize', updateHeight);
+      resizeObserver.disconnect();
+    };
+  }, [pool, pool?.imageUrls]);
 
   const fetchPoolData = async () => {
     try {
@@ -136,6 +168,8 @@ export default function PoolDetailPage() {
           surfaceType: poolData.surfaceType || "",
           notes: poolData.notes || "",
         });
+        // Reset image index when pool data changes
+        setCurrentImageIndex(0);
       }
 
       // Fetch service plans for this pool
@@ -291,10 +325,49 @@ export default function PoolDetailPage() {
             <p className="text-gray-600 mt-1">Pool details and service history</p>
           </div>
         </div>
-        <Button onClick={() => setIsEditDialogOpen(true)}>
-          <Edit className="h-4 w-4 mr-2" />
-          Edit Pool
-        </Button>
+        <div className="flex items-center gap-2">
+          {pool.client && (
+            <Button
+              variant="outline"
+              onClick={() => router.push(`/clients/${pool.client?.id}`)}
+            >
+              <Users className="h-4 w-4 mr-2" />
+              View Client
+            </Button>
+          )}
+          <Button
+            variant="outline"
+            onClick={() => router.push(`/plans?poolId=${poolId}`)}
+          >
+            <Calendar className="h-4 w-4 mr-2" />
+            Service Plans
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => router.push(`/visits?poolId=${poolId}`)}
+          >
+            <Activity className="h-4 w-4 mr-2" />
+            View Visits
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => router.push(`/quotes?poolId=${poolId}`)}
+          >
+            <FileText className="h-4 w-4 mr-2" />
+            View Quotes
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => router.push(`/invoices?poolId=${poolId}`)}
+          >
+            <Receipt className="h-4 w-4 mr-2" />
+            View Invoices
+          </Button>
+          <Button onClick={() => setIsEditDialogOpen(true)}>
+            <Edit className="h-4 w-4 mr-2" />
+            Edit Pool
+          </Button>
+        </div>
       </div>
 
       {/* Metrics Cards */}
@@ -355,7 +428,7 @@ export default function PoolDetailPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left Column - Pool Info */}
-        <div className="lg:col-span-1 space-y-6">
+        <div ref={leftColumnRef} className="lg:col-span-1 space-y-6">
           {/* Pool Information */}
           <Card>
             <CardHeader>
@@ -389,17 +462,6 @@ export default function PoolDetailPage() {
                   </div>
                 </div>
               )}
-              {pool.lat && pool.lng && (
-                <div className="flex items-start gap-3">
-                  <MapPin className="h-5 w-5 text-gray-400 mt-0.5" />
-                  <div>
-                    <p className="text-sm font-medium text-gray-900">Coordinates</p>
-                    <p className="text-sm text-gray-600">
-                      {pool.lat.toFixed(4)}, {pool.lng.toFixed(4)}
-                    </p>
-                  </div>
-                </div>
-              )}
               {pool.client && (
                 <div className="flex items-start gap-3">
                   <Users className="h-5 w-5 text-gray-400 mt-0.5" />
@@ -426,42 +488,132 @@ export default function PoolDetailPage() {
             </CardContent>
           </Card>
 
-          {/* Quick Actions */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Quick Actions</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              <Button
-                variant="outline"
-                className="w-full justify-start"
-                onClick={() => router.push(`/plans?poolId=${poolId}`)}
-              >
-                <Calendar className="h-4 w-4 mr-2" />
-                Create Service Plan
-              </Button>
-              <Button
-                variant="outline"
-                className="w-full justify-start"
-                onClick={() => router.push(`/issues?poolId=${poolId}`)}
-              >
-                <AlertCircle className="h-4 w-4 mr-2" />
-                Report Issue
-              </Button>
-              <Button
-                variant="outline"
-                className="w-full justify-start"
-                onClick={() => router.push(`/visits?poolId=${poolId}`)}
-              >
-                <Activity className="h-4 w-4 mr-2" />
-                View All Visits
-              </Button>
-            </CardContent>
-          </Card>
+          {/* Pool Images Gallery */}
+          {pool.imageUrls && pool.imageUrls.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Pool Images</CardTitle>
+                {pool.imageUrls.length > 1 && (
+                  <CardDescription>
+                    {currentImageIndex + 1} of {pool.imageUrls.length}
+                  </CardDescription>
+                )}
+              </CardHeader>
+              <CardContent>
+                <div className="relative">
+                  <div
+                    className="relative overflow-hidden rounded-lg"
+                    onTouchStart={(e) => setTouchStart(e.targetTouches[0].clientX)}
+                    onTouchMove={(e) => setTouchEnd(e.targetTouches[0].clientX)}
+                    onTouchEnd={() => {
+                      if (!touchStart || !touchEnd) return;
+                      const distance = touchStart - touchEnd;
+                      const isLeftSwipe = distance > 50;
+                      const isRightSwipe = distance < -50;
+                      
+                      if (isLeftSwipe && currentImageIndex < pool.imageUrls!.length - 1) {
+                        setCurrentImageIndex(currentImageIndex + 1);
+                      }
+                      if (isRightSwipe && currentImageIndex > 0) {
+                        setCurrentImageIndex(currentImageIndex - 1);
+                      }
+                      setTouchStart(null);
+                      setTouchEnd(null);
+                    }}
+                  >
+                    <div
+                      className="flex transition-transform duration-300 ease-in-out"
+                      style={{
+                        transform: `translateX(-${currentImageIndex * 100}%)`,
+                      }}
+                    >
+                      {pool.imageUrls.map((imageUrl, index) => (
+                        <div
+                          key={index}
+                          className="min-w-full flex-shrink-0"
+                        >
+                          <img
+                            src={imageUrl}
+                            alt={`Pool image ${index + 1}`}
+                            className="w-full h-64 object-cover rounded-lg border-2 border-gray-200 cursor-pointer"
+                            onClick={() => {
+                              window.open(imageUrl, '_blank');
+                            }}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Navigation Arrows */}
+                  {pool.imageUrls.length > 1 && (
+                    <>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="absolute left-2 top-1/2 -translate-y-1/2 bg-white/80 hover:bg-white shadow-lg"
+                        onClick={() => {
+                          setCurrentImageIndex(
+                            currentImageIndex > 0
+                              ? currentImageIndex - 1
+                              : pool.imageUrls!.length - 1
+                          );
+                        }}
+                        disabled={pool.imageUrls.length <= 1}
+                      >
+                        <ChevronLeft className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="absolute right-2 top-1/2 -translate-y-1/2 bg-white/80 hover:bg-white shadow-lg"
+                        onClick={() => {
+                          setCurrentImageIndex(
+                            currentImageIndex < pool.imageUrls!.length - 1
+                              ? currentImageIndex + 1
+                              : 0
+                          );
+                        }}
+                        disabled={pool.imageUrls.length <= 1}
+                      >
+                        <ChevronRight className="h-4 w-4" />
+                      </Button>
+                    </>
+                  )}
+
+                  {/* Dots Indicator */}
+                  {pool.imageUrls.length > 1 && (
+                    <div className="flex justify-center gap-2 mt-4">
+                      {pool.imageUrls.map((_, index) => (
+                        <button
+                          key={index}
+                          className={`h-2 rounded-full transition-all ${
+                            index === currentImageIndex
+                              ? "w-8 bg-orange-500"
+                              : "w-2 bg-gray-300"
+                          }`}
+                          onClick={() => setCurrentImageIndex(index)}
+                          aria-label={`Go to image ${index + 1}`}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
         </div>
 
         {/* Right Column - Service Plans, Visits, Issues */}
-        <div className="lg:col-span-2 space-y-6 max-h-[calc(100vh-200px)] overflow-y-auto pr-2">
+        <div 
+          className="lg:col-span-2 space-y-6 pr-2" 
+          style={{ 
+            maxHeight: rightColumnHeight ? `${rightColumnHeight}px` : '100%',
+            overflowY: 'auto',
+            overflowX: 'hidden'
+          }}
+        >
           {/* Service Plans */}
           <Card>
             <CardHeader>

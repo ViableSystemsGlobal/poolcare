@@ -40,22 +40,42 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       console.log("🔍 Fetching user info with token:", authToken);
       const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+      
+      // Add timeout to prevent hanging
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+      
       const response = await fetch(`${API_URL}/orgs/me`, {
         headers: {
           Authorization: `Bearer ${authToken}`,
         },
+        signal: controller.signal,
       });
+
+      clearTimeout(timeoutId);
 
       if (response.ok) {
         const data = await response.json();
         console.log("✅ User info fetched successfully:", data);
         setUser(data.user || null);
         setOrg(data.org || null);
+      } else if (response.status === 401) {
+        // Token is invalid
+        console.error("❌ Unauthorized - token invalid");
+        throw new Error("Unauthorized");
       } else {
         console.error("❌ Failed to fetch user info - HTTP", response.status);
         throw new Error(`Failed to fetch user info: ${response.status}`);
       }
-    } catch (error) {
+    } catch (error: any) {
+      if (error.name === 'AbortError') {
+        console.error("❌ Request timed out - API server may not be running");
+        throw new Error("API server not responding");
+      }
+      if (error.message?.includes("fetch") || error.message?.includes("Failed to fetch")) {
+        console.error("❌ Cannot connect to API server");
+        throw new Error("Cannot connect to API server");
+      }
       console.error("❌ Failed to fetch user info:", error);
       throw error;
     }
@@ -69,20 +89,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (storedToken) {
         setToken(storedToken);
         // Try to fetch user info
-        fetchUserInfo(storedToken).catch((error) => {
-          // If token is invalid, clear it
+        fetchUserInfo(storedToken)
+          .then(() => {
+            setLoading(false);
+          })
+          .catch((error) => {
+            // If token is invalid or API is down, clear it
           console.log("❌ Token validation failed, clearing auth:", error.message);
           localStorage.removeItem("auth_token");
           setToken(null);
           setUser(null);
           setOrg(null);
-        }).finally(() => {
           setLoading(false);
         });
       } else {
         console.log("ℹ️ No stored token found");
         setLoading(false);
       }
+    } else {
+      // Server-side: don't load
+      setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

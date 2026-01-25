@@ -35,6 +35,13 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { DashboardAICard } from "@/components/dashboard-ai-card";
 import { useTheme } from "@/contexts/theme-context";
 import { formatCurrencyForDisplay } from "@/lib/utils";
@@ -65,6 +72,7 @@ export default function CreditNotesPage() {
   const theme = getThemeClasses();
 
   const [creditNotes, setCreditNotes] = useState<CreditNote[]>([]);
+  const [invoices, setInvoices] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCreditNotes, setSelectedCreditNotes] = useState<Set<string>>(new Set());
@@ -80,6 +88,7 @@ export default function CreditNotesPage() {
 
   useEffect(() => {
     fetchCreditNotes();
+    fetchInvoices();
   }, []);
 
   const fetchCreditNotes = async () => {
@@ -99,6 +108,23 @@ export default function CreditNotesPage() {
       console.error("Failed to fetch credit notes:", error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchInvoices = async () => {
+    try {
+      const response = await fetch(`${API_URL}/invoices?status=sent&limit=100`, {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setInvoices(data.items || []);
+      }
+    } catch (error) {
+      console.error("Failed to fetch invoices:", error);
     }
   };
 
@@ -504,12 +530,26 @@ export default function CreditNotesPage() {
 
           <div className="space-y-4">
             <div>
-              <Label>Invoice ID *</Label>
-              <Input
+              <Label>Invoice *</Label>
+              <Select
                 value={formData.invoiceId}
-                onChange={(e) => setFormData({ ...formData, invoiceId: e.target.value })}
-                placeholder="Enter invoice ID"
-              />
+                onValueChange={(value) => setFormData({ ...formData, invoiceId: value })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select an invoice" />
+                </SelectTrigger>
+                <SelectContent>
+                  {invoices.length === 0 ? (
+                    <SelectItem value="" disabled>No invoices available</SelectItem>
+                  ) : (
+                    invoices.map((invoice) => (
+                      <SelectItem key={invoice.id} value={invoice.id}>
+                        {invoice.invoiceNumber} - {invoice.client?.name || "Unknown"} - {formatCurrencyForDisplay(invoice.currency)}{(invoice.balanceCents / 100).toFixed(2)} balance
+                      </SelectItem>
+                    ))
+                  )}
+                </SelectContent>
+              </Select>
             </div>
 
             <div>

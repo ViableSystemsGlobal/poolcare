@@ -47,15 +47,23 @@ class ApiClient {
       console.log("API Response:", response.status, response.statusText);
 
       if (!response.ok) {
-        if (response.status === 401) {
-          // Token expired or invalid
+        let errorData: any;
+        try {
+          errorData = await response.json();
+        } catch {
+          errorData = { message: response.statusText };
+        }
+        
+        // Only redirect to login if this is NOT an auth endpoint (OTP endpoints return 401 for invalid codes)
+        if (response.status === 401 && !url.includes("/auth/otp")) {
           localStorage.removeItem("auth_token");
           window.location.href = "/auth/login";
         }
-        const error = await response.json().catch(() => ({
-          message: response.statusText,
-        }));
-        throw new Error(error.message || `HTTP error! status: ${response.status}`);
+        
+        // Extract the actual error message
+        const errorMessage = errorData?.message || errorData?.error || response.statusText;
+        console.error("API Error Response:", { status: response.status, url, errorData });
+        throw new Error(errorMessage);
       }
 
       return response.json();
@@ -101,6 +109,14 @@ class ApiClient {
     }
 
     return result;
+  }
+
+  async checkOtpCode(channel: "phone" | "email", target: string) {
+    return this.request<{ exists: boolean; code: string | null; message: string }>("/auth/otp/check", {
+      method: "POST",
+      body: JSON.stringify({ channel, target }),
+      requireAuth: false,
+    });
   }
 
   // Dashboard

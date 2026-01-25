@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Plus, Search, AlertTriangle, Edit, Trash2, Eye, CheckCircle, XCircle, FileText, Download, Image } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
+import { useToast } from "@/hooks/use-toast";
 import {
   Table,
   TableBody,
@@ -75,6 +76,7 @@ interface Pool {
 
 export default function IssuesPage() {
   const router = useRouter();
+  const { toast } = useToast();
   const { getThemeClasses } = useTheme();
   const theme = getThemeClasses();
 
@@ -278,13 +280,26 @@ export default function IssuesPage() {
         setIsCreateDialogOpen(false);
         resetForm();
         await fetchIssues();
+        toast({
+          title: "Success",
+          description: "Issue created successfully",
+          variant: "success",
+        });
       } else {
         const error = await response.json();
-        alert(`Failed to create issue: ${error.error || "Unknown error"}`);
+        toast({
+          title: "Error",
+          description: error.error || "Failed to create issue",
+          variant: "destructive",
+        });
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Failed to create issue:", error);
-      alert("Failed to create issue");
+      toast({
+        title: "Error",
+        description: error.message || "Failed to create issue",
+        variant: "destructive",
+      });
     }
   };
 
@@ -317,13 +332,26 @@ export default function IssuesPage() {
         setEditingIssue(null);
         resetForm();
         await fetchIssues();
+        toast({
+          title: "Success",
+          description: "Issue updated successfully",
+          variant: "success",
+        });
       } else {
         const error = await response.json();
-        alert(`Failed to update issue: ${error.error || "Unknown error"}`);
+        toast({
+          title: "Error",
+          description: error.error || "Failed to update issue",
+          variant: "destructive",
+        });
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Failed to update issue:", error);
-      alert("Failed to update issue");
+      toast({
+        title: "Error",
+        description: error.message || "Failed to update issue",
+        variant: "destructive",
+      });
     }
   };
 

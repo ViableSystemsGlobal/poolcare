@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -88,6 +89,7 @@ interface Issue {
 export default function QuotesPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { toast } = useToast();
   const { getThemeClasses } = useTheme();
   const theme = getThemeClasses();
 
@@ -100,6 +102,7 @@ export default function QuotesPage() {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [selectedQuotes, setSelectedQuotes] = useState<Set<string>>(new Set());
   const [editingQuote, setEditingQuote] = useState<Quote | null>(null);
+  const [quoteToApprove, setQuoteToApprove] = useState<string | null>(null);
 
   // Metrics state
   const [metrics, setMetrics] = useState({
@@ -309,7 +312,11 @@ export default function QuotesPage() {
       const filteredItems = formData.items.filter((item) => item.label.trim() !== "");
       
       if (filteredItems.length === 0) {
-        alert("Please add at least one item to the quote");
+        toast({
+          title: "Validation Error",
+          description: "Please add at least one item to the quote",
+          variant: "destructive",
+        });
         return;
       }
 
@@ -350,20 +357,32 @@ export default function QuotesPage() {
           const text = await response.text();
           errorMessage = text || `HTTP ${response.status}: ${response.statusText}`;
         }
-        alert(`Failed to create quote: ${errorMessage}`);
+        toast({
+          title: "Error",
+          description: `Failed to create quote: ${errorMessage}`,
+          variant: "destructive",
+        });
       }
     } catch (error: any) {
       console.error("Failed to create quote:", error);
-      alert(`Failed to create quote: ${error.message || "Unknown error"}`);
+      toast({
+        title: "Error",
+        description: `Failed to create quote: ${error.message || "Unknown error"}`,
+        variant: "destructive",
+      });
     }
   };
 
   const handleApprove = async (quoteId: string) => {
-    if (!confirm("Approve this quote? This will mark it as approved.")) return;
+    setQuoteToApprove(quoteId);
+  };
+
+  const confirmApprove = async () => {
+    if (!quoteToApprove) return;
 
     try {
       const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
-      const response = await fetch(`${API_URL}/quotes/${quoteId}/approve`, {
+      const response = await fetch(`${API_URL}/quotes/${quoteToApprove}/approve`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -372,14 +391,28 @@ export default function QuotesPage() {
       });
 
       if (response.ok) {
+        setQuoteToApprove(null);
         await fetchQuotes();
+        toast({
+          title: "Success",
+          description: "Quote approved successfully! A job has been automatically created.",
+          variant: "success",
+        });
       } else {
         const error = await response.json();
-        alert(`Failed to approve quote: ${error.error || "Unknown error"}`);
+        toast({
+          title: "Error",
+          description: `Failed to approve quote: ${error.error || "Unknown error"}`,
+          variant: "destructive",
+        });
       }
     } catch (error) {
       console.error("Failed to approve quote:", error);
-      alert("Failed to approve quote");
+      toast({
+        title: "Error",
+        description: "Failed to approve quote",
+        variant: "destructive",
+      });
     }
   };
 
@@ -400,13 +433,26 @@ export default function QuotesPage() {
 
       if (response.ok) {
         await fetchQuotes();
+        toast({
+          title: "Success",
+          description: "Quote rejected successfully",
+          variant: "success",
+        });
       } else {
         const error = await response.json();
-        alert(`Failed to reject quote: ${error.error || "Unknown error"}`);
+        toast({
+          title: "Error",
+          description: `Failed to reject quote: ${error.error || "Unknown error"}`,
+          variant: "destructive",
+        });
       }
     } catch (error) {
       console.error("Failed to reject quote:", error);
-      alert("Failed to reject quote");
+      toast({
+        title: "Error",
+        description: "Failed to reject quote",
+        variant: "destructive",
+      });
     }
   };
 
@@ -948,6 +994,33 @@ export default function QuotesPage() {
               </Button>
               <Button onClick={handleCreate} disabled={!formData.poolId || formData.items.every((item) => !item.label.trim())}>
                 Create Quote
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Approve Quote Dialog */}
+      <Dialog open={quoteToApprove !== null} onOpenChange={(open) => !open && setQuoteToApprove(null)}>
+        <DialogContent className="bg-white text-black border-0 shadow-lg p-6">
+          <div className="space-y-4">
+            <DialogTitle className="text-lg font-semibold text-black">Approve Quote</DialogTitle>
+            <DialogDescription className="text-sm text-gray-700">
+              Approve this quote? This will mark it as approved and automatically create a repair job.
+            </DialogDescription>
+            <div className="flex justify-end gap-2 mt-6">
+              <Button
+                variant="outline"
+                onClick={() => setQuoteToApprove(null)}
+                className="text-black border-gray-300"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={confirmApprove}
+                className="bg-cyan-600 hover:bg-cyan-700 text-white"
+              >
+                Approve
               </Button>
             </div>
           </div>

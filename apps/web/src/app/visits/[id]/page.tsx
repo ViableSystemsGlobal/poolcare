@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, type ChangeEvent } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -41,6 +41,7 @@ import {
 import { useTheme } from "@/contexts/theme-context";
 import { SkeletonMetricCard } from "@/components/ui/skeleton";
 import { FileAttachments } from "@/components/files/file-attachments";
+import { useToast } from "@/hooks/use-toast";
 
 interface Reading {
   id: string;
@@ -109,6 +110,8 @@ interface Visit {
       id: string;
       name?: string;
       phone?: string;
+      ratePerVisitCents?: number;
+      currency?: string;
     };
   };
   readings?: Reading[];
@@ -121,6 +124,7 @@ export default function VisitDetailPage() {
   const router = useRouter();
   const { getThemeClasses } = useTheme();
   const theme = getThemeClasses();
+  const { toast } = useToast();
   const visitId = params.id as string;
 
   const [loading, setLoading] = useState(true);
@@ -133,6 +137,24 @@ export default function VisitDetailPage() {
       fetchVisit();
     }
   }, [visitId]);
+
+  // Recalculate payment amount when dialog opens
+  useEffect(() => {
+    if (isApproveDialogOpen && visit) {
+      // Set default payment amount: saved amount > carer rate > plan price
+      if (visit.paymentAmountCents) {
+        setPaymentAmount((visit.paymentAmountCents / 100).toString());
+      } else if (visit.job?.assignedCarer?.ratePerVisitCents) {
+        const carerRate = (visit.job.assignedCarer.ratePerVisitCents / 100).toString();
+        setPaymentAmount(carerRate);
+        console.log("Prefilled payment amount from carer rate:", carerRate);
+      } else if (visit.job?.plan?.priceCents) {
+        setPaymentAmount((visit.job.plan.priceCents / 100).toString());
+      } else {
+        setPaymentAmount(""); // Clear if no default available
+      }
+    }
+  }, [isApproveDialogOpen, visit]);
 
   const fetchVisit = async () => {
     try {
@@ -148,9 +170,19 @@ export default function VisitDetailPage() {
       if (response.ok) {
         const data = await response.json();
         setVisit(data);
-        // Set default payment amount from service plan
-        if (data.job?.plan?.priceCents) {
+        // Set default payment amount: saved amount > carer rate > plan price
+        if (data.paymentAmountCents) {
+          setPaymentAmount((data.paymentAmountCents / 100).toString());
+        } else if (data.job?.assignedCarer?.ratePerVisitCents) {
+          setPaymentAmount((data.job.assignedCarer.ratePerVisitCents / 100).toString());
+        } else if (data.job?.plan?.priceCents) {
           setPaymentAmount((data.job.plan.priceCents / 100).toString());
+        }
+      } else {
+        const errorData = await response.json().catch(() => ({ message: "Failed to fetch visit" }));
+        console.error("Failed to fetch visit:", response.status, errorData);
+        if (response.status === 404) {
+          // Visit not found - this will be handled by the UI showing the error state
         }
       }
     } catch (error) {
@@ -161,14 +193,13 @@ export default function VisitDetailPage() {
   };
 
   const handleApprove = async () => {
-    if (!visit || !paymentAmount) {
-      alert("Payment amount is required");
+    if (!visit) {
       return;
     }
 
     try {
       const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
-      const paymentAmountCents = parseFloat(paymentAmount) * 100;
+      const paymentAmountCents = paymentAmount ? parseFloat(paymentAmount) * 100 : undefined;
 
       const response = await fetch(`${API_URL}/visits/${visitId}/approve`, {
         method: "POST",
@@ -184,14 +215,25 @@ export default function VisitDetailPage() {
       if (response.ok) {
         setIsApproveDialogOpen(false);
         await fetchVisit(); // Refresh visit data
-        alert("Visit approved for payment!");
+        toast({
+          title: "Visit approved",
+          description: "Visit has been approved for payment.",
+        });
       } else {
         const error = await response.json();
-        alert(`Failed to approve visit: ${error.error || "Unknown error"}`);
+        toast({
+          title: "Failed to approve",
+          description: error.error || "Unknown error",
+          variant: "destructive",
+        });
       }
     } catch (error) {
       console.error("Failed to approve visit:", error);
-      alert("Failed to approve visit");
+      toast({
+        title: "Failed to approve visit",
+        description: "Please try again.",
+        variant: "destructive",
+      });
     }
   };
 
@@ -342,7 +384,7 @@ export default function VisitDetailPage() {
                 <div>
                   <p className="text-sm font-medium text-gray-600">Payment Approved</p>
                   <p className="text-sm font-medium text-gray-900">
-                    {formatCurrency(visit.paymentAmountCents, visit.job?.plan?.currency || "USD")}
+                    {formatCurrency(visit.paymentAmountCents, visit.job?.assignedCarer?.currency || visit.job?.plan?.currency || "GHS")}
                   </p>
                   {visit.approvedAt && (
                     <p className="text-xs text-gray-500 mt-1">
@@ -645,26 +687,33 @@ export default function VisitDetailPage() {
           <DialogHeader>
             <DialogTitle>Approve Visit for Payment</DialogTitle>
             <DialogDescription>
-              Approve this completed visit and set the payment amount for the carer.
+              Approve this completed visit. Adjust the payment amount if needed.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="grid gap-2">
-              <Label htmlFor="payment-amount">Payment Amount</Label>
+              <Label htmlFor="payment-amount">Payment Amount (Optional - Adjust if needed)</Label>
               <Input
                 id="payment-amount"
                 type="number"
                 step="0.01"
                 min="0"
                 value={paymentAmount}
-                onChange={(e) => setPaymentAmount(e.target.value)}
+                onChange={(e: ChangeEvent<HTMLInputElement>) => setPaymentAmount(e.target.value)}
                 placeholder="0.00"
               />
-              {visit?.job?.plan && (
-                <p className="text-xs text-gray-500">
-                  Service plan rate: {formatCurrency(visit.job.plan.priceCents, visit.job.plan.currency)}
-                </p>
-              )}
+              <div className="space-y-1">
+                {visit?.job?.assignedCarer?.ratePerVisitCents && (
+                  <p className="text-xs text-gray-600">
+                    Carer rate: <span className="font-medium">{formatCurrency(visit.job.assignedCarer.ratePerVisitCents, visit.job.assignedCarer.currency || "GHS")}</span>
+                  </p>
+                )}
+                {visit?.job?.plan && (
+                  <p className="text-xs text-gray-500">
+                    Service plan rate: {formatCurrency(visit.job.plan.priceCents, visit.job.plan.currency || "GHS")}
+                  </p>
+                )}
+              </div>
             </div>
             <div className="flex justify-end gap-2 mt-4">
               <Button variant="outline" onClick={() => setIsApproveDialogOpen(false)}>
