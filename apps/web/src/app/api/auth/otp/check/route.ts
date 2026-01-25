@@ -3,10 +3,10 @@ import { NextRequest, NextResponse } from "next/server";
 // Proxy API route for OTP code check
 export async function POST(request: NextRequest) {
   try {
-    const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+    const backendApiUrl = process.env.BACKEND_API_URL || process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
     const body = await request.json();
     
-    const response = await fetch(`${API_URL}/auth/otp/check`, {
+    const response = await fetch(`${backendApiUrl}/auth/otp/check`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
