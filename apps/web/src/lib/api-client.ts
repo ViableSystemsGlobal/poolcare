@@ -1,24 +1,6 @@
-// Get API URL from environment, with fallback for localhost
-const getApiUrl = () => {
-  const envUrl = process.env.NEXT_PUBLIC_API_URL;
-  
-  // If no env var is set, default to localhost for local development
-  if (!envUrl) {
-    // In production (Render), warn if API URL is not set
-    if (typeof window !== "undefined" && window.location.hostname.includes("onrender.com")) {
-      console.error(
-        "⚠️ NEXT_PUBLIC_API_URL is not set! " +
-        "Please set it in Render environment variables to point to your API service. " +
-        "Example: https://your-api-service.onrender.com/api"
-      );
-    }
-    return "http://localhost:4000/api";
-  }
-  
-  return envUrl;
-};
-
-const API_URL = getApiUrl();
+// Get API URL from environment variable, with fallback for localhost
+// In production (Render), this MUST be set to your API service URL
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
 
 interface RequestOptions extends RequestInit {
   requireAuth?: boolean;
