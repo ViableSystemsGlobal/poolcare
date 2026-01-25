@@ -227,6 +227,11 @@ export class DispatchService {
             )
           : 0;
 
+        // Skip if distance calculation failed or returned 0
+        if (!distance || typeof distance === 'number') {
+          continue;
+        }
+
         // Check if job fits in time window (simplified check)
         const jobStart = new Date(job.windowStart);
         const estimatedArrival = new Date(currentTime.getTime() + distance.durationMin * 60 * 1000);

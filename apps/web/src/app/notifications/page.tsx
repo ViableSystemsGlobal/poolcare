@@ -243,21 +243,36 @@ export default function NotificationsPage() {
     }
   };
 
+  const handleRecommendationComplete = (id: string) => {
+    if (id === "resend-failed") {
+      handleBulkResend();
+    }
+  };
+
   const aiRecommendations = [
     {
+      id: "resend-failed",
       title: "Resend failed notifications",
       description: "Retry sending notifications that failed to deliver",
-      action: handleBulkResend,
+      priority: "high" as const,
+      completed: false,
+      action: "Resend",
     },
     {
+      id: "review-templates",
       title: "Review notification templates",
       description: "Check and optimize your notification message templates",
-      action: () => router.push("/notifications/templates"),
+      priority: "medium" as const,
+      completed: false,
+      href: "/notifications/templates",
     },
     {
+      id: "analyze-delivery",
       title: "Analyze delivery rates",
       description: "Review notification success rates by channel and type",
-      action: () => router.push("/analytics"),
+      priority: "low" as const,
+      completed: false,
+      href: "/analytics",
     },
   ];
 
@@ -287,7 +302,12 @@ export default function NotificationsPage() {
       {/* AI Recommendations */}
       <div className="grid grid-cols-3 gap-4">
         <div className="col-span-2">
-          <DashboardAICard recommendations={aiRecommendations} />
+          <DashboardAICard 
+            title="Notifications AI"
+            subtitle="Intelligent recommendations"
+            recommendations={aiRecommendations}
+            onRecommendationComplete={handleRecommendationComplete}
+          />
         </div>
 
         {/* Metrics */}

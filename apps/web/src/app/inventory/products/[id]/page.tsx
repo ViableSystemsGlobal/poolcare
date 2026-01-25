@@ -400,7 +400,7 @@ export default function ProductDetailPage() {
               <CardTitle>Stock Levels</CardTitle>
               <CardDescription>
                 {product.stockItems && product.stockItems.length > 0
-                  ? `Showing ${(stockItemsPage - 1) * stockItemsPageSize + 1} - ${Math.min(stockItemsPage * stockItemsPageSize, product.stockItems.length)} of ${product.stockItems.length} warehouses`
+                  ? `Showing ${(stockItemsPage - 1) * stockItemsPageSize + 1} - ${Math.min(stockItemsPage * stockItemsPageSize, product.stockItems?.length || 0)} of ${product.stockItems?.length || 0} warehouses`
                   : "Current inventory across all warehouses"}
               </CardDescription>
             </CardHeader>
@@ -444,7 +444,7 @@ export default function ProductDetailPage() {
                     </TableBody>
                   </Table>
                   {/* Always show pagination controls when there are stock items */}
-                  {product.stockItems.length > 0 && (
+                  {(product.stockItems?.length || 0) > 0 && (
                     <div className="border-t px-4 py-4 mt-4">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
@@ -481,10 +481,10 @@ export default function ProductDetailPage() {
                           </Button>
                           <div className="flex items-center gap-1">
                             {Array.from(
-                              { length: Math.min(5, Math.ceil(product.stockItems.length / stockItemsPageSize)) },
+                              { length: Math.min(5, Math.ceil((product.stockItems?.length || 0) / stockItemsPageSize)) },
                               (_, i) => {
                                 let pageNum: number;
-                                const totalPages = Math.ceil(product.stockItems.length / stockItemsPageSize);
+                                const totalPages = Math.ceil((product.stockItems?.length || 0) / stockItemsPageSize);
                                 if (totalPages <= 5) {
                                   pageNum = i + 1;
                                 } else if (stockItemsPage <= 3) {
@@ -513,10 +513,10 @@ export default function ProductDetailPage() {
                             size="sm"
                             onClick={() =>
                               setStockItemsPage((p) =>
-                                Math.min(Math.ceil(product.stockItems.length / stockItemsPageSize), p + 1)
+                                Math.min(Math.ceil((product.stockItems?.length || 0) / stockItemsPageSize), p + 1)
                               )
                             }
-                            disabled={stockItemsPage >= Math.ceil(product.stockItems.length / stockItemsPageSize)}
+                            disabled={stockItemsPage >= Math.ceil((product.stockItems?.length || 0) / stockItemsPageSize)}
                           >
                             Next
                             <ChevronRight className="h-4 w-4" />

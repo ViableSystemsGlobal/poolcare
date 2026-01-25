@@ -125,7 +125,7 @@ export default function BillingPage() {
   };
 
   const formatCurrency = (cents: number, currency: string = "GHS") => {
-    return formatCurrencyForDisplay(cents, currency);
+    return `${formatCurrencyForDisplay(currency)}${(cents / 100).toFixed(2)}`;
   };
 
   const getStatusBadge = (status: string) => {

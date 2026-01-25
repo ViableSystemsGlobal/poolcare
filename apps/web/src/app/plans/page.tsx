@@ -105,7 +105,7 @@ export default function PlansPage() {
           taxPct: selectedTemplate.taxPct?.toString() || prev.taxPct,
           discountPct: selectedTemplate.discountPct?.toString() || prev.discountPct,
           serviceDurationMin: selectedTemplate.serviceDurationMin?.toString() || prev.serviceDurationMin,
-          visitTemplateId: selectedTemplate.visitTemplateId || prev.visitTemplateId,
+          templateId: selectedTemplate.templateId || prev.templateId,
           billingType: selectedTemplate.billingType || prev.billingType,
           autoRenew: false, // Default to false, user can override
         }));
@@ -1019,7 +1019,7 @@ export default function PlansPage() {
                         )}
                       </TableCell>
                       <TableCell>
-                        {formatCurrencyForDisplay(plan.priceCents || 0, plan.currency || "GHS")}
+                        {formatCurrencyForDisplay(plan.currency || "GHS")}{(plan.priceCents || 0) / 100}
                       </TableCell>
                       <TableCell>
                         <div className="text-sm">

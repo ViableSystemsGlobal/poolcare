@@ -564,7 +564,7 @@ export default function SubscriptionTemplatesPage() {
                       <TableCell className="capitalize">{template.frequency}</TableCell>
                       <TableCell className="capitalize">{template.billingType}</TableCell>
                       <TableCell>
-                        {formatCurrencyForDisplay(template.priceCents || 0, template.currency || "GHS")}
+                        {formatCurrencyForDisplay(template.currency || "GHS")}{((template.priceCents || 0) / 100).toFixed(2)}
                       </TableCell>
                       <TableCell>
                         {template.trialDays > 0 ? `${template.trialDays} days` : "None"}

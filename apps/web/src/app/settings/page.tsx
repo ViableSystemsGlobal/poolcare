@@ -1345,7 +1345,6 @@ export default function SettingsPage() {
                           ✓ Password is saved. Enter a new password to change it.
                         </p>
                       )}
-                      />
                       {smsSettings.password === "••••••••" && (
                         <p className="text-xs text-gray-500">
                           Password is saved. Click to enter a new password.

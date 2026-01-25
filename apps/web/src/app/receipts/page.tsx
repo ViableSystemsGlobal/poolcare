@@ -185,21 +185,36 @@ export default function ReceiptsPage() {
     alert("Bulk delete coming soon!");
   };
 
+  const handleRecommendationComplete = (id: string) => {
+    if (id === "export-receipts") {
+      handleBulkDownload();
+    }
+  };
+
   const aiRecommendations = [
     {
+      id: "monthly-summary",
       title: "Generate monthly receipt summary",
       description: "Create a summary report of all receipts for this month",
-      action: () => alert("Coming soon!"),
+      priority: "medium" as const,
+      completed: false,
+      action: "Generate",
     },
     {
+      id: "export-receipts",
       title: "Export receipts for accounting",
       description: "Download all receipts in CSV format for your accounting software",
-      action: () => handleBulkDownload(),
+      priority: "high" as const,
+      completed: false,
+      action: "Export",
     },
     {
+      id: "review-trends",
       title: "Review payment trends",
       description: "Analyze receipt trends to identify patterns in payment behavior",
-      action: () => router.push("/analytics"),
+      priority: "low" as const,
+      completed: false,
+      href: "/analytics",
     },
   ];
 
@@ -215,7 +230,12 @@ export default function ReceiptsPage() {
       {/* AI Recommendations */}
       <div className="grid grid-cols-3 gap-4">
         <div className="col-span-2">
-          <DashboardAICard recommendations={aiRecommendations} />
+          <DashboardAICard 
+            title="Receipts AI"
+            subtitle="Intelligent recommendations"
+            recommendations={aiRecommendations}
+            onRecommendationComplete={handleRecommendationComplete}
+          />
         </div>
 
         {/* Metrics */}

@@ -399,9 +399,10 @@ export default function PoolsPage() {
       if (response.ok) {
         fetchPools();
       } else {
+        const errorData = await response.json().catch(() => ({}));
         toast({
           title: "Error",
-          description: error.error || "Failed to delete pool",
+          description: errorData.error || "Failed to delete pool",
           variant: "destructive",
         });
       }
