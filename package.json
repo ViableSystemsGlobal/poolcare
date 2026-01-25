@@ -11,6 +11,7 @@
     "dev": "turbo run dev",
     "setup": "bash scripts/dev.sh",
     "build": "turbo run build",
+    "build:render": "turbo run build --filter=@poolcare/api --filter=@poolcare/web",
     "test": "turbo run test",
     "lint": "turbo run lint",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",

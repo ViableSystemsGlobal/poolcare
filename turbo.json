@@ -17,6 +17,14 @@
     "lint": {
       "outputs": []
     }
+  },
+  "tasks": {
+    "@poolcare/client#build": {
+      "cache": false
+    },
+    "@poolcare/carer#build": {
+      "cache": false
+    }
   }
 }
 

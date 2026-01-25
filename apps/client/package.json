@@ -8,7 +8,7 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "build": "eas build"
+    "build": "echo 'Skipping mobile app build on server - use EAS build for mobile apps' && exit 0"
   },
   "dependencies": {
     "@expo/metro-runtime": "~6.1.2",
