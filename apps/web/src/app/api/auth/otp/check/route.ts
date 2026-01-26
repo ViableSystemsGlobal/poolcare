@@ -5,14 +5,21 @@ export async function POST(request: NextRequest) {
   try {
     const backendApiUrl = process.env.BACKEND_API_URL || process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
     const body = await request.json();
+    const targetUrl = `${backendApiUrl}/auth/otp/check`;
     
-    const response = await fetch(`${backendApiUrl}/auth/otp/check`, {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
+    
+    const response = await fetch(targetUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
       body: JSON.stringify(body),
+      signal: controller.signal,
     });
+    
+    clearTimeout(timeoutId);
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({ message: response.statusText }));
@@ -23,6 +30,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(data);
   } catch (error: any) {
     console.error("OTP check proxy error:", error);
+    if (error.name === 'AbortError') {
+      return NextResponse.json(
+        { message: "Backend API request timed out." },
+        { status: 504 }
+      );
+    }
     return NextResponse.json(
       { message: error.message || "Failed to check OTP" },
       { status: 500 }
