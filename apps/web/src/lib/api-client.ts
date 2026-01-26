@@ -1,5 +1,3 @@
-// Get API URL from environment variable, with fallback for localhost
-// In production (Render), this MUST be set to your API service URL
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
 
 interface RequestOptions extends RequestInit {
@@ -82,22 +80,11 @@ class ApiClient {
   }
 
   // Auth endpoints
-  // These use Next.js API routes (proxies) which forward to the backend
   async requestOtp(channel: "phone" | "email", target: string) {
-    // Use relative URL to hit Next.js proxy route, which will forward to backend
-    const url = "/api/auth/otp/request";
-    return fetch(url, {
+    return this.request("/auth/otp/request", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
       body: JSON.stringify({ channel, target }),
-    }).then(async (response) => {
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ message: response.statusText }));
-        throw new Error(errorData?.message || response.statusText);
-      }
-      return response.json();
+      requireAuth: false,
     });
   }
 
@@ -106,26 +93,16 @@ class ApiClient {
     target: string,
     code: string
   ): Promise<{ token: string; user: any; org: any; role: string }> {
-    // Use relative URL to hit Next.js proxy route
-    const url = "/api/auth/otp/verify";
-    const result = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ channel, target, code }),
-    }).then(async (response) => {
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ message: response.statusText }));
-        throw new Error(errorData?.message || response.statusText);
-      }
-      return response.json();
-    }) as Promise<{
+    const result = await this.request<{
       token: string;
       user: any;
       org: any;
       role: string;
-    }>;
+    }>("/auth/otp/verify", {
+      method: "POST",
+      body: JSON.stringify({ channel, target, code }),
+      requireAuth: false,
+    });
 
     if (result.token) {
       localStorage.setItem("auth_token", result.token);
@@ -135,24 +112,7 @@ class ApiClient {
   }
 
   async checkOtpCode(channel: "phone" | "email", target: string) {
-    // Use relative URL to hit Next.js proxy route
-    const url = "/api/auth/otp/check";
-    return fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ channel, target }),
-    }).then(async (response) => {
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ message: response.statusText }));
-        throw new Error(errorData?.message || response.statusText);
-      }
-      return response.json();
-    }) as Promise<{ exists: boolean; code: string | null; message: string }>;
-    
-    // Old code using this.request - keeping for reference
-    /* return this.request<{ exists: boolean; code: string | null; message: string }>("/auth/otp/check", {
+    return this.request<{ exists: boolean; code: string | null; message: string }>("/auth/otp/check", {
       method: "POST",
       body: JSON.stringify({ channel, target }),
       requireAuth: false,

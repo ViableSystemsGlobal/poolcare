@@ -40,10 +40,10 @@ async function bootstrap() {
         }
         
         const allowedOrigins = [
-          process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000",
-          "http://localhost:3001",
-          "http://localhost:3000",
-          "http://localhost:3002",
+        process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000",
+        "http://localhost:3001",
+        "http://localhost:3000",
+        "http://localhost:3002",
         ];
         
         // Allow localhost and network IPs for development
@@ -56,22 +56,6 @@ async function bootstrap() {
           allowedOrigins.includes(origin)
         ) {
           return callback(null, true);
-        }
-        
-        // Allow Render.com domains (production)
-        if (
-          origin.includes(".onrender.com") ||
-          origin.includes("render.com")
-        ) {
-          return callback(null, true);
-        }
-        
-        // Allow custom domain if set via environment variable
-        if (process.env.ALLOWED_ORIGINS) {
-          const customOrigins = process.env.ALLOWED_ORIGINS.split(",").map(o => o.trim());
-          if (customOrigins.includes(origin)) {
-            return callback(null, true);
-          }
         }
         
         callback(new Error("Not allowed by CORS"));
