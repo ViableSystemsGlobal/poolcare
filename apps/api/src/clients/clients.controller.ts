@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Patch,
+  Delete,
   Param,
   Query,
   Body,
@@ -72,6 +73,16 @@ export class ClientsController {
     @Body() dto: UpdateClientDto
   ) {
     return this.clientsService.update(user.org_id, id, dto);
+  }
+
+  @Delete(":id")
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "MANAGER")
+  async delete(
+    @CurrentUser() user: { org_id: string },
+    @Param("id") id: string
+  ) {
+    return this.clientsService.delete(user.org_id, id);
   }
 
   @Post("upload-image")

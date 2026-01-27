@@ -251,6 +251,40 @@ export class ClientsService {
     return updated;
   }
 
+  async delete(orgId: string, clientId: string) {
+    const client = await prisma.client.findFirst({
+      where: {
+        id: clientId,
+        orgId,
+      },
+      include: {
+        pools: true,
+        household: true,
+      },
+    });
+
+    if (!client) {
+      throw new NotFoundException("Client not found");
+    }
+
+    // Check if client is primary of a household
+    if (client.household && client.household.primaryClientId === clientId) {
+      // Delete the household first (or reassign)
+      await prisma.household.delete({
+        where: { id: client.household.id },
+      });
+    }
+
+    // Delete the client
+    await prisma.client.delete({
+      where: { id: clientId },
+    });
+
+    this.logger.log(`Client ${clientId} deleted from org ${orgId}`);
+
+    return { message: "Client deleted successfully" };
+  }
+
   // =====================
   // HOUSEHOLD MANAGEMENT
   // =====================
