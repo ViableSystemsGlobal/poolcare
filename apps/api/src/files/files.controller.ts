@@ -70,15 +70,46 @@ export class FilesController {
     return this.filesService.delete(user.org_id, id);
   }
 
+  @Get("local/:scope/:fileName")
+  @Public()
+  async serveLocalFile(
+    @Param("scope") scope: string,
+    @Param("fileName") fileName: string,
+    @Res() res: Response
+  ) {
+    // Sanitize scope to prevent directory traversal
+    const safeScope = scope.replace(/[^a-zA-Z0-9_-]/g, "");
+    const safeFileName = fileName.replace(/[^a-zA-Z0-9._-]/g, "");
+    
+    const filePath = path.join(process.cwd(), "uploads", safeScope, safeFileName);
+    
+    if (!fs.existsSync(filePath)) {
+      // Also check legacy path without scope for backwards compatibility
+      const legacyPath = path.join(process.cwd(), "uploads", "carers", safeFileName);
+      if (fs.existsSync(legacyPath)) {
+        return this.sendFile(legacyPath, safeFileName, res);
+      }
+      return res.status(404).json({ error: "File not found" });
+    }
+
+    return this.sendFile(filePath, safeFileName, res);
+  }
+
+  // Legacy endpoint for backwards compatibility
   @Get("local/:fileName")
   @Public()
-  async serveLocalFile(@Param("fileName") fileName: string, @Res() res: Response) {
-    const filePath = path.join(process.cwd(), "uploads", "carers", fileName);
+  async serveLocalFileLegacy(@Param("fileName") fileName: string, @Res() res: Response) {
+    const safeFileName = fileName.replace(/[^a-zA-Z0-9._-]/g, "");
+    const filePath = path.join(process.cwd(), "uploads", "carers", safeFileName);
     
     if (!fs.existsSync(filePath)) {
       return res.status(404).json({ error: "File not found" });
     }
 
+    return this.sendFile(filePath, safeFileName, res);
+  }
+
+  private sendFile(filePath: string, fileName: string, res: Response) {
     // Determine content type from extension
     const ext = fileName.split(".").pop()?.toLowerCase();
     const contentTypeMap: { [key: string]: string } = {
@@ -87,10 +118,13 @@ export class FilesController {
       png: "image/png",
       webp: "image/webp",
       gif: "image/gif",
+      svg: "image/svg+xml",
+      ico: "image/x-icon",
     };
     const contentType = contentTypeMap[ext || ""] || "application/octet-stream";
 
     res.setHeader("Content-Type", contentType);
+    res.setHeader("Cache-Control", "public, max-age=31536000"); // Cache for 1 year
     res.sendFile(path.resolve(filePath));
   }
 }

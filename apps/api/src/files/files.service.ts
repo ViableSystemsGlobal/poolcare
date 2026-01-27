@@ -387,8 +387,8 @@ export class FilesService {
     fileId: string,
     ext: string
   ): Promise<string> {
-    // Create uploads directory if it doesn't exist
-    const uploadsDir = path.join(process.cwd(), "uploads", "carers");
+    // Create uploads directory based on scope
+    const uploadsDir = path.join(process.cwd(), "uploads", scope);
     if (!fs.existsSync(uploadsDir)) {
       fs.mkdirSync(uploadsDir, { recursive: true });
     }
@@ -404,7 +404,7 @@ export class FilesService {
         orgId,
         scope,
         refId,
-        storageKey: `local/${fileName}`,
+        storageKey: `local/${scope}/${fileName}`,
         storageBucket: "local",
         contentType: file.mimetype,
         sizeBytes: file.size,
@@ -412,8 +412,12 @@ export class FilesService {
     });
 
     // Return a URL that the API can serve
-    const baseUrl = this.configService.get<string>("NEXT_PUBLIC_APP_URL") || "http://localhost:4000";
-    return `${baseUrl}/api/files/local/${fileName}`;
+    // Use RENDER_EXTERNAL_URL for production, or construct from request
+    const baseUrl = this.configService.get<string>("RENDER_EXTERNAL_URL") 
+      || this.configService.get<string>("API_URL")
+      || this.configService.get<string>("NEXT_PUBLIC_APP_URL") 
+      || "http://localhost:4000";
+    return `${baseUrl}/api/files/local/${scope}/${fileName}`;
   }
 }
 
