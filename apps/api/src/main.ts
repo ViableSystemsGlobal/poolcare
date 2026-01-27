@@ -47,15 +47,19 @@ async function bootstrap() {
         // Add production domains
         process.env.PRODUCTION_WEB_URL,
         process.env.RENDER_EXTERNAL_URL,
+        // Explicit Render domains
+        "https://poolcare-web.onrender.com",
+        "https://poolcare.onrender.com",
         ].filter(Boolean);
         
-        // Allow localhost and network IPs for development
+        // Allow localhost, network IPs for development, and Render domains
         if (
           origin.includes("localhost") ||
           origin.startsWith("http://127.0.0.1:") ||
           origin.match(/^http:\/\/192\.168\.\d+\.\d+/) ||
           origin.match(/^http:\/\/172\.\d+\.\d+\.\d+/) ||
           origin.match(/^http:\/\/10\.\d+\.\d+\.\d+/) ||
+          origin.includes(".onrender.com") ||  // Allow all Render subdomains
           allowedOrigins.includes(origin)
         ) {
           return callback(null, true);
