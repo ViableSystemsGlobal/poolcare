@@ -4,6 +4,33 @@ import { createContext, useContext, useState, useEffect, ReactNode } from "react
 import { api } from "@/lib/api-client";
 import { useRouter } from "next/navigation";
 
+// Runtime API URL detection - same logic as api-client.ts
+function getApiUrl(): string {
+  if (process.env.NEXT_PUBLIC_API_URL) {
+    return process.env.NEXT_PUBLIC_API_URL;
+  }
+  
+  if (typeof window !== "undefined") {
+    const hostname = window.location.hostname;
+    
+    if (hostname.includes("onrender.com")) {
+      const apiHostname = hostname.replace("-web", "-api").replace("poolcare.onrender", "poolcare-api.onrender");
+      return `https://${apiHostname}/api`;
+    }
+    
+    const customApiUrl = localStorage.getItem("__poolcare_api_url");
+    if (customApiUrl) {
+      return customApiUrl;
+    }
+    
+    if (!hostname.includes("localhost") && !hostname.includes("127.0.0.1")) {
+      return `${window.location.origin}/api`;
+    }
+  }
+  
+  return "http://localhost:4000/api";
+}
+
 interface User {
   id: string;
   name?: string;
@@ -38,8 +65,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const fetchUserInfo = async (authToken: string) => {
     try {
-      console.log("🔍 Fetching user info with token:", authToken);
-      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+      const API_URL = getApiUrl();
+      console.log("🔍 Fetching user info with token:", authToken, "API_URL:", API_URL);
       
       // Add timeout to prevent hanging
       const controller = new AbortController();
@@ -68,13 +95,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         throw new Error(`Failed to fetch user info: ${response.status}`);
       }
     } catch (error: any) {
+      const API_URL = getApiUrl();
       if (error.name === 'AbortError') {
-        console.error("❌ Request timed out - API server may not be running");
-        throw new Error("API server not responding");
+        console.error("❌ Request timed out - API server may not be running at", API_URL);
+        throw new Error(`API server not responding at ${API_URL}`);
       }
       if (error.message?.includes("fetch") || error.message?.includes("Failed to fetch")) {
-        console.error("❌ Cannot connect to API server");
-        throw new Error("Cannot connect to API server");
+        console.error("❌ Cannot connect to API server at", API_URL);
+        throw new Error(`Cannot connect to API server at ${API_URL}`);
       }
       console.error("❌ Failed to fetch user info:", error);
       throw error;

@@ -1,4 +1,41 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+// Runtime API URL detection - works in both development and production
+function getApiUrl(): string {
+  // First check if explicitly set via environment variable (baked in at build time)
+  if (process.env.NEXT_PUBLIC_API_URL) {
+    return process.env.NEXT_PUBLIC_API_URL;
+  }
+  
+  // In browser, try to detect the API URL based on current location
+  if (typeof window !== "undefined") {
+    const hostname = window.location.hostname;
+    
+    // Production: if on Render or custom domain, use the API service URL
+    // Check for common production patterns
+    if (hostname.includes("onrender.com")) {
+      // Render deployment - API should be at a parallel service
+      // Convention: web is poolcare-web.onrender.com, api is poolcare-api.onrender.com
+      const apiHostname = hostname.replace("-web", "-api").replace("poolcare.onrender", "poolcare-api.onrender");
+      return `https://${apiHostname}/api`;
+    }
+    
+    // Check if there's a custom API URL in localStorage (for debugging/testing)
+    const customApiUrl = localStorage.getItem("__poolcare_api_url");
+    if (customApiUrl) {
+      return customApiUrl;
+    }
+    
+    // Production domain - assume API is at api subdomain or /api path
+    if (!hostname.includes("localhost") && !hostname.includes("127.0.0.1")) {
+      // Try same origin with /api prefix (useful if API is proxied)
+      return `${window.location.origin}/api`;
+    }
+  }
+  
+  // Default fallback for local development
+  return "http://localhost:4000/api";
+}
+
+const API_URL = getApiUrl();
 
 interface RequestOptions extends RequestInit {
   requireAuth?: boolean;
@@ -8,6 +45,11 @@ class ApiClient {
   private getAuthToken(): string | null {
     if (typeof window === "undefined") return null;
     return localStorage.getItem("auth_token");
+  }
+  
+  // Allow checking/changing API URL at runtime
+  getApiUrl(): string {
+    return API_URL;
   }
 
   private async request<T>(
@@ -68,12 +110,12 @@ class ApiClient {
 
       return response.json();
     } catch (error: any) {
-      console.error("API Request failed:", error);
+      console.error("API Request failed:", error, "API_URL:", API_URL);
       if (error.name === 'AbortError') {
-        throw new Error("Request timed out. Check if the API server is running on port 4000.");
+        throw new Error(`Request timed out. API URL: ${API_URL}`);
       }
       if (error.message?.includes("fetch") || error.message?.includes("Failed to fetch")) {
-        throw new Error("Cannot connect to API server. Make sure it's running on port 4000 and check CORS settings.");
+        throw new Error(`Cannot connect to API server at ${API_URL}. Check CORS settings and ensure the API service is running.`);
       }
       throw error;
     }
