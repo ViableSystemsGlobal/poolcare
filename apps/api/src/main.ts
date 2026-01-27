@@ -44,7 +44,10 @@ async function bootstrap() {
         "http://localhost:3001",
         "http://localhost:3000",
         "http://localhost:3002",
-        ];
+        // Add production domains
+        process.env.PRODUCTION_WEB_URL,
+        process.env.RENDER_EXTERNAL_URL,
+        ].filter(Boolean);
         
         // Allow localhost and network IPs for development
         if (
