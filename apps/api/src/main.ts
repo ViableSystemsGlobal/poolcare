@@ -50,9 +50,13 @@ async function bootstrap() {
         // Explicit Render domains
         "https://poolcare-web.onrender.com",
         "https://poolcare.onrender.com",
+        // Custom domains
+        "https://admin.poolcare.africa",
+        "https://poolcare.africa",
+        "https://www.poolcare.africa",
         ].filter(Boolean);
         
-        // Allow localhost, network IPs for development, and Render domains
+        // Allow localhost, network IPs for development, Render domains, and custom domains
         if (
           origin.includes("localhost") ||
           origin.startsWith("http://127.0.0.1:") ||
@@ -60,6 +64,7 @@ async function bootstrap() {
           origin.match(/^http:\/\/172\.\d+\.\d+\.\d+/) ||
           origin.match(/^http:\/\/10\.\d+\.\d+\.\d+/) ||
           origin.includes(".onrender.com") ||  // Allow all Render subdomains
+          origin.includes("poolcare.africa") ||  // Allow all poolcare.africa subdomains
           allowedOrigins.includes(origin)
         ) {
           return callback(null, true);
