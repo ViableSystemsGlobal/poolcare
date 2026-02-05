@@ -257,6 +257,7 @@ export default function NotificationsPage() {
       priority: "high" as const,
       completed: false,
       action: "Resend",
+      href: "/notifications",
     },
     {
       id: "review-templates",
@@ -264,6 +265,7 @@ export default function NotificationsPage() {
       description: "Check and optimize your notification message templates",
       priority: "medium" as const,
       completed: false,
+      action: "View Templates",
       href: "/notifications/templates",
     },
     {
@@ -272,6 +274,7 @@ export default function NotificationsPage() {
       description: "Review notification success rates by channel and type",
       priority: "low" as const,
       completed: false,
+      action: "View Analytics",
       href: "/analytics",
     },
   ];

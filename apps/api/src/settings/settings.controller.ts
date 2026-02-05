@@ -6,6 +6,7 @@ import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { RolesGuard } from "../auth/guards/roles.guard";
 import { Roles } from "../auth/decorators/roles.decorator";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
+import { Public } from "../auth/decorators/public.decorator";
 import { ParseFilePipe, MaxFileSizeValidator, FileTypeValidator } from "@nestjs/common/pipes";
 
 @Controller("settings")
@@ -15,6 +16,12 @@ export class SettingsController {
     private readonly settingsService: SettingsService,
     private readonly filesService: FilesService
   ) {}
+
+  @Get("branding")
+  @Public()
+  async getPublicBranding() {
+    return this.settingsService.getPublicBranding();
+  }
 
   @Get("org")
   async getOrgSettings(@CurrentUser() user: any) {
@@ -69,6 +76,25 @@ export class SettingsController {
   async updateGoogleMapsSettings(@CurrentUser() user: any, @Body() data: any) {
     // API key verification is done in SettingsService
     return this.settingsService.updateGoogleMapsSettings(user.org_id, data);
+  }
+
+  @Get("integrations/llm")
+  async getLlmSettings(@CurrentUser() user: any) {
+    return this.settingsService.getLlmSettings(user.org_id);
+  }
+
+  @Patch("integrations/llm")
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "MANAGER")
+  async updateLlmSettings(@CurrentUser() user: any, @Body() data: any) {
+    return this.settingsService.updateLlmSettings(user.org_id, data);
+  }
+
+  @Post("integrations/llm/test")
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "MANAGER")
+  async testLlmConnection(@CurrentUser() user: any) {
+    return this.settingsService.testLlmConnection(user.org_id);
   }
 
   @Post("upload-logo")

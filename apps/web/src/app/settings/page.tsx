@@ -13,7 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Settings, Building, DollarSign, Save, Globe, MapPin, Mail, Phone, CheckCircle, Image, Palette, Map, Loader2, Send } from "lucide-react";
+import { Settings, Building, DollarSign, Save, Globe, MapPin, Mail, Phone, CheckCircle, Image, Palette, Map, Loader2, Send, Sparkles } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -82,6 +82,14 @@ interface SmsSettings {
 
 interface GoogleMapsSettings {
   apiKey: string;
+  enabled: boolean;
+}
+
+interface LlmSettings {
+  provider: string;
+  apiKey: string;
+  model: string;
+  baseUrl: string;
   enabled: boolean;
 }
 
@@ -159,6 +167,18 @@ export default function SettingsPage() {
   const [testingApiKey, setTestingApiKey] = useState(false);
   const [apiKeyTestResult, setApiKeyTestResult] = useState<{ success: boolean; message: string } | null>(null);
 
+  // API LLM Settings
+  const [llmSettings, setLlmSettings] = useState<LlmSettings>({
+    provider: "openai",
+    apiKey: "",
+    model: "gpt-4o-mini",
+    baseUrl: "",
+    enabled: false,
+  });
+  const [savingLlm, setSavingLlm] = useState(false);
+  const [testingLlm, setTestingLlm] = useState(false);
+  const [llmTestResult, setLlmTestResult] = useState<{ success: boolean; message: string } | null>(null);
+
   useEffect(() => {
     fetchSettings();
   }, []);
@@ -168,7 +188,7 @@ export default function SettingsPage() {
       setLoading(true);
       const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
 
-      const [orgRes, taxRes, smtpRes, smsRes, googleMapsRes] = await Promise.all([
+      const [orgRes, taxRes, smtpRes, smsRes, googleMapsRes, llmRes] = await Promise.all([
         fetch(`${API_URL}/settings/org`, {
           headers: {
             Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
@@ -190,6 +210,11 @@ export default function SettingsPage() {
           },
         }),
         fetch(`${API_URL}/settings/integrations/google-maps`, {
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
+          },
+        }),
+        fetch(`${API_URL}/settings/integrations/llm`, {
           headers: {
             Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
           },
@@ -287,6 +312,19 @@ export default function SettingsPage() {
         }
       } else if (googleMapsRes.status === 404) {
         // Settings not found, use defaults
+      }
+
+      if (llmRes.ok) {
+        const llmData = await llmRes.json();
+        if (llmData.settings) {
+          setLlmSettings((prev) => ({
+            provider: llmData.settings.provider || prev.provider,
+            apiKey: llmData.settings.apiKey ? llmData.settings.apiKey : prev.apiKey || "",
+            model: llmData.settings.model || prev.model,
+            baseUrl: llmData.settings.baseUrl || prev.baseUrl || "",
+            enabled: llmData.settings.enabled !== undefined ? llmData.settings.enabled : prev.enabled,
+          }));
+        }
       }
     } catch (error) {
       console.error("Failed to fetch settings:", error);
@@ -423,19 +461,27 @@ export default function SettingsPage() {
     try {
       setSaving(true);
       setSaveSuccess(false);
-      
-      // Upload logo and favicon first if files were selected
+
+      // Upload logo and favicon first if files were selected; capture returned URLs
+      let uploadedLogoUrl: string | null = null;
+      let uploadedFaviconUrl: string | null = null;
       if (logoFile) {
-        const logoUrl = await uploadLogo();
-        if (!logoUrl) return; // Stop if upload failed
+        uploadedLogoUrl = await uploadLogo();
+        if (!uploadedLogoUrl) return; // Stop if upload failed
       }
-      
       if (faviconFile) {
-        const faviconUrl = await uploadFavicon();
-        if (!faviconUrl) return; // Stop if upload failed
+        uploadedFaviconUrl = await uploadFavicon();
+        if (!uploadedFaviconUrl) return; // Stop if upload failed
       }
 
       const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+
+      // Include newly uploaded logo/favicon in profile so we don't overwrite with stale state
+      const profileToSave = {
+        ...orgProfile,
+        ...(uploadedLogoUrl != null && { logoUrl: uploadedLogoUrl }),
+        ...(uploadedFaviconUrl != null && { faviconUrl: uploadedFaviconUrl }),
+      };
 
       const response = await fetch(`${API_URL}/settings/org`, {
         method: "PATCH",
@@ -444,7 +490,7 @@ export default function SettingsPage() {
           Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
         },
         body: JSON.stringify({
-          profile: orgProfile,
+          profile: profileToSave,
         }),
       });
 
@@ -634,15 +680,18 @@ export default function SettingsPage() {
                             onChange={handleLogoChange}
                             className="cursor-pointer"
                           />
-                          <p className="text-xs text-gray-500 mt-1">Upload logo for sidebar (max 2MB)</p>
+                          <p className="text-xs text-gray-500 mt-1">Upload logo for sidebar (max 2MB). Select a file then click Save to update. Used on login page and in emails.</p>
                         </div>
-                        {logoPreview && (
+                        {(logoPreview || orgProfile.logoUrl) && (
                           <div className="relative">
                             <img
-                              src={logoPreview}
+                              src={logoPreview || orgProfile.logoUrl || ""}
                               alt="Logo preview"
                               className="w-16 h-16 rounded object-contain border-2 border-gray-200"
                             />
+                            {orgProfile.logoUrl && !logoFile && (
+                              <p className="text-xs text-gray-500 mt-1">Current logo</p>
+                            )}
                           </div>
                         )}
                       </div>
@@ -1720,6 +1769,171 @@ export default function SettingsPage() {
                     >
                       <Save className="h-4 w-4 mr-2" />
                       {verifyingApiKey ? "Verifying..." : saving ? "Saving..." : "Save Google Maps Settings"}
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* API LLM Configuration */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Sparkles className="h-5 w-5" />
+                    API LLM Configuration
+                  </CardTitle>
+                  <CardDescription>
+                    Connect an LLM API (OpenAI, Anthropic, or OpenAI-compatible) for AI recommendations and future features
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-2">
+                      <Label htmlFor="llm-provider">Provider</Label>
+                      <Select
+                        value={llmSettings.provider}
+                        onValueChange={(v) => setLlmSettings({ ...llmSettings, provider: v })}
+                      >
+                        <SelectTrigger id="llm-provider">
+                          <SelectValue placeholder="Select provider" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="openai">OpenAI (GPT)</SelectItem>
+                          <SelectItem value="anthropic">Anthropic (Claude)</SelectItem>
+                          <SelectItem value="custom">Custom (OpenAI-compatible API)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="llm-model">Model</Label>
+                      <Input
+                        id="llm-model"
+                        value={llmSettings.model}
+                        onChange={(e) => setLlmSettings({ ...llmSettings, model: e.target.value })}
+                        placeholder="e.g. gpt-4o-mini, claude-3-haiku-20240307"
+                      />
+                    </div>
+                    <div className="space-y-2 md:col-span-2">
+                      <Label htmlFor="llm-api-key">API Key</Label>
+                      <Input
+                        id="llm-api-key"
+                        type="password"
+                        value={llmSettings.apiKey === "***" ? "" : (llmSettings.apiKey || "")}
+                        onChange={(e) => setLlmSettings({ ...llmSettings, apiKey: e.target.value })}
+                        onFocus={() => {
+                          if (llmSettings.apiKey === "***") {
+                            setLlmSettings({ ...llmSettings, apiKey: "" });
+                          }
+                        }}
+                        placeholder={llmSettings.apiKey === "***" ? "API key is saved (enter new to change)" : "Enter API key"}
+                      />
+                      {llmSettings.apiKey === "***" && (
+                        <p className="text-xs text-green-600">✓ API key is saved. Enter a new key to change it.</p>
+                      )}
+                    </div>
+                    {(llmSettings.provider === "custom" || llmSettings.provider === "openai") && (
+                      <div className="space-y-2 md:col-span-2">
+                        <Label htmlFor="llm-base-url">Base URL (optional)</Label>
+                        <Input
+                          id="llm-base-url"
+                          value={llmSettings.baseUrl}
+                          onChange={(e) => setLlmSettings({ ...llmSettings, baseUrl: e.target.value })}
+                          placeholder="https://api.openai.com/v1 or your proxy URL"
+                        />
+                        <p className="text-xs text-gray-500">Leave empty for default OpenAI/Anthropic endpoints.</p>
+                      </div>
+                    )}
+                    <div className="flex items-center space-x-2 md:col-span-2">
+                      <input
+                        type="checkbox"
+                        id="llm-enabled"
+                        checked={llmSettings.enabled}
+                        onChange={(e) => setLlmSettings({ ...llmSettings, enabled: e.target.checked })}
+                        className="h-4 w-4 rounded border-gray-300"
+                      />
+                      <Label htmlFor="llm-enabled" className="text-sm font-normal">
+                        Enable API LLM for AI recommendations and features
+                      </Label>
+                    </div>
+                  </div>
+                  <div className="flex justify-end gap-3 pt-4 border-t">
+                    {llmTestResult && (
+                      <p className={`text-sm mr-auto self-center ${llmTestResult.success ? "text-green-600" : "text-red-600"}`}>
+                        {llmTestResult.success ? "✓ " : ""}{llmTestResult.message}
+                      </p>
+                    )}
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={async () => {
+                        setLlmTestResult(null);
+                        setTestingLlm(true);
+                        try {
+                          const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+                          const res = await fetch(`${API_URL}/settings/integrations/llm/test`, {
+                            method: "POST",
+                            headers: { Authorization: `Bearer ${localStorage.getItem("auth_token")}` },
+                          });
+                          const data = await res.json();
+                          setLlmTestResult({ success: data.success, message: data.message || (data.success ? "API is working." : "Test failed.") });
+                        } catch (e: any) {
+                          setLlmTestResult({ success: false, message: e.message || "Request failed." });
+                        } finally {
+                          setTestingLlm(false);
+                        }
+                      }}
+                      disabled={testingLlm || savingLlm}
+                    >
+                      {testingLlm ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+                      {testingLlm ? "Testing..." : "Test connection"}
+                    </Button>
+                    <Button
+                      onClick={async () => {
+                        setLlmTestResult(null);
+                        try {
+                          setSavingLlm(true);
+                          const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+                          const isMasked = llmSettings.apiKey === "***" || llmSettings.apiKey === "******";
+                          const hasNewKey = llmSettings.apiKey && llmSettings.apiKey.trim() !== "" && !isMasked;
+                          const body: any = {
+                            settings: {
+                              provider: llmSettings.provider,
+                              model: llmSettings.model,
+                              baseUrl: llmSettings.baseUrl || "",
+                              enabled: llmSettings.enabled,
+                            },
+                          };
+                          if (hasNewKey) body.settings.apiKey = llmSettings.apiKey.trim();
+                          const response = await fetch(`${API_URL}/settings/integrations/llm`, {
+                            method: "PATCH",
+                            headers: {
+                              "Content-Type": "application/json",
+                              Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
+                            },
+                            body: JSON.stringify(body),
+                          });
+                          if (response.ok) {
+                            const data = await response.json();
+                            if (data.settings) {
+                              setLlmSettings((prev) => ({
+                                ...data.settings,
+                                apiKey: data.settings.apiKey ? "***" : prev.apiKey,
+                              }));
+                            }
+                          } else {
+                            const err = await response.json();
+                            alert(err.message || err.error || "Failed to save LLM settings");
+                          }
+                        } catch (e: any) {
+                          alert(e.message || "Failed to save LLM settings");
+                        } finally {
+                          setSavingLlm(false);
+                        }
+                      }}
+                      disabled={savingLlm || testingLlm}
+                      className={`bg-${theme.primary} hover:bg-${theme.primary}/90`}
+                    >
+                      <Save className="h-4 w-4 mr-2" />
+                      {savingLlm ? "Saving..." : "Save API LLM Settings"}
                     </Button>
                   </div>
                 </CardContent>

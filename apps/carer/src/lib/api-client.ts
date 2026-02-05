@@ -2,12 +2,24 @@ import * as SecureStore from "expo-secure-store";
 import { Platform } from "react-native";
 import { getNetworkIp } from "./network-utils";
 
-// Get network IP for mobile devices (localhost doesn't work on physical devices/simulators)
-const getApiUrl = (): string => {
+// Get network IP for mobile devices (localhost doesn't work on physical devices)
+export const getApiUrl = (): string => {
   const baseUrl = process.env.EXPO_PUBLIC_API_URL || "http://localhost:4000/api";
   
-  // On mobile platforms, replace localhost with network IP
+  // Use localhost when set (required for iOS Simulator; optional for Android emulator)
+  if (process.env.EXPO_PUBLIC_USE_LOCALHOST === "true") {
+    console.log("[API Client] Using localhost (EXPO_PUBLIC_USE_LOCALHOST=true)");
+    return baseUrl;
+  }
+
+  // On mobile, replace localhost so device can reach the API
   if (Platform.OS !== "web" && baseUrl.includes("localhost")) {
+    // Android emulator: use 10.0.2.2 to reach host machine's localhost
+    if (Platform.OS === "android") {
+      const url = baseUrl.replace("localhost", "10.0.2.2");
+      console.log("[API Client] Using 10.0.2.2 for Android");
+      return url;
+    }
     const networkIp = getNetworkIp();
     console.log(`[API Client] Replacing localhost with network IP: ${networkIp}`);
     return baseUrl.replace("localhost", networkIp);
@@ -16,7 +28,8 @@ const getApiUrl = (): string => {
   return baseUrl;
 };
 
-const API_URL = getApiUrl();
+// Resolve at request time so env (e.g. EXPO_PUBLIC_USE_LOCALHOST) is always respected after Metro reload
+const getBaseUrl = (): string => getApiUrl();
 
 const TOKEN_KEY = "auth_token";
 const USER_KEY = "auth_user";
@@ -67,7 +80,7 @@ class ApiClient {
   ): Promise<T> {
     const { requireAuth = true, headers = {}, ...restOptions } = options;
 
-    const url = endpoint.startsWith("http") ? endpoint : `${API_URL}${endpoint}`;
+    const url = endpoint.startsWith("http") ? endpoint : `${getBaseUrl()}${endpoint}`;
 
     const requestHeaders: Record<string, string> = {
       "Content-Type": "application/json",
@@ -105,18 +118,20 @@ class ApiClient {
           errorData = { message: response.statusText };
         }
 
-        // Handle 401 Unauthorized
+        // Handle 401 Unauthorized: clear token so next request can show login
         if (response.status === 401 && !url.includes("/auth/otp")) {
           await this.clearAuthToken();
         }
 
         // Extract the actual error message
         const errorMessage = errorData?.message || errorData?.error || response.statusText;
-        // Skip logging expected errors like "not assigned" or 404s to reduce console noise
-        const isExpectedError = 
-          response.status === 404 || 
+        // Skip logging expected errors to reduce console noise
+        const isExpectedError =
+          response.status === 401 ||
+          response.status === 404 ||
           errorMessage?.includes("not assigned to you") ||
-          errorMessage?.includes("not found");
+          errorMessage?.includes("not found") ||
+          errorMessage?.toLowerCase().includes("invalid token");
         
         if (!isExpectedError) {
           console.error("API Error Response:", { status: response.status, url, errorData });
@@ -421,6 +436,34 @@ class ApiClient {
   // Settings
   async getGoogleMapsSettings() {
     return this.request("/settings/integrations/google-maps");
+  }
+
+  // Products (for supplies / inventory catalog)
+  async getProducts(params?: { limit?: number; isActive?: string; category?: string }) {
+    const query = new URLSearchParams();
+    if (params?.limit != null) query.set("limit", String(params.limit));
+    if (params?.isActive != null) query.set("isActive", params.isActive);
+    if (params?.category != null) query.set("category", params.category);
+    const qs = query.toString();
+    return this.request<{ items: any[]; total?: number }>(`/products${qs ? `?${qs}` : ""}`);
+  }
+
+  // Supply requests (carer's own requests)
+  async getSupplyRequests(params?: { status?: string; priority?: string; page?: number; limit?: number }) {
+    const query = new URLSearchParams();
+    if (params?.status != null) query.set("status", params.status);
+    if (params?.priority != null) query.set("priority", params.priority);
+    if (params?.page != null) query.set("page", String(params.page));
+    if (params?.limit != null) query.set("limit", String(params.limit));
+    const qs = query.toString();
+    return this.request<{ items: any[]; total?: number }>(`/supplies/requests${qs ? `?${qs}` : ""}`);
+  }
+
+  async createSupplyRequest(body: { items: Array<{ name: string; quantity: number; unit?: string; notes?: string }>; priority?: string; notes?: string }) {
+    return this.request("/supplies/requests", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
   }
 }
 

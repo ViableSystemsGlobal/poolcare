@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,6 +8,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { api } from "@/lib/api-client";
 import { useAuth } from "@/contexts/auth-context";
 import { Phone, Mail, Loader2, AlertCircle } from "lucide-react";
+
+interface Branding {
+  organizationName: string;
+  logoUrl: string | null;
+  themeColor: string;
+  primaryColorHex?: string;
+}
 
 export default function LoginPage() {
   const router = useRouter();
@@ -19,6 +26,16 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [devOtpCode, setDevOtpCode] = useState<string | null>(null);
+  const [branding, setBranding] = useState<Branding | null>(null);
+  const [entering, setEntering] = useState(false);
+
+  useEffect(() => {
+    const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+    fetch(`${API_URL}/settings/branding`)
+      .then((res) => res.ok ? res.json() : null)
+      .then((data) => data && setBranding(data))
+      .catch(() => {});
+  }, []);
 
   const handleRequestOtp = async () => {
     if (!target) {
@@ -68,7 +85,9 @@ export default function LoginPage() {
     try {
       const result = await api.verifyOtp(channel, target, otp);
       console.log("✅ OTP verification successful:", result);
-      // Include role in user object
+      setEntering(true);
+      // Brief loader so user sees logo + spinner before entering
+      await new Promise((r) => setTimeout(r, 1200));
       login(result.token, { ...result.user, role: result.role }, result.org);
     } catch (err: any) {
       console.error("❌ OTP verification failed:", err);
@@ -78,11 +97,46 @@ export default function LoginPage() {
     }
   };
 
+  const logoUrl = branding?.logoUrl ?? null;
+  const primaryHex = branding?.primaryColorHex ?? "#0d9488";
+
+  if (entering) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 px-4">
+        <div className="flex flex-col items-center gap-6">
+          {logoUrl && (
+            <>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={logoUrl}
+                alt=""
+                className="h-20 w-auto max-w-[220px] object-contain"
+              />
+            </>
+          )}
+          <div className="flex flex-col items-center gap-3">
+            <Loader2 className="h-10 w-10 animate-spin text-gray-400" style={{ color: primaryHex }} />
+            <p className="text-sm font-medium text-gray-600">Signing you in...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
       <Card className="w-full max-w-md">
         <CardHeader className="space-y-1 text-center">
-          <CardTitle className="text-3xl font-bold text-gray-900">PoolCare</CardTitle>
+          {logoUrl && (
+            <div className="flex justify-center mb-2">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={logoUrl}
+                alt=""
+                className="h-16 w-auto max-w-[200px] object-contain"
+              />
+            </div>
+          )}
           <CardDescription className="text-gray-600">
             Manager Console - Sign in to your account
           </CardDescription>
@@ -101,6 +155,11 @@ export default function LoginPage() {
                 <Button
                   variant={channel === "phone" ? "default" : "outline"}
                   className="flex-1"
+                  style={
+                    channel === "phone"
+                      ? { backgroundColor: primaryHex, borderColor: primaryHex }
+                      : undefined
+                  }
                   onClick={() => setChannel("phone")}
                 >
                   <Phone className="h-4 w-4 mr-2" />
@@ -109,6 +168,11 @@ export default function LoginPage() {
                 <Button
                   variant={channel === "email" ? "default" : "outline"}
                   className="flex-1"
+                  style={
+                    channel === "email"
+                      ? { backgroundColor: primaryHex, borderColor: primaryHex }
+                      : undefined
+                  }
                   onClick={() => setChannel("email")}
                 >
                   <Mail className="h-4 w-4 mr-2" />
@@ -146,11 +210,11 @@ export default function LoginPage() {
                   disabled={loading || !target}
                   className="w-full"
                   style={{
-                    minHeight: '44px',
-                    backgroundColor: '#ea580c',
-                    color: '#ffffff',
-                    border: 'none',
-                    cursor: loading || !target ? 'not-allowed' : 'pointer',
+                    minHeight: "44px",
+                    backgroundColor: primaryHex,
+                    color: "#ffffff",
+                    border: "none",
+                    cursor: loading || !target ? "not-allowed" : "pointer",
                     opacity: loading || !target ? 0.6 : 1,
                   }}
                 >
@@ -200,6 +264,11 @@ export default function LoginPage() {
                 onClick={handleVerifyOtp}
                 disabled={loading || otp.length !== 6}
                 className="w-full"
+                style={{
+                  backgroundColor: primaryHex,
+                  color: "#ffffff",
+                  border: "none",
+                }}
               >
                 {loading ? (
                   <>

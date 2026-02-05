@@ -9,7 +9,20 @@ import Loader from "../src/components/Loader";
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const POOL_CARD_WIDTH = SCREEN_WIDTH - 40;
 const POOL_CARD_WIDTH_75 = SCREEN_WIDTH * 0.75;
-const NEXT_VISIT_CARD_WIDTH = SCREEN_WIDTH * 0.85; // 85% width to show borders
+const NEXT_VISIT_CARD_WIDTH = SCREEN_WIDTH * 0.85;
+
+const DAILY_TIPS = [
+  "Keep your pump running 8h/day this week for clear water.",
+  "Check skimmer baskets weekly to maintain flow.",
+  "Shock your pool after heavy rain or high bather load.",
+  "Brush walls and floor weekly to prevent algae.",
+  "Maintain pH between 7.2–7.6 for comfort and equipment life.",
+  "Run the pump during the day when the sun is strongest.",
+];
+function getDailyTip(): string {
+  const day = Math.floor(Date.now() / (24 * 60 * 60 * 1000)) % DAILY_TIPS.length;
+  return DAILY_TIPS[day];
+}
 
 // Theme colors - matching admin teal/turquoise
 const PRIMARY_COLOR = "#14b8a6"; // Teal-500 (from admin color swatch)
@@ -82,12 +95,12 @@ export default function ClientDashboard() {
         setCheckingAuth(true);
         const token = await api.getAuthToken();
         if (!token) {
-          // No token, redirect to login
           router.replace("/(auth)/login");
           return;
         }
-        // Token exists, load dashboard
-        await loadDashboard();
+        // Token exists: show app immediately, load dashboard in background (don't block on API)
+        setCheckingAuth(false);
+        loadDashboard();
       } catch (error) {
         console.error("Auth check failed:", error);
         router.replace("/(auth)/login");
@@ -207,7 +220,7 @@ export default function ClientDashboard() {
           time: `${windowStart.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}–${windowEnd.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}`,
           status,
           location,
-          tip: "Keep your pump running 8h/day this week", // TODO: Get from tips/notifications
+          tip: getDailyTip(),
         };
       });
 
@@ -438,14 +451,32 @@ export default function ClientDashboard() {
           </View>
         )}
 
-        {/* Request/Complaints Button */}
+        {/* Book Service + Request/Complaints */}
         <TouchableOpacity 
           style={styles.requestButton}
+          onPress={() => router.push("/book-service")}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="calendar-outline" size={22} color="#14b8a6" />
+          <Text style={styles.requestButtonText}>Book a Service</Text>
+          <Ionicons name="chevron-forward" size={20} color="#6b7280" />
+        </TouchableOpacity>
+        <TouchableOpacity 
+          style={[styles.requestButton, { marginTop: 0 }]}
           onPress={() => router.push("/kwame-ai")}
           activeOpacity={0.7}
         >
           <Ionicons name="chatbubble-ellipses-outline" size={22} color="#14b8a6" />
           <Text style={styles.requestButtonText}>Request / Complaints</Text>
+          <Ionicons name="chevron-forward" size={20} color="#6b7280" />
+        </TouchableOpacity>
+        <TouchableOpacity 
+          style={[styles.requestButton, { marginTop: 0 }]}
+          onPress={() => router.push("/report-issue")}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="warning-outline" size={22} color="#14b8a6" />
+          <Text style={styles.requestButtonText}>Report an Issue</Text>
           <Ionicons name="chevron-forward" size={20} color="#6b7280" />
         </TouchableOpacity>
 
@@ -546,7 +577,7 @@ export default function ClientDashboard() {
             <Text style={styles.emptyText}>No pools yet</Text>
             <TouchableOpacity 
               style={styles.addButton}
-              onPress={() => router.push("/add-pool")}
+              onPress={() => router.push("/pools/add")}
             >
               <Text style={styles.addButtonText}>Add Your First Pool</Text>
             </TouchableOpacity>

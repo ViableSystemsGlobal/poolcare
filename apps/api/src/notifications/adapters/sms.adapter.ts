@@ -42,35 +42,33 @@ export class SmsAdapter {
         if (orgSetting?.integrations) {
           const integrations = orgSetting.integrations as any;
           const sms = integrations.sms || {};
-          
-          this.logger.debug(`SMS settings from DB: username=${!!sms.username}, password=${!!sms.password}`);
-          this.logger.debug(`SMS settings structure: ${JSON.stringify({ hasSms: !!sms, username: typeof sms.username, password: typeof sms.password, keys: Object.keys(sms) })}`);
-          
-          // Only use DB settings if username and password are configured
-          const hasUsername = sms.username && typeof sms.username === "string" && sms.username.trim().length > 0;
+          // Treat literal "undefined"/"null" from frontend or old DB as empty
+          const rawUsername = sms.username;
+          const username = typeof rawUsername === "string" && rawUsername.trim() && rawUsername !== "undefined" && rawUsername !== "null" ? rawUsername.trim() : "";
           const passwordValue = sms.password;
-          const hasPassword = passwordValue && 
-                             typeof passwordValue === "string" && 
-                             passwordValue.trim().length > 0 && 
+          const hasPassword = passwordValue &&
+                             typeof passwordValue === "string" &&
+                             passwordValue.trim().length > 0 &&
                              passwordValue !== "***" &&
                              passwordValue !== "******" &&
                              passwordValue !== "••••••••" &&
                              passwordValue !== "null" &&
                              passwordValue !== "undefined";
-          
-          this.logger.log(`SMS Config Check: username="${sms.username || 'undefined'}", password="${passwordValue ? (passwordValue.length > 2 ? passwordValue.substring(0, 2) + '...' : '***') : 'null'}", hasUsername=${hasUsername}, hasPassword=${hasPassword}`);
-          
-          if (hasUsername && hasPassword) {
+
+          this.logger.debug(`SMS settings from DB: username=${!!username}, password=${!!passwordValue}`);
+          this.logger.log(`SMS Config Check: username="${username || "(empty)"}", password="${passwordValue ? "***" : "null"}", hasUsername=${!!username}, hasPassword=${hasPassword}`);
+
+          if (username && hasPassword) {
             this.logger.log(`✅ Using SMS settings from database for org ${orgId}`);
             return {
               provider: (sms.provider || "Deywuro")?.toLowerCase() || "deywuro",
-              username: sms.username,
+              username,
               password: passwordValue,
-              source: sms.senderId || "PoolCare",
-              apiUrl: sms.apiEndpoint || "https://deywuro.com/api/sms",
+              source: (sms.senderId && sms.senderId !== "undefined" ? sms.senderId : "PoolCare") as string,
+              apiUrl: (sms.apiEndpoint && sms.apiEndpoint !== "undefined" ? sms.apiEndpoint : "https://deywuro.com/api/sms") as string,
             };
           } else {
-            this.logger.error(`❌ SMS settings found in DB but invalid. username="${sms.username}", password="${passwordValue}", hasUsername=${hasUsername}, hasPassword=${hasPassword}`);
+            this.logger.error(`❌ SMS settings found in DB but invalid. username="${username || "(empty)"}", hasPassword=${hasPassword}`);
           }
         } else {
           this.logger.warn(`No integrations found in org settings for org ${orgId}`);

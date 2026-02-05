@@ -173,7 +173,20 @@ export class FilesService {
       throw new ForbiddenException("Invalid key");
     }
 
-    // Create file record (will be processed by worker)
+    let contentType = "image/jpeg";
+    let sizeBytes = 0;
+    try {
+      const stat = await this.minioClient.statObject(this.bucket, dto.key);
+      if (stat.metaData?.["content-type"]) contentType = stat.metaData["content-type"];
+      sizeBytes = stat.size ?? 0;
+    } catch {
+      // Fallback: infer from key extension
+      const ext = dto.key.split(".").pop()?.toLowerCase();
+      if (ext === "png") contentType = "image/png";
+      else if (ext === "webp") contentType = "image/webp";
+      else if (ext === "pdf") contentType = "application/pdf";
+    }
+
     const file = await prisma.fileObject.create({
       data: {
         orgId,
@@ -181,13 +194,10 @@ export class FilesService {
         refId: dto.refId,
         storageKey: dto.key,
         storageBucket: this.bucket,
-        contentType: "image/jpeg", // TODO: extract from key or metadata
-        sizeBytes: 0, // TODO: get from object metadata
+        contentType,
+        sizeBytes,
       },
     });
-
-    // TODO: Queue processing job (exif, variants)
-    // await this.queue.processFile(file.id);
 
     return file;
   }
@@ -239,8 +249,10 @@ export class FilesService {
       throw new NotFoundException("File not found");
     }
 
-    // TODO: Check access permissions based on scope/refId and role
-    // For now, allow org members to access any file in org
+    // Access: only org members can access files in their org
+    if (file.orgId !== orgId) {
+      throw new ForbiddenException("Access denied");
+    }
 
     const ttl = dto.ttlSec || 300; // 5 min default
     const key = dto.variant ? `${file.storageKey}.${dto.variant}` : file.storageKey;

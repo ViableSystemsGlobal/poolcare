@@ -78,6 +78,18 @@ export default function CarersPage() {
     totalJobsAssigned: 0,
   });
 
+  // AI recommendations: from API when available, else client-side from metrics
+  const [carerAIRecommendations, setCarerAIRecommendations] = useState<Array<{
+    id: string;
+    title: string;
+    description: string;
+    priority: "high" | "medium" | "low";
+    completed: boolean;
+    action?: string;
+    href?: string;
+  }>>([]);
+  const [carerAIRecommendationsSource, setCarerAIRecommendationsSource] = useState<"api" | "fallback" | null>(null);
+
   // Form state
   const [formData, setFormData] = useState({
     userId: "",
@@ -111,6 +123,72 @@ export default function CarersPage() {
       calculateMetrics(carers);
     }
   }, [searchQuery, carers]);
+
+  // Fetch Carers AI recommendations from API (with fallback to client-side)
+  useEffect(() => {
+    let cancelled = false;
+    const token = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
+    const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+    const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+    fetch(`${API_URL}/ai/recommendations?context=carers`, { headers, cache: "no-store" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (cancelled) return;
+        if (Array.isArray(data) && data.length > 0) {
+          setCarerAIRecommendations(data);
+          setCarerAIRecommendationsSource("api");
+        } else {
+          setCarerAIRecommendationsSource("fallback");
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setCarerAIRecommendationsSource("fallback");
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+  // When using fallback, recompute when metrics change
+  useEffect(() => {
+    if (carerAIRecommendationsSource !== "fallback") return;
+    const recommendations = [];
+    if (metrics.totalCarers === 0) {
+      recommendations.push({
+        id: "onboard-first-carer",
+        title: "👥 Onboard your first carer",
+        description: "Add carers to assign jobs and track service delivery.",
+        priority: "high" as const,
+        action: "Add Carer",
+        href: "/carers",
+        completed: false,
+      });
+    }
+    if (metrics.activeCarers < 2 && metrics.totalJobsAssigned > 0) {
+      recommendations.push({
+        id: "add-more-active-carers",
+        title: "📈 Expand your carer team",
+        description: `Only ${metrics.activeCarers} active carer(s) - consider adding more for better coverage.`,
+        priority: "medium" as const,
+        action: "Add Carer",
+        href: "/carers",
+        completed: false,
+      });
+    }
+    if (metrics.totalJobsAssigned > 0 && metrics.activeCarers > 0) {
+      const avgJobsPerCarer = metrics.totalJobsAssigned / metrics.activeCarers;
+      if (avgJobsPerCarer > 20) {
+        recommendations.push({
+          id: "balance-carer-workload",
+          title: "⚖️ Balance carer workload",
+          description: `Average ${Math.round(avgJobsPerCarer)} jobs per carer - consider redistributing or adding more carers.`,
+          priority: "medium" as const,
+          action: "View Jobs",
+          href: "/jobs",
+          completed: false,
+        });
+      }
+    }
+    setCarerAIRecommendations(recommendations.slice(0, 3));
+  }, [carerAIRecommendationsSource, metrics.totalCarers, metrics.activeCarers, metrics.totalJobsAssigned]);
 
   // Selection handlers
   const handleSelectAll = (checked: boolean) => {
@@ -469,54 +547,6 @@ export default function CarersPage() {
       alert("Failed to delete carer");
     }
   };
-
-  // AI Recommendations for Carers
-  const generateCarerAIRecommendations = () => {
-    const recommendations = [];
-
-    if (metrics.totalCarers === 0) {
-      recommendations.push({
-        id: "onboard-first-carer",
-        title: "👥 Onboard your first carer",
-        description: "Add carers to assign jobs and track service delivery.",
-        priority: "high" as const,
-        action: "Add Carer",
-        href: "#",
-        completed: false,
-      });
-    }
-
-    if (metrics.activeCarers < 2 && metrics.totalJobsAssigned > 0) {
-      recommendations.push({
-        id: "add-more-active-carers",
-        title: "📈 Expand your carer team",
-        description: `Only ${metrics.activeCarers} active carer(s) - consider adding more for better coverage.`,
-        priority: "medium" as const,
-        action: "Add Carer",
-        href: "#",
-        completed: false,
-      });
-    }
-
-    if (metrics.totalJobsAssigned > 0 && metrics.activeCarers > 0) {
-      const avgJobsPerCarer = metrics.totalJobsAssigned / metrics.activeCarers;
-      if (avgJobsPerCarer > 20) {
-        recommendations.push({
-          id: "balance-carer-workload",
-          title: "⚖️ Balance carer workload",
-          description: `Average ${Math.round(avgJobsPerCarer)} jobs per carer - consider redistributing or adding more carers.`,
-          priority: "medium" as const,
-          action: "View Jobs",
-          href: "/jobs",
-          completed: false,
-        });
-      }
-    }
-
-    return recommendations.slice(0, 3);
-  };
-
-  const carerAIRecommendations = generateCarerAIRecommendations();
 
   const handleRecommendationComplete = (id: string) => {
     console.log("Carer recommendation completed:", id);

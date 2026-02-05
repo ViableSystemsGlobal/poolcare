@@ -44,6 +44,16 @@ export class AddReadingDto {
   tempC?: number;
 
   @IsOptional()
+  @IsNumber()
+  @Min(0)
+  tds?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  salinity?: number;
+
+  @IsOptional()
   @IsDateString()
   measuredAt?: string;
 }

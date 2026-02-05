@@ -51,7 +51,7 @@ interface ReadingsState {
   cyanuricAcid?: number;
   tempC?: number;
   tds?: number;
-  salt?: number;
+  salinity?: number;
 }
 
 interface Chemical {
@@ -516,6 +516,22 @@ export const ChecklistWizard: React.FC<ChecklistWizardProps> = ({
               value={readings.cyanuricAcid}
               onChange={(v) => setReadings({ ...readings, cyanuricAcid: v })}
               placeholder="30 - 50 ppm"
+              unit="ppm"
+              optional
+            />
+            <ReadingInput
+              label="TDS"
+              value={readings.tds}
+              onChange={(v) => setReadings({ ...readings, tds: v })}
+              placeholder="Total Dissolved Solids"
+              unit="ppm"
+              optional
+            />
+            <ReadingInput
+              label="Salinity"
+              value={readings.salinity}
+              onChange={(v) => setReadings({ ...readings, salinity: v })}
+              placeholder="Saltwater pools"
               unit="ppm"
               optional
             />

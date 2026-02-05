@@ -42,15 +42,19 @@ export default function RootLayout() {
       >
         <Stack.Screen name="index" />
         <Stack.Screen name="(auth)" options={{ headerShown: false }} />
-        <Stack.Screen name="visits" options={{ headerShown: false }} />
+        <Stack.Screen name="visits/index" options={{ headerShown: false }} />
         <Stack.Screen name="visits/[id]" options={{ title: "Visit Details" }} />
         <Stack.Screen name="quotes/[id]" options={{ title: "Quote" }} />
         <Stack.Screen name="invoices/[id]" options={{ title: "Invoice" }} />
         <Stack.Screen name="billing" options={{ headerShown: false }} />
         <Stack.Screen name="kwame-ai" options={{ headerShown: false }} />
-        <Stack.Screen name="pools" options={{ headerShown: false }} />
+        <Stack.Screen name="pools/index" options={{ headerShown: false }} />
         <Stack.Screen name="pools/add" options={{ headerShown: false }} />
         <Stack.Screen name="poolshop" options={{ headerShown: false }} />
+        <Stack.Screen name="poolshop/checkout" options={{ headerShown: false }} />
+        <Stack.Screen name="poolshop/orders" options={{ headerShown: false }} />
+        <Stack.Screen name="poolshop/orders/[id]" options={{ headerShown: false }} />
+        <Stack.Screen name="poolshop/[id]" options={{ headerShown: false }} />
         <Stack.Screen name="settings" options={{ headerShown: false }} />
         <Stack.Screen name="payment-methods" options={{ headerShown: false }} />
         <Stack.Screen name="subscriptions" options={{ headerShown: false }} />

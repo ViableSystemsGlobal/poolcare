@@ -1,8 +1,101 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
 import { prisma } from "@poolcare/db";
 
 @Injectable()
 export class SettingsService {
+  constructor(private readonly configService: ConfigService) {}
+
+  /**
+   * Public branding for login page and unauthenticated views.
+   * Returns the organization's name, logo (absolute URL), and theme.
+   * Prefers the org that has branding settings (logoUrl or non-default themeColor).
+   */
+  async getPublicBranding(): Promise<{
+    organizationName: string;
+    logoUrl: string | null;
+    themeColor: string;
+    primaryColorHex: string;
+  }> {
+    // Find an OrgSetting that has branding configured (logoUrl or custom theme)
+    const orgSettings = await prisma.orgSetting.findMany({
+      where: {
+        OR: [
+          { profile: { path: ["logoUrl"], not: null } },
+          { profile: { path: ["themeColor"], not: "orange" } },
+        ],
+      },
+      include: { org: true },
+      orderBy: { updatedAt: "desc" },
+      take: 1,
+    });
+
+    let org: { id: string; name: string | null } | null = null;
+    let profile: any = {};
+
+    if (orgSettings.length > 0 && orgSettings[0].org) {
+      org = orgSettings[0].org;
+      profile = (orgSettings[0].profile as any) || {};
+    } else {
+      // Fallback to first org
+      org = await prisma.organization.findFirst({
+        orderBy: { createdAt: "asc" },
+      });
+      if (org) {
+        const setting = await prisma.orgSetting.findUnique({
+          where: { orgId: org.id },
+        });
+        profile = (setting?.profile as any) || {};
+      }
+    }
+
+    if (!org) {
+      return {
+        organizationName: "PoolCare",
+        logoUrl: null,
+        themeColor: "teal",
+        primaryColorHex: "#0d9488",
+      };
+    }
+
+    const rawLogoUrl = profile.logoUrl || null;
+    const themeColor = profile.themeColor || "teal";
+    const primaryColorHex = this.getThemeColorHex(themeColor);
+    // Ensure logo URL is absolute so login page (different origin) can load it
+    const logoUrl = rawLogoUrl ? this.toAbsoluteLogoUrl(rawLogoUrl) : null;
+    return {
+      organizationName: org.name || "PoolCare",
+      logoUrl,
+      themeColor,
+      primaryColorHex,
+    };
+  }
+
+  private toAbsoluteLogoUrl(logoUrl: string): string {
+    if (logoUrl.startsWith("http://") || logoUrl.startsWith("https://")) {
+      return logoUrl;
+    }
+    const base =
+      this.configService.get<string>("RENDER_EXTERNAL_URL") ||
+      this.configService.get<string>("API_URL") ||
+      "http://localhost:4000";
+    return `${base}${logoUrl.startsWith("/") ? "" : "/"}${logoUrl}`;
+  }
+
+  private getThemeColorHex(themeColor: string): string {
+    const map: Record<string, string> = {
+      purple: "#9333ea",
+      blue: "#2563eb",
+      green: "#16a34a",
+      orange: "#ea580c",
+      red: "#dc2626",
+      indigo: "#4f46e5",
+      pink: "#db2777",
+      teal: "#0d9488",
+    };
+    return map[themeColor] || "#0d9488";
+  }
+
   async getOrgSettings(orgId: string) {
     const org = await prisma.organization.findUnique({
       where: { id: orgId },
@@ -113,18 +206,26 @@ export class SettingsService {
     return orgSetting;
   }
 
+  /** Treat literal string "undefined" from frontend/DB as empty */
+  private normalizeSettingValue(val: unknown): string {
+    if (val === undefined || val === null) return "";
+    const s = String(val).trim();
+    return s === "undefined" || s === "null" ? "" : s;
+  }
+
   async getSmsSettings(orgId: string) {
     const orgSetting = await this.getOrCreateOrgSetting(orgId);
     const integrations = (orgSetting.integrations as any) || {};
     const sms = integrations.sms || {};
 
+    const username = this.normalizeSettingValue(sms.username) || process.env.DEYWURO_USERNAME || "";
     return {
       settings: {
-        provider: sms.provider || "Deywuro",
-        username: sms.username || process.env.DEYWURO_USERNAME || "",
+        provider: this.normalizeSettingValue(sms.provider) || "Deywuro",
+        username,
         password: sms.password ? "***" : "",
-        senderId: sms.senderId || process.env.DEYWURO_SENDER_ID || "PoolCare",
-        apiEndpoint: sms.apiEndpoint || process.env.DEYWURO_API_ENDPOINT || "https://deywuro.com/api/sms",
+        senderId: this.normalizeSettingValue(sms.senderId) || process.env.DEYWURO_SENDER_ID || "PoolCare",
+        apiEndpoint: this.normalizeSettingValue(sms.apiEndpoint) || process.env.DEYWURO_API_ENDPOINT || "https://deywuro.com/api/sms",
       },
     };
   }
@@ -158,12 +259,16 @@ export class SettingsService {
       // If password is undefined, empty, or masked, keep existing password (don't change it)
     }
     
+    const username = settings.username !== undefined ? this.normalizeSettingValue(settings.username) : this.normalizeSettingValue(existingSms.username);
+    const senderId = settings.senderId !== undefined ? this.normalizeSettingValue(settings.senderId) : (this.normalizeSettingValue(existingSms.senderId) || "PoolCare");
+    const apiEndpoint = settings.apiEndpoint !== undefined ? this.normalizeSettingValue(settings.apiEndpoint) : (this.normalizeSettingValue(existingSms.apiEndpoint) || "https://deywuro.com/api/sms");
+
     integrations.sms = {
-      provider: settings.provider || existingSms.provider || "Deywuro",
-      username: settings.username !== undefined ? settings.username : (existingSms.username || ""),
+      provider: this.normalizeSettingValue(settings.provider) || existingSms.provider || "Deywuro",
+      username,
       password: finalPassword,
-      senderId: settings.senderId !== undefined ? settings.senderId : (existingSms.senderId || "PoolCare"),
-      apiEndpoint: settings.apiEndpoint !== undefined ? settings.apiEndpoint : (existingSms.apiEndpoint || "https://deywuro.com/api/sms"),
+      senderId: senderId || "PoolCare",
+      apiEndpoint: apiEndpoint || "https://deywuro.com/api/sms",
     };
 
     await prisma.orgSetting.update({
@@ -297,6 +402,161 @@ export class SettingsService {
     
     // Fall back to environment variable
     return process.env.GOOGLE_MAPS_API_KEY || null;
+  }
+
+  /** LLM settings: provider, apiKey (masked in responses), model, baseUrl (optional) */
+  async getLlmSettings(orgId: string) {
+    const orgSetting = await this.getOrCreateOrgSetting(orgId);
+    const integrations = (orgSetting.integrations as any) || {};
+    const llm = integrations.llm || {};
+
+    return {
+      settings: {
+        provider: this.normalizeSettingValue(llm.provider) || "openai",
+        apiKey: llm.apiKey ? "***" : "",
+        model: this.normalizeSettingValue(llm.model) || "gpt-4o-mini",
+        baseUrl: this.normalizeSettingValue(llm.baseUrl) || "",
+        enabled: llm.enabled !== undefined ? llm.enabled : !!llm.apiKey,
+      },
+    };
+  }
+
+  async updateLlmSettings(orgId: string, data: any) {
+    const settings = data.settings || data;
+    const orgSetting = await this.getOrCreateOrgSetting(orgId);
+    const integrations = (orgSetting.integrations as any) || {};
+    const existingLlm = integrations.llm || {};
+
+    let finalApiKey = existingLlm.apiKey || "";
+    if (settings.apiKey !== undefined) {
+      const newApiKey = settings.apiKey;
+      const isMasked =
+        newApiKey === "***" ||
+        newApiKey === "******" ||
+        newApiKey === "••••••••";
+      const isValidNew =
+        newApiKey &&
+        !isMasked &&
+        typeof newApiKey === "string" &&
+        newApiKey.trim().length > 0;
+      if (isValidNew) {
+        finalApiKey = newApiKey.trim();
+      }
+    }
+
+    integrations.llm = {
+      provider: this.normalizeSettingValue(settings.provider) || existingLlm.provider || "openai",
+      apiKey: finalApiKey,
+      model: this.normalizeSettingValue(settings.model) || existingLlm.model || "gpt-4o-mini",
+      baseUrl: settings.baseUrl !== undefined ? this.normalizeSettingValue(settings.baseUrl) : (existingLlm.baseUrl || ""),
+      enabled: settings.enabled !== undefined ? settings.enabled : (!!finalApiKey || !!existingLlm.enabled),
+    };
+
+    await prisma.orgSetting.update({
+      where: { orgId },
+      data: { integrations },
+    });
+
+    return {
+      settings: {
+        provider: integrations.llm.provider,
+        apiKey: integrations.llm.apiKey ? "***" : "",
+        model: integrations.llm.model,
+        baseUrl: integrations.llm.baseUrl || "",
+        enabled: integrations.llm.enabled,
+      },
+    };
+  }
+
+  /**
+   * Get LLM config for internal use (e.g. AI recommendations). Returns unmasked apiKey.
+   */
+  async getLlmConfig(orgId: string): Promise<{
+    provider: string;
+    apiKey: string | null;
+    model: string;
+    baseUrl: string | null;
+    enabled: boolean;
+  } | null> {
+    const orgSetting = await this.getOrCreateOrgSetting(orgId);
+    const integrations = (orgSetting.integrations as any) || {};
+    const llm = integrations.llm || {};
+    if (!llm.enabled || !llm.apiKey) return null;
+    return {
+      provider: this.normalizeSettingValue(llm.provider) || "openai",
+      apiKey: llm.apiKey || null,
+      model: this.normalizeSettingValue(llm.model) || "gpt-4o-mini",
+      baseUrl: this.normalizeSettingValue(llm.baseUrl) || null,
+      enabled: !!llm.enabled,
+    };
+  }
+
+  /**
+   * Test LLM API connection with a minimal request. Returns success and message for UI.
+   */
+  async testLlmConnection(orgId: string): Promise<{ success: boolean; message: string }> {
+    const config = await this.getLlmConfig(orgId);
+    if (!config || !config.apiKey) {
+      return { success: false, message: "LLM is not configured or disabled. Save your API key and enable the integration first." };
+    }
+
+    const testPrompt = "Reply with exactly: OK";
+
+    if (config.provider === "anthropic") {
+      const url = "https://api.anthropic.com/v1/messages";
+      try {
+        const res = await fetch(url, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-api-key": config.apiKey,
+            "anthropic-version": "2023-06-01",
+          },
+          body: JSON.stringify({
+            model: config.model,
+            max_tokens: 16,
+            messages: [{ role: "user", content: testPrompt }],
+          }),
+        });
+        const data = (await res.json()) as any;
+        if (!res.ok) {
+          const err = data.error?.message || data.message || JSON.stringify(data);
+          return { success: false, message: err };
+        }
+        const text = data.content?.[0]?.text;
+        return { success: true, message: text ? `API is working. Response: ${(text as string).trim().slice(0, 50)}` : "API is working." };
+      } catch (e: any) {
+        return { success: false, message: e.message || "Request failed. Check network and API key." };
+      }
+    }
+
+    // OpenAI or custom (OpenAI-compatible)
+    const base = (config.baseUrl || "").trim() || "https://api.openai.com/v1";
+    const baseUrl = base.endsWith("/") ? base.slice(0, -1) : base;
+    const url = `${baseUrl}/chat/completions`;
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${config.apiKey}`,
+        },
+        body: JSON.stringify({
+          model: config.model,
+          max_tokens: 16,
+          messages: [{ role: "user", content: testPrompt }],
+        }),
+      });
+      const data = (await res.json()) as any;
+      if (!res.ok) {
+        const err = data.error?.message || data.message || JSON.stringify(data);
+        return { success: false, message: err };
+      }
+      const text = data.choices?.[0]?.message?.content;
+      return { success: true, message: text ? `API is working. Response: ${(text as string).trim().slice(0, 50)}` : "API is working." };
+    } catch (e: any) {
+      return { success: false, message: e.message || "Request failed. Check base URL and API key." };
+    }
   }
 
   async getTaxSettings(orgId: string) {

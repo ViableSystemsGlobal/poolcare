@@ -122,8 +122,16 @@ export default function VisitsPage() {
       });
       
       setPastVisits(past);
-    } catch (error) {
-      console.error("Error loading visits:", error);
+    } catch (error: any) {
+      const isConnectionError =
+        error?.message?.includes("timed out") ||
+        error?.message?.includes("connection") ||
+        error?.message?.includes("network");
+      if (isConnectionError && __DEV__) {
+        console.warn("Visits: request failed (connection/timeout)", error?.message);
+      } else if (!isConnectionError) {
+        console.error("Error loading visits:", error);
+      }
       setUpcomingVisits([]);
       setPastVisits([]);
     } finally {

@@ -31,6 +31,18 @@ export class UpdatePoolDto {
   surfaceType?: string;
 
   @IsOptional()
+  @IsString()
+  poolType?: string;
+
+  @IsOptional()
+  @IsString()
+  filtrationType?: string;
+
+  @IsOptional()
+  @IsObject()
+  dimensions?: { length?: number; width?: number; depth?: number; unit?: string };
+
+  @IsOptional()
   @IsObject()
   equipment?: any;
 

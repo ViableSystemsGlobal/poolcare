@@ -1,4 +1,4 @@
-import { Injectable, ForbiddenException, NotFoundException } from "@nestjs/common";
+import { Injectable, BadRequestException, ForbiddenException, NotFoundException } from "@nestjs/common";
 import { prisma } from "@poolcare/db";
 
 @Injectable()
@@ -15,28 +15,53 @@ export class OrgsService {
     return { id: org.id, name: org.name };
   }
 
-  async inviteMember(orgId: string, inviterRole: string, dto: { target: string; role: string; name?: string }) {
+  async inviteMember(orgId: string, inviterRole: string, dto: { target?: string; email?: string; phone?: string; role: string; name?: string }) {
     if (inviterRole !== "ADMIN" && inviterRole !== "MANAGER") {
       throw new ForbiddenException("Only ADMIN or MANAGER can invite members");
     }
 
-    // Normalize target
-    const target = dto.target.toLowerCase().trim();
+    // Support both "target" (single) and "email" + "phone" (both optional, at least one required)
+    let email = dto.email?.trim() || "";
+    let phone = dto.phone?.trim() || "";
+    if (dto.target?.trim()) {
+      const t = dto.target.trim().toLowerCase();
+      if (t.includes("@")) email = t;
+      else phone = t;
+    }
+
+    if (!email && !phone) {
+      throw new BadRequestException("Provide at least one of email or phone");
+    }
+
+    const orConditions: { phone?: string; email?: string }[] = [];
+    if (phone) orConditions.push({ phone });
+    if (email) orConditions.push({ email });
 
     // Find or create user
     let user = await prisma.user.findFirst({
-      where: {
-        OR: [{ phone: target }, { email: target }],
-      },
+      where: { OR: orConditions },
     });
 
     if (!user) {
-      const isEmail = target.includes("@");
       user = await prisma.user.create({
-        data: isEmail
-          ? { email: target, name: dto.name }
-          : { phone: target, name: dto.name },
+        data: {
+          email: email || undefined,
+          phone: phone || undefined,
+          name: dto.name?.trim() || undefined,
+        },
       });
+    } else {
+      // Update existing user with the other contact if we have it and they don't
+      const updates: { email?: string; phone?: string; name?: string } = {};
+      if (email && !user.email) updates.email = email;
+      if (phone && !user.phone) updates.phone = phone;
+      if (dto.name?.trim() && !user.name) updates.name = dto.name.trim();
+      if (Object.keys(updates).length > 0) {
+        user = await prisma.user.update({
+          where: { id: user.id },
+          data: updates,
+        });
+      }
     }
 
     // Upsert membership
@@ -64,6 +89,73 @@ export class OrgsService {
       invitedUserId: user.id,
       role: membership.role,
     };
+  }
+
+  async listMembers(orgId: string, requesterRole: string) {
+    if (requesterRole !== "ADMIN" && requesterRole !== "MANAGER") {
+      throw new ForbiddenException("Only ADMIN or MANAGER can list org members");
+    }
+
+    const members = await prisma.orgMember.findMany({
+      where: { orgId },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            phone: true,
+            createdAt: true,
+          },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    return {
+      items: members.map((m) => ({
+        userId: m.userId,
+        role: m.role,
+        createdAt: m.createdAt,
+        user: m.user,
+      })),
+      total: members.length,
+    };
+  }
+
+  async removeMember(orgId: string, requesterRole: string, userId: string) {
+    if (requesterRole !== "ADMIN" && requesterRole !== "MANAGER") {
+      throw new ForbiddenException("Only ADMIN or MANAGER can remove members");
+    }
+
+    const membership = await prisma.orgMember.findUnique({
+      where: {
+        orgId_userId: { orgId, userId },
+      },
+      include: { user: true },
+    });
+
+    if (!membership) {
+      throw new NotFoundException("Member not found");
+    }
+
+    // Prevent removing the last ADMIN
+    if (membership.role === "ADMIN") {
+      const adminCount = await prisma.orgMember.count({
+        where: { orgId, role: "ADMIN" },
+      });
+      if (adminCount <= 1) {
+        throw new ForbiddenException("Cannot remove the last admin. Assign another admin first.");
+      }
+    }
+
+    await prisma.orgMember.delete({
+      where: {
+        orgId_userId: { orgId, userId },
+      },
+    });
+
+    return { message: "Member removed successfully" };
   }
 
   async getMe(orgId: string, userId: string, role: string) {

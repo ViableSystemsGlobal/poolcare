@@ -78,6 +78,16 @@ export default function Dashboard() {
   const router = useRouter();
 
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
+  const [aiRecommendations, setAiRecommendations] = useState<Array<{
+    id: string;
+    title: string;
+    description: string;
+    priority: "high" | "medium" | "low";
+    completed: boolean;
+    action?: string;
+    href?: string;
+  }>>([]);
+  const [aiRecommendationsSource, setAiRecommendationsSource] = useState<"api" | "fallback" | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -85,21 +95,38 @@ export default function Dashboard() {
       try {
         const token = localStorage.getItem("auth_token");
         const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
-        const response = await fetch(`${API_URL}/dashboard`, {
-          headers: {
-            ...(token && { Authorization: `Bearer ${token}` }),
-          },
-          cache: "no-store", // Prevent Next.js from caching this request
+        const headers = token ? { Authorization: `Bearer ${token}` } : {};
+
+        const dashboardRes = await fetch(`${API_URL}/dashboard`, {
+          headers,
+          cache: "no-store",
         });
-        if (response.ok) {
-          const data = await response.json();
-          console.log('✅ Dashboard data loaded from API:', data);
+        const data = dashboardRes.ok ? await dashboardRes.json() : null;
+        if (data) {
           setDashboardData(data);
+        }
+
+        const recRes = await fetch(`${API_URL}/ai/recommendations?context=dashboard`, {
+          headers,
+          cache: "no-store",
+        });
+        if (recRes.ok) {
+          const recData = await recRes.json();
+          if (Array.isArray(recData) && recData.length > 0) {
+            setAiRecommendations(recData);
+            setAiRecommendationsSource("api");
+          } else {
+            setAiRecommendations(generateAIRecommendationsFromMetrics(data));
+            setAiRecommendationsSource("fallback");
+          }
         } else {
-          console.error('❌ Dashboard API failed:', response.status);
+          setAiRecommendations(generateAIRecommendationsFromMetrics(data));
+          setAiRecommendationsSource("fallback");
         }
       } catch (error) {
-        console.error("❌ Error fetching dashboard data:", error);
+        console.error("Error fetching dashboard or recommendations:", error);
+        setAiRecommendations(generateAIRecommendationsFromMetrics(null));
+        setAiRecommendationsSource("fallback");
       } finally {
         setLoading(false);
       }
@@ -128,65 +155,67 @@ export default function Dashboard() {
 
   const recentActivity = dashboardData?.recentActivity || [];
 
-  // AI Recommendations for Dashboard - Dynamic based on data
-  const generateAIRecommendations = () => {
+  // Fallback: generate recommendations from metrics when API is unavailable (used in useEffect)
+  function generateAIRecommendationsFromMetrics(dashboardJson: DashboardData | null): Array<{
+    id: string;
+    title: string;
+    description: string;
+    priority: "high" | "medium" | "low";
+    completed: boolean;
+    action?: string;
+    href?: string;
+  }> {
+    const m = dashboardJson?.metrics || {};
+    const todayM = m.today || { unassigned: 0, atRisk: 0 };
+    const businessM = m.business || { pendingQuotes: 0, activePools: 0, totalClients: 0 };
+    const suppliesM = m.supplies || { urgentRequests: 0 };
     const recommendations = [];
-    
-    // High priority: Pending quotes
-    if (business.pendingQuotes > 0) {
+    if ((businessM.pendingQuotes as number) > 0) {
       recommendations.push({
         id: "follow-up-quotes",
         title: "🎯 Follow up on pending quotes",
-        description: `${business.pendingQuotes} quotes awaiting client approval - potential revenue at risk`,
+        description: `${businessM.pendingQuotes} quotes awaiting client approval - potential revenue at risk`,
         priority: "high" as const,
         action: "Review Quotes",
         href: "/quotes",
         completed: false,
       });
     }
-
-    // High priority: Unassigned jobs
-    if (today.unassigned > 0) {
+    if ((todayM.unassigned as number) > 0) {
       recommendations.push({
         id: "assign-jobs",
         title: "⚡ Assign today's jobs",
-        description: `${today.unassigned} jobs need carer assignment for optimal routing`,
+        description: `${todayM.unassigned} jobs need carer assignment for optimal routing`,
         priority: "high" as const,
         action: "View Jobs",
         href: "/jobs",
         completed: false,
       });
     }
-
-    // High priority: At-risk jobs
-    if (today.atRisk > 0) {
+    if ((todayM.atRisk as number) > 0) {
       recommendations.push({
         id: "at-risk-jobs",
         title: "⚠️ Jobs at risk",
-        description: `${today.atRisk} jobs are past their window - immediate attention needed`,
+        description: `${todayM.atRisk} jobs are past their window - immediate attention needed`,
         priority: "high" as const,
         action: "View Jobs",
         href: "/jobs?status=at_risk",
         completed: false,
       });
     }
-
-    // High priority: Urgent supply requests
-    if (supplies.urgentRequests > 0) {
+    if ((suppliesM.urgentRequests as number) > 0) {
       recommendations.push({
         id: "urgent-supplies",
         title: "📦 Urgent supply requests",
-        description: `${supplies.urgentRequests} urgent supply requests need immediate attention`,
+        description: `${suppliesM.urgentRequests} urgent supply requests need immediate attention`,
         priority: "high" as const,
         action: "View Supplies",
         href: "/supplies?priority=urgent",
         completed: false,
       });
     }
-
-    // Medium priority: Pool maintenance scheduling
-    if (business.activePools > 0) {
-      const poolsNeedingMaintenance = Math.ceil(business.activePools * 0.3);
+    if ((businessM.activePools as number) > 0) {
+      const poolsNeedingMaintenance = Math.ceil((businessM.activePools as number) * 0.3);
       recommendations.push({
         id: "schedule-maintenance",
         title: "🔧 Smart maintenance scheduling",
@@ -197,8 +226,6 @@ export default function Dashboard() {
         completed: false,
       });
     }
-
-    // Water quality insights
     recommendations.push({
       id: "water-quality-insights",
       title: "🧪 Water quality insights",
@@ -208,21 +235,17 @@ export default function Dashboard() {
       href: "/visits",
       completed: false,
     });
-
-    // Revenue optimization based on client count
-    if (business.totalClients >= 3) {
+    if ((businessM.totalClients as number) >= 3) {
       recommendations.push({
         id: "revenue-optimization",
         title: "💰 Revenue opportunity detected",
-        description: `AI identified ${Math.ceil(business.totalClients * 0.25)} clients for service upgrades`,
+        description: `AI identified ${Math.ceil((businessM.totalClients as number) * 0.25)} clients for service upgrades`,
         priority: "medium" as const,
         action: "View Insights",
         href: "/analytics",
         completed: false,
       });
     }
-
-    // Payment follow-ups
     recommendations.push({
       id: "payment-followups",
       title: "💳 Smart payment reminders",
@@ -232,11 +255,8 @@ export default function Dashboard() {
       href: "/invoices",
       completed: false,
     });
-
-    return recommendations.slice(0, 5); // Show max 5 recommendations (dashboard only)
-  };
-
-  const aiRecommendations = generateAIRecommendations();
+    return recommendations.slice(0, 5);
+  }
 
   const handleRecommendationComplete = (id: string) => {
     console.log("Recommendation completed:", id);
@@ -537,6 +557,7 @@ export default function Dashboard() {
             recommendations={aiRecommendations}
             onRecommendationComplete={handleRecommendationComplete}
             layout="vertical"
+            recommendationsSource={aiRecommendationsSource}
           />
         </div>
       </div>

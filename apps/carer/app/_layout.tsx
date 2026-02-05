@@ -51,7 +51,7 @@ export default function RootLayout() {
         >
           <Stack.Screen name="index" options={{ headerShown: false }} />
           <Stack.Screen name="(auth)" options={{ headerShown: false }} />
-          <Stack.Screen name="jobs/[id]" options={{ title: "Job Details" }} />
+          <Stack.Screen name="jobs/[id]" options={{ title: "Job Details", headerBackTitle: "Jobs" }} />
           <Stack.Screen name="schedule" options={{ title: "Schedule", headerShown: false }} />
           <Stack.Screen name="earnings" options={{ title: "Earnings", headerShown: false }} />
           <Stack.Screen name="supplies" options={{ title: "Supplies", headerShown: false }} />

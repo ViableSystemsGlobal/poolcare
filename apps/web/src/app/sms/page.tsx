@@ -205,25 +205,31 @@ export default function SmsPage() {
 
   const aiRecommendations = [
     {
-      id: "1",
+      id: "sms-time-sensitive",
       title: "Time-sensitive notifications",
       description: "Use SMS for time-sensitive notifications like appointment reminders",
       priority: "high" as const,
       completed: false,
+      action: "Send SMS",
+      href: "/sms",
     },
     {
-      id: "2",
+      id: "sms-concise",
       title: "Keep messages concise",
       description: "Keep messages under 160 characters to avoid splitting into multiple messages",
       priority: "medium" as const,
       completed: false,
+      action: "Compose",
+      href: "/sms",
     },
     {
-      id: "3",
+      id: "sms-cta",
       title: "Clear call-to-action",
       description: "Always include a clear call-to-action in your SMS messages",
       priority: "medium" as const,
       completed: false,
+      action: "View Inbox",
+      href: "/inbox",
     },
   ];
 

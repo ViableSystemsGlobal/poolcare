@@ -1,4 +1,4 @@
-import { IsEnum, IsString } from "class-validator";
+import { IsEnum, IsOptional, IsString } from "class-validator";
 
 export class OtpVerifyDto {
   @IsEnum(["phone", "email"])
@@ -9,5 +9,10 @@ export class OtpVerifyDto {
 
   @IsString()
   code: string;
+
+  /** Which app is logging in: admin/carer = invite-only, client = self-signup allowed */
+  @IsOptional()
+  @IsEnum(["admin", "carer", "client"])
+  app?: "admin" | "carer" | "client";
 }
 

@@ -198,6 +198,8 @@ export class VisitsService {
         calciumHardness: dto.calciumHardness,
         cyanuricAcid: dto.cyanuricAcid,
         tempC: dto.tempC,
+        tds: dto.tds,
+        salinity: dto.salinity,
         measuredAt: dto.measuredAt ? new Date(dto.measuredAt) : new Date(),
       },
     });

@@ -23,7 +23,7 @@ try {
 } catch (e) {
   console.warn("react-native-maps not available. Using fallback map view.");
 }
-import { api } from "../../src/lib/api-client";
+import { api, getApiUrl } from "../../src/lib/api-client";
 import { fixUrlForMobile } from "../../src/lib/network-utils";
 import { ChecklistWizard, ChecklistItem as WizardChecklistItem, useToast } from "../../src/components";
 import { COLORS } from "../../src/theme";
@@ -43,6 +43,8 @@ interface Reading {
   calciumHardness?: number;
   cyanuricAcid?: number;
   tempC?: number;
+  tds?: number;
+  salinity?: number;
 }
 
 export default function JobDetailScreen() {
@@ -65,6 +67,7 @@ export default function JobDetailScreen() {
   const [showReportPreview, setShowReportPreview] = useState(false);
   const [reportData, setReportData] = useState<any>(null);
   const [loadingReport, setLoadingReport] = useState(false);
+  const [poolImageLoadError, setPoolImageLoadError] = useState(false);
   
   // Location tracking for geofencing
   const [poolLocation, setPoolLocation] = useState<{ lat: number; lng: number } | null>(null);
@@ -449,11 +452,16 @@ export default function JobDetailScreen() {
       jobDate.setHours(0, 0, 0, 0);
       const isScheduledForToday = jobDate.getTime() === today.getTime();
       
-      // Get pool image if available
-      const poolImageUrl = pool?.imageUrls && pool.imageUrls.length > 0 
-        ? fixUrlForMobile(pool.imageUrls[0])
-        : null;
+      // Get pool image if available (resolve relative URLs so images set in the system display)
+      let poolImageUrl: string | null = null;
+      const rawImageUrl = pool?.imageUrls && pool.imageUrls.length > 0 ? pool.imageUrls[0] : null;
+      if (rawImageUrl) {
+        const origin = getApiUrl().replace(/\/api\/?$/, "");
+        const fullUrl = rawImageUrl.startsWith("http") ? rawImageUrl : origin + (rawImageUrl.startsWith("/") ? rawImageUrl : "/" + rawImageUrl);
+        poolImageUrl = fixUrlForMobile(fullUrl);
+      }
       
+      setPoolImageLoadError(false);
       setJob({
         id: jobData?.id || id,
         poolName: pool?.name || "Unknown Pool",
@@ -766,6 +774,12 @@ export default function JobDetailScreen() {
     }
     if (readings.tempC !== undefined && readings.tempC !== null && !isNaN(readings.tempC)) {
       payload.tempC = readings.tempC;
+    }
+    if (readings.tds !== undefined && readings.tds !== null && !isNaN(readings.tds)) {
+      payload.tds = readings.tds;
+    }
+    if (readings.salinity !== undefined && readings.salinity !== null && !isNaN(readings.salinity)) {
+      payload.salinity = readings.salinity;
     }
     
     // Check if at least one reading is provided
@@ -1419,15 +1433,15 @@ export default function JobDetailScreen() {
     >
       {/* Job Info Card - Prominent with Pool Image */}
       <View style={styles.jobInfoCard}>
-        {/* Pool Image */}
-        {job?.poolImageUrl && (
+        {/* Pool Image - show placeholder if no URL or image failed to load */}
+        {job?.poolImageUrl && !poolImageLoadError ? (
           <Image
             source={{ uri: job.poolImageUrl }}
             style={styles.poolImage}
             resizeMode="cover"
+            onError={() => setPoolImageLoadError(true)}
           />
-        )}
-        {!job?.poolImageUrl && (
+        ) : (
           <View style={styles.poolImagePlaceholder}>
             <Ionicons name="water" size={48} color="#d1d5db" />
           </View>

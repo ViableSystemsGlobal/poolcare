@@ -12,7 +12,7 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { apiClient } from "../src/lib/api-client";
+import { api } from "../src/lib/api-client";
 import { COLORS } from "../src/theme";
 
 interface Product {
@@ -82,11 +82,8 @@ export default function SuppliesScreen() {
 
   const fetchProducts = async () => {
     try {
-      const response = await apiClient.get("/products?limit=100&isActive=true");
-      if (response.ok) {
-        const data = await response.json();
-        setProducts(data.items || []);
-      }
+      const data = await api.getProducts({ limit: 100, isActive: "true" });
+      setProducts(data?.items || []);
     } catch (error) {
       console.error("Failed to fetch products:", error);
     }
@@ -94,11 +91,8 @@ export default function SuppliesScreen() {
 
   const fetchRequests = async () => {
     try {
-      const response = await apiClient.get("/supplies/my-requests");
-      if (response.ok) {
-        const data = await response.json();
-        setRequests(data.items || []);
-      }
+      const data = await api.getSupplyRequests({ limit: 50 });
+      setRequests(data?.items || []);
     } catch (error) {
       console.error("Failed to fetch requests:", error);
     }
@@ -173,7 +167,7 @@ export default function SuppliesScreen() {
     }
 
     try {
-      const response = await apiClient.post("/supplies", {
+      await api.createSupplyRequest({
         items: cart.map((item) => ({
           name: item.name,
           quantity: item.quantity,
@@ -182,21 +176,15 @@ export default function SuppliesScreen() {
         priority: "normal",
         notes: requestNotes,
       });
-
-      if (response.ok) {
-        Alert.alert("Success", "Your supply request has been submitted.");
-        setCart([]);
-        setRequestNotes("");
-        setShowRequestModal(false);
-        fetchRequests();
-        setActiveTab("requests");
-      } else {
-        const error = await response.json();
-        Alert.alert("Error", error.message || "Failed to submit request");
-      }
-    } catch (error) {
+      Alert.alert("Success", "Your supply request has been submitted.");
+      setCart([]);
+      setRequestNotes("");
+      setShowRequestModal(false);
+      fetchRequests();
+      setActiveTab("requests");
+    } catch (error: any) {
       console.error("Failed to submit request:", error);
-      Alert.alert("Error", "Failed to submit request. Please try again.");
+      Alert.alert("Error", error?.message || "Failed to submit request. Please try again.");
     }
   };
 
@@ -326,6 +314,7 @@ export default function SuppliesScreen() {
             horizontal
             showsHorizontalScrollIndicator={false}
             style={styles.categoriesContainer}
+            contentContainerStyle={styles.categoriesContent}
           >
             <TouchableOpacity
               style={[
@@ -334,6 +323,11 @@ export default function SuppliesScreen() {
               ]}
               onPress={() => setSelectedCategory(null)}
             >
+              <Ionicons
+                name="apps-outline"
+                size={16}
+                color={!selectedCategory ? "#fff" : COLORS.primary[500]}
+              />
               <Text
                 style={[
                   styles.categoryChipText,
@@ -697,15 +691,20 @@ const styles = StyleSheet.create({
     color: "#111827",
   },
   categoriesContainer: {
-    paddingHorizontal: 16,
     marginBottom: 8,
+    maxHeight: 56,
+  },
+  categoriesContent: {
+    paddingHorizontal: 16,
+    alignItems: "center",
   },
   categoryChip: {
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
     gap: 6,
+    height: 40,
     paddingHorizontal: 16,
-    paddingVertical: 8,
     borderRadius: 20,
     backgroundColor: "#fff",
     borderWidth: 1,
@@ -717,6 +716,7 @@ const styles = StyleSheet.create({
   },
   categoryChipText: {
     fontSize: 14,
+    lineHeight: 20,
     color: COLORS.primary[500],
   },
   categoryChipTextActive: {

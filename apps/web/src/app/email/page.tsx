@@ -212,25 +212,31 @@ export default function EmailPage() {
 
   const aiRecommendations = [
     {
-      id: "1",
+      id: "email-subject",
       title: "Clear subject lines",
       description: "Use clear, concise subject lines to improve open rates",
       priority: "high" as const,
       completed: false,
+      action: "Send Email",
+      href: "/email",
     },
     {
-      id: "2",
+      id: "email-plain-text",
       title: "Include plain text",
       description: "Always include a plain text version alongside HTML for better compatibility",
       priority: "medium" as const,
       completed: false,
+      action: "Compose",
+      href: "/email",
     },
     {
-      id: "3",
+      id: "email-personalize",
       title: "Personalize emails",
       description: "Personalize emails with client names and relevant information",
       priority: "medium" as const,
       completed: false,
+      action: "View Inbox",
+      href: "/inbox",
     },
   ];
 

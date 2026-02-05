@@ -95,6 +95,8 @@ model Organization {
   stocktakeSessions     StocktakeSession[]
   stocktakeItems        StocktakeItem[]
   households            Household[]
+  businessPartnerChats  BusinessPartnerChat[]
+  shopOrders            ShopOrder[]
 }
 
 model OrgMember {
@@ -191,28 +193,54 @@ model Client {
   invoices      Invoice[]
   threads       Thread[]
   creditNotes   CreditNote[]
+  shopOrders    ShopOrder[]
 
   @@index([orgId, name])
   @@index([orgId, phone])
   @@index([householdId])
+  @@index([orgId, userId])
+}
+
+// Client shop orders (PoolShop)
+model ShopOrder {
+  id          String   @id @default(uuid()) @db.Uuid
+  orgId       String   @db.Uuid
+  clientId    String   @db.Uuid
+  items       Json     // [{ productId, name, quantity, unitPrice, total }]
+  totalCents  Int      // Total in cents to avoid float
+  currency    String   @default("GHS")
+  status      String   @default("pending") // pending, confirmed, fulfilled, cancelled
+  notes       String?
+  createdAt   DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(6)
+
+  org    Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  client Client       @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([orgId, clientId])
+  @@index([orgId, status])
+  @@index([clientId, createdAt(sort: Desc)])
 }
 
 // Pools (Module 3)
 model Pool {
-  id          String   @id @default(uuid()) @db.Uuid
-  orgId       String   @db.Uuid
-  clientId    String   @db.Uuid
-  name        String?
-  address     String?
-  imageUrls   String[] @default([]) // Array of image URLs for multiple images
-  lat         Float?
-  lng         Float?
-  volumeL     Int?
-  surfaceType String?
-  equipment   Json?
-  targets     Json?
-  notes       String?
-  createdAt   DateTime @default(now()) @db.Timestamptz(6)
+  id              String   @id @default(uuid()) @db.Uuid
+  orgId           String   @db.Uuid
+  clientId        String   @db.Uuid
+  name            String?
+  address         String?
+  imageUrls       String[] @default([]) // Array of image URLs for multiple images
+  lat             Float?
+  lng             Float?
+  volumeL         Int?
+  surfaceType     String?
+  poolType        String?  // infinity, skimmer, skimmerless, outdoor_spa, etc.
+  filtrationType  String? // freshwater, saltwater, chlorine, etc.
+  dimensions      Json?    // { length, width, depth, unit: "m"|"ft" }
+  equipment       Json?
+  targets         Json?
+  notes           String?
+  createdAt       DateTime @default(now()) @db.Timestamptz(6)
 
   org          Organization  @relation(fields: [orgId], references: [id], onDelete: Cascade)
   client       Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
@@ -467,6 +495,8 @@ model Reading {
   calciumHardness Int?     @map("calcium_hardness")
   cyanuricAcid    Int?     @map("cyanuric_acid")
   tempC           Float?
+  tds             Float?   // Total Dissolved Solids
+  salinity        Float?   // For saltwater pools
   measuredAt      DateTime @default(now()) @db.Timestamptz(6)
 
   visit VisitEntry   @relation(fields: [visitId], references: [id], onDelete: Cascade)
@@ -855,6 +885,23 @@ model OrgSetting {
   org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
 
   @@index([orgId])
+}
+
+// AI Business Partner chat history (per org, per user)
+model BusinessPartnerChat {
+  id        String   @id @default(uuid()) @db.Uuid
+  orgId     String   @db.Uuid
+  userId    String   @db.Uuid
+  title     String   @default("New chat") // first user message truncated
+  messages  Json     // [{ role: "user"|"assistant", content: string }]
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId])
+  @@index([orgId, userId])
+  @@index([orgId, updatedAt(sort: Desc)])
 }
 
 // ============================================

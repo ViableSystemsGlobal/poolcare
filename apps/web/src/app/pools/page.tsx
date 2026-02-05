@@ -43,6 +43,9 @@ interface Pool {
   lng?: number;
   volumeL?: number;
   surfaceType?: string;
+  poolType?: string;
+  filtrationType?: string;
+  dimensions?: { length?: number; width?: number; depth?: number; unit?: string };
   equipment?: any;
   targets?: any;
   notes?: string;
@@ -91,6 +94,8 @@ export default function PoolsPage() {
     lng: "",
     volumeL: "",
     surfaceType: "",
+    poolType: "",
+    filtrationType: "",
     notes: "",
   });
   const [imageFiles, setImageFiles] = useState<File[]>([]);
@@ -338,6 +343,12 @@ export default function PoolsPage() {
       if (formData.surfaceType && formData.surfaceType.trim()) {
         payload.surfaceType = formData.surfaceType.trim();
       }
+      if (formData.poolType && formData.poolType.trim()) {
+        payload.poolType = formData.poolType.trim();
+      }
+      if (formData.filtrationType && formData.filtrationType.trim()) {
+        payload.filtrationType = formData.filtrationType.trim();
+      }
       if (formData.notes && formData.notes.trim()) {
         payload.notes = formData.notes.trim();
       }
@@ -425,6 +436,8 @@ export default function PoolsPage() {
       lng: "",
       volumeL: "",
       surfaceType: "",
+      poolType: "",
+      filtrationType: "",
       notes: "",
     });
     setImageFiles([]);
@@ -741,6 +754,8 @@ export default function PoolsPage() {
       lng: pool.lng?.toString() || "",
       volumeL: pool.volumeL?.toString() || "",
       surfaceType: pool.surfaceType || "",
+      poolType: pool.poolType || "",
+      filtrationType: pool.filtrationType || "",
       notes: pool.notes || "",
     });
     // Separate existing images from new files
@@ -1199,6 +1214,44 @@ export default function PoolsPage() {
               </div>
             </div>
 
+            <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-2">
+                <Label htmlFor="poolType">Pool Type</Label>
+                <Select
+                  value={formData.poolType}
+                  onValueChange={(value) => setFormData({ ...formData, poolType: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="infinity">Infinity</SelectItem>
+                    <SelectItem value="skimmer">Skimmer</SelectItem>
+                    <SelectItem value="skimmerless">Skimmerless</SelectItem>
+                    <SelectItem value="outdoor_spa">Outdoor Spa</SelectItem>
+                    <SelectItem value="indoor">Indoor</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="filtrationType">Filtration Type</Label>
+                <Select
+                  value={formData.filtrationType}
+                  onValueChange={(value) => setFormData({ ...formData, filtrationType: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="chlorine">Chlorine</SelectItem>
+                    <SelectItem value="saltwater">Saltwater</SelectItem>
+                    <SelectItem value="freshwater">Freshwater</SelectItem>
+                    <SelectItem value="bromine">Bromine</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
             <div className="grid gap-2">
               <Label htmlFor="notes">Notes</Label>
               <Textarea
@@ -1309,6 +1362,44 @@ export default function PoolsPage() {
                     <SelectItem value="vinyl">Vinyl</SelectItem>
                     <SelectItem value="fiberglass">Fiberglass</SelectItem>
                     <SelectItem value="plaster">Plaster</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-2">
+                <Label htmlFor="edit-poolType">Pool Type</Label>
+                <Select
+                  value={formData.poolType}
+                  onValueChange={(value) => setFormData({ ...formData, poolType: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="infinity">Infinity</SelectItem>
+                    <SelectItem value="skimmer">Skimmer</SelectItem>
+                    <SelectItem value="skimmerless">Skimmerless</SelectItem>
+                    <SelectItem value="outdoor_spa">Outdoor Spa</SelectItem>
+                    <SelectItem value="indoor">Indoor</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="edit-filtrationType">Filtration Type</Label>
+                <Select
+                  value={formData.filtrationType}
+                  onValueChange={(value) => setFormData({ ...formData, filtrationType: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="chlorine">Chlorine</SelectItem>
+                    <SelectItem value="saltwater">Saltwater</SelectItem>
+                    <SelectItem value="freshwater">Freshwater</SelectItem>
+                    <SelectItem value="bromine">Bromine</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

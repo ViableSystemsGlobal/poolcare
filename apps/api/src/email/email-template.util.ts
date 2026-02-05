@@ -34,8 +34,12 @@ async function ensureEmailSafeLogoUrl(logoUrl: string | null | undefined, orgId:
     return logoUrl;
   }
   
-  // Make relative URLs absolute
-  const apiUrl = process.env.API_URL || process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+  // Make relative URLs absolute (use public API URL so emails work in production)
+  const apiUrl =
+    process.env.RENDER_EXTERNAL_URL ||
+    process.env.API_URL ||
+    process.env.NEXT_PUBLIC_API_URL?.replace(/\/api\/?$/, "") ||
+    "http://localhost:4000";
   return `${apiUrl}${logoUrl.startsWith("/") ? "" : "/"}${logoUrl}`;
 }
 

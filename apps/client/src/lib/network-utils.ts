@@ -9,7 +9,7 @@ export const getNetworkIp = (): string => {
   return (
     process.env.EXPO_PUBLIC_NETWORK_IP ||
     process.env.NETWORK_IP ||
-    "192.168.0.167" // Default to current network IP
+    "192.168.1.73" // Default - update to match your dev machine's IP
   );
 };
 

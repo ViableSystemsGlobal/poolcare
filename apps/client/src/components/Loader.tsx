@@ -15,23 +15,24 @@ export default function Loader() {
       try {
         const token = await api.getAuthToken();
         if (token) {
-          // Add timeout to prevent hanging
-          const timeoutPromise = new Promise((_, reject) => 
-            setTimeout(() => reject(new Error("Logo fetch timeout")), 3000)
-          );
-          
+          // Timeout that resolves to null so we never block the app or abort in-flight requests
+          const timeoutMs = 5000;
           const settingsPromise = api.getOrgSettings();
-          const settings = await Promise.race([settingsPromise, timeoutPromise]) as any;
-          
+          const timeoutPromise = new Promise<null>((resolve) =>
+            setTimeout(() => resolve(null), timeoutMs)
+          );
+          const settings = (await Promise.race([settingsPromise, timeoutPromise])) as any;
+
           if (settings?.profile?.logoUrl) {
-            // Fix URL for mobile (replace localhost with network IP)
             const fixedLogoUrl = fixUrlForMobile(settings.profile.logoUrl);
             setLogoUrl(fixedLogoUrl);
           }
         }
       } catch (error) {
-        // Silently fail - just show fallback logo
-        console.error("Failed to fetch logo:", error);
+        // Don't block app: show fallback logo (only log in dev if needed)
+        if (__DEV__) {
+          console.warn("Loader: could not fetch org logo", error);
+        }
       } finally {
         setLoading(false);
       }

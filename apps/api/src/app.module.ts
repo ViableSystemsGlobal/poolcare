@@ -28,6 +28,7 @@ import { SuppliesModule } from "./supplies/supplies.module";
 import { MapsModule } from "./maps/maps.module";
 import { BillingModule } from "./billing/billing.module";
 import { InventoryModule } from "./inventory/inventory.module";
+import { OrdersModule } from "./orders/orders.module";
 import { RlsInterceptor } from "./core/rls.interceptor";
 
 @Module({
@@ -62,6 +63,7 @@ import { RlsInterceptor } from "./core/rls.interceptor";
     MapsModule,
     BillingModule,
     InventoryModule,
+    OrdersModule,
   ],
   controllers: [AppController],
   providers: [

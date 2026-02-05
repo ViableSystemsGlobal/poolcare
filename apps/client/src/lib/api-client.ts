@@ -126,9 +126,10 @@ class ApiClient {
 
       return response.json();
     } catch (error: any) {
-      // Only log network/abort errors, not handled API errors (they're already logged above)
       if (error.name === "AbortError" || error.message?.includes("Network request failed")) {
-        console.error("API Request failed:", error);
+        if (__DEV__) {
+          console.warn("API request timed out or aborted:", url);
+        }
         throw new Error("Request timed out. Please check your connection and try again.");
       }
       if (error.message?.includes("fetch") || error.message?.includes("Failed to fetch")) {
@@ -271,7 +272,7 @@ class ApiClient {
   }
 
   async initiatePayment(invoiceId: string, data: any) {
-    return this.request(`/invoices/${invoiceId}/pay/paystack`, {
+    return this.request(`/invoices/${invoiceId}/payments/init`, {
       method: "POST",
       body: JSON.stringify(data),
     });
@@ -334,6 +335,33 @@ class ApiClient {
   // Settings
   async getOrgSettings() {
     return this.request("/settings/org");
+  }
+
+  // PoolShop – products (from inventory)
+  async getProducts(params?: { search?: string; category?: string; isActive?: string; limit?: string; page?: string }) {
+    const query = new URLSearchParams(params as any).toString();
+    const res = await this.request<{ items: any[]; pagination?: any }>(`/products${query ? `?${query}` : ""}`);
+    return Array.isArray(res) ? { items: res } : res;
+  }
+
+  async getProduct(id: string) {
+    return this.request(`/products/${id}`);
+  }
+
+  // PoolShop – orders
+  async createOrder(data: { items: Array<{ productId: string; quantity: number }>; notes?: string }) {
+    return this.request("/orders", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async getOrders() {
+    return this.request("/orders");
+  }
+
+  async getOrder(id: string) {
+    return this.request(`/orders/${id}`);
   }
 }
 

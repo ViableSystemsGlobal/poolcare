@@ -175,14 +175,42 @@ export default function ReceiptsPage() {
   };
 
   const handleBulkDownload = async () => {
-    // TODO: Implement bulk download
-    alert("Bulk download coming soon!");
+    if (selectedReceipts.size === 0) {
+      alert("Select at least one receipt.");
+      return;
+    }
+    const ids = Array.from(selectedReceipts);
+    ids.forEach((receiptId, i) => {
+      setTimeout(() => {
+        window.open(`${API_URL}/receipts/${receiptId}/html`, "_blank");
+      }, i * 400);
+    });
   };
 
   const handleBulkDelete = async () => {
-    if (!confirm(`Delete ${selectedReceipts.size} receipt(s)?`)) return;
-    // TODO: Implement bulk delete
-    alert("Bulk delete coming soon!");
+    if (selectedReceipts.size === 0) return;
+    if (!confirm(`Delete ${selectedReceipts.size} receipt(s)? This cannot be undone.`)) return;
+    try {
+      const token = localStorage.getItem("auth_token");
+      const res = await fetch(`${API_URL}/receipts/bulk`, {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ ids: Array.from(selectedReceipts) }),
+      });
+      if (res.ok) {
+        setSelectedReceipts(new Set());
+        fetchReceipts();
+        alert("Receipts deleted.");
+      } else {
+        const data = await res.json().catch(() => ({}));
+        alert(data.message || "Bulk delete not supported. Delete receipts individually.");
+      }
+    } catch {
+      alert("Bulk delete not supported. Delete receipts individually.");
+    }
   };
 
   const handleRecommendationComplete = (id: string) => {
@@ -198,7 +226,8 @@ export default function ReceiptsPage() {
       description: "Create a summary report of all receipts for this month",
       priority: "medium" as const,
       completed: false,
-      action: "Generate",
+      action: "View Receipts",
+      href: "/receipts",
     },
     {
       id: "export-receipts",
@@ -207,6 +236,7 @@ export default function ReceiptsPage() {
       priority: "high" as const,
       completed: false,
       action: "Export",
+      href: "/receipts",
     },
     {
       id: "review-trends",
@@ -214,6 +244,7 @@ export default function ReceiptsPage() {
       description: "Analyze receipt trends to identify patterns in payment behavior",
       priority: "low" as const,
       completed: false,
+      action: "View Analytics",
       href: "/analytics",
     },
   ];

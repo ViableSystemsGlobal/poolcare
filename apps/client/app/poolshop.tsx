@@ -1,7 +1,9 @@
-import { useState } from "react";
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, TextInput, Image, Alert } from "react-native";
+import { useState, useEffect } from "react";
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, TextInput, ActivityIndicator, Alert } from "react-native";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { api } from "@/lib/api-client";
+import { setPoolShopCart } from "@/lib/poolshop-cart";
 
 interface Product {
   id: string;
@@ -18,87 +20,49 @@ interface CartItem extends Product {
   quantity: number;
 }
 
+function mapApiProduct(p: any): Product {
+  const stockItems = p.stockItems || [];
+  const available = stockItems.reduce((sum: number, s: any) => sum + (s.available ?? 0), 0);
+  return {
+    id: p.id,
+    name: p.name,
+    description: p.description || "",
+    price: p.price ?? 0,
+    image: p.imageUrl,
+    category: p.category || "general",
+    inStock: p.isActive !== false && (stockItems.length === 0 || available > 0),
+    brand: p.brand,
+  };
+}
+
 export default function PoolShopScreen() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [cart, setCart] = useState<CartItem[]>([]);
   const [showCart, setShowCart] = useState(false);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  // Mock products - In production, fetch from API
-  const products: Product[] = [
-    {
-      id: "1",
-      name: "Liquid Chlorine 12.5%",
-      description: "Multi-function chlorine for pool sanitization",
-      price: 45.00,
-      category: "chemicals",
-      inStock: true,
-      brand: "PoolCare",
-    },
-    {
-      id: "2",
-      name: "pH Plus",
-      description: "Increases pH levels in pool water",
-      price: 28.00,
-      category: "chemicals",
-      inStock: true,
-      brand: "PoolCare",
-    },
-    {
-      id: "3",
-      name: "pH Minus",
-      description: "Decreases pH levels in pool water",
-      price: 28.00,
-      category: "chemicals",
-      inStock: true,
-      brand: "PoolCare",
-    },
-    {
-      id: "4",
-      name: "Pool Algae Clear",
-      description: "Prevents and removes algae growth",
-      price: 35.00,
-      category: "chemicals",
-      inStock: true,
-      brand: "PoolCare",
-    },
-    {
-      id: "5",
-      name: "WaterClear Clarifier",
-      description: "Crystal clear water in 24 hours",
-      price: 32.00,
-      category: "chemicals",
-      inStock: true,
-      brand: "PoolCare",
-    },
-    {
-      id: "6",
-      name: "Pool Vacuum Head",
-      description: "Heavy-duty vacuum head for pool cleaning",
-      price: 120.00,
-      category: "equipment",
-      inStock: true,
-      brand: "Emaux",
-    },
-    {
-      id: "7",
-      name: "Pool Skimmer Net",
-      description: "Professional skimmer net for debris removal",
-      price: 25.00,
-      category: "equipment",
-      inStock: true,
-      brand: "Valor",
-    },
-    {
-      id: "8",
-      name: "Pool Test Strips",
-      description: "Complete water chemistry test kit",
-      price: 15.00,
-      category: "accessories",
-      inStock: true,
-      brand: "PoolCare",
-    },
-  ];
+  const fetchProducts = () => {
+    setLoading(true);
+    setError(null);
+    api.getProducts({ isActive: "true", limit: "100" })
+      .then((res: { items?: any[] }) => {
+        const items = res.items || [];
+        setProducts(items.map(mapApiProduct));
+        setError(null);
+      })
+      .catch((err: Error) => {
+        setError(err.message || "Failed to load products");
+        setProducts([]);
+      })
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    fetchProducts();
+  }, []);
 
   const categories = [
     { id: "all", name: "All Products", icon: "grid-outline" },
@@ -109,8 +73,9 @@ export default function PoolShopScreen() {
 
   const filteredProducts = products.filter((product) => {
     const matchesCategory = selectedCategory === "all" || product.category === selectedCategory;
+    const desc = product.description || "";
     const matchesSearch = product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      product.description.toLowerCase().includes(searchQuery.toLowerCase());
+      desc.toLowerCase().includes(searchQuery.toLowerCase());
     return matchesCategory && matchesSearch;
   });
 
@@ -156,7 +121,12 @@ export default function PoolShopScreen() {
           <Ionicons name="arrow-back" size={24} color="#111827" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>PoolShop</Text>
-        <TouchableOpacity onPress={() => setShowCart(!showCart)}>
+        <View style={styles.headerRight}>
+          <TouchableOpacity onPress={() => router.push("/poolshop/orders")} style={styles.myOrdersButton}>
+            <Ionicons name="receipt-outline" size={20} color="#14b8a6" />
+            <Text style={styles.myOrdersText}>My orders</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => setShowCart(!showCart)}>
           <View style={styles.cartIconContainer}>
             <Ionicons name="cart-outline" size={24} color="#111827" />
             {getCartItemCount() > 0 && (
@@ -165,7 +135,8 @@ export default function PoolShopScreen() {
               </View>
             )}
           </View>
-        </TouchableOpacity>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Search Bar */}
@@ -214,10 +185,43 @@ export default function PoolShopScreen() {
 
       {/* Products Grid */}
       <ScrollView style={styles.productsContainer} contentContainerStyle={styles.productsContent}>
-        {filteredProducts.length === 0 ? (
+        {loading ? (
           <View style={styles.emptyState}>
-            <Ionicons name="search-outline" size={48} color="#9ca3af" />
-            <Text style={styles.emptyText}>No products found</Text>
+            <ActivityIndicator size="large" color="#14b8a6" />
+            <Text style={styles.emptyText}>Loading products...</Text>
+          </View>
+        ) : error ? (
+          <View style={styles.emptyState}>
+            <Ionicons name="cloud-offline-outline" size={56} color="#dc2626" />
+            <Text style={styles.emptyTitle}>Couldn't load products</Text>
+            <Text style={styles.emptyText}>{error}</Text>
+            <TouchableOpacity style={styles.retryButton} onPress={fetchProducts}>
+              <Ionicons name="refresh" size={20} color="#fff" />
+              <Text style={styles.retryButtonText}>Try again</Text>
+            </TouchableOpacity>
+          </View>
+        ) : filteredProducts.length === 0 ? (
+          <View style={styles.emptyState}>
+            <Ionicons name="search-outline" size={56} color="#9ca3af" />
+            <Text style={styles.emptyTitle}>
+              {searchQuery || selectedCategory !== "all" ? "No products match your filters" : "No products yet"}
+            </Text>
+            <Text style={styles.emptyText}>
+              {searchQuery || selectedCategory !== "all"
+                ? "Try a different search or category"
+                : "Products will appear here when they're added."}
+            </Text>
+            {(searchQuery || selectedCategory !== "all") && (
+              <TouchableOpacity
+                style={styles.retryButton}
+                onPress={() => {
+                  setSearchQuery("");
+                  setSelectedCategory("all");
+                }}
+              >
+                <Text style={styles.retryButtonText}>Clear filters</Text>
+              </TouchableOpacity>
+            )}
           </View>
         ) : (
           <View style={styles.productsGrid}>
@@ -293,6 +297,13 @@ export default function PoolShopScreen() {
               <View style={styles.emptyCart}>
                 <Ionicons name="cart-outline" size={64} color="#9ca3af" />
                 <Text style={styles.emptyCartText}>Your cart is empty</Text>
+                <Text style={styles.emptyCartSubtext}>Add items from the shop to get started</Text>
+                <TouchableOpacity
+                  style={styles.browseProductsButton}
+                  onPress={() => setShowCart(false)}
+                >
+                  <Text style={styles.browseProductsButtonText}>Browse products</Text>
+                </TouchableOpacity>
               </View>
             ) : (
               <>
@@ -332,6 +343,7 @@ export default function PoolShopScreen() {
                     style={styles.checkoutButton}
                     onPress={() => {
                       setShowCart(false);
+                      setPoolShopCart(cart);
                       router.push("/poolshop/checkout");
                     }}
                   >
@@ -367,6 +379,21 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: "700",
     color: "#111827",
+  },
+  headerRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  myOrdersButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  myOrdersText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#14b8a6",
   },
   cartIconContainer: {
     position: "relative",
@@ -533,10 +560,34 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     paddingVertical: 64,
   },
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: "#111827",
+    marginTop: 16,
+    textAlign: "center",
+  },
   emptyText: {
     fontSize: 16,
     color: "#6b7280",
-    marginTop: 16,
+    marginTop: 12,
+    textAlign: "center",
+    paddingHorizontal: 24,
+  },
+  retryButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 24,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    backgroundColor: "#14b8a6",
+    borderRadius: 12,
+  },
+  retryButtonText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "600",
   },
   cartOverlay: {
     position: "absolute",
@@ -632,8 +683,26 @@ const styles = StyleSheet.create({
   },
   emptyCartText: {
     fontSize: 16,
-    color: "#6b7280",
+    fontWeight: "600",
+    color: "#374151",
     marginTop: 16,
+  },
+  emptyCartSubtext: {
+    fontSize: 14,
+    color: "#6b7280",
+    marginTop: 8,
+  },
+  browseProductsButton: {
+    marginTop: 24,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    backgroundColor: "#14b8a6",
+    borderRadius: 12,
+  },
+  browseProductsButtonText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "600",
   },
   cartFooter: {
     padding: 20,

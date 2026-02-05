@@ -1,11 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Check, Sparkles, TrendingUp, AlertCircle, Target, Brain, Zap, BarChart3 } from "lucide-react";
+import { Check, Sparkles, TrendingUp, AlertCircle, Target, Brain, ArrowRight } from "lucide-react";
 import { useTheme } from "@/contexts/theme-context";
+
+const AI_CARD_COMPLETED_KEY = "poolcare-ai-card-completed";
 
 interface Recommendation {
   id: string;
@@ -25,6 +27,8 @@ interface DashboardAICardProps {
   icon?: React.ReactNode;
   className?: string;
   layout?: "vertical" | "horizontal"; // vertical for dashboard (1 per row), horizontal for list pages (3 per row)
+  /** When set (dashboard only), shows whether cards came from API or fallback */
+  recommendationsSource?: "api" | "fallback" | null;
 }
 
 export function DashboardAICard({
@@ -35,11 +39,35 @@ export function DashboardAICard({
   icon,
   className = "",
   layout = "horizontal", // Default to horizontal for list pages
+  recommendationsSource,
 }: DashboardAICardProps) {
-  const { getThemeClasses } = useTheme();
+  const { getThemeClasses, getThemeColor } = useTheme();
   const theme = getThemeClasses();
+  const themeColorHex = getThemeColor();
   const router = useRouter();
   const [completedItems, setCompletedItems] = useState<string[]>([]);
+
+  // Persist completed state across refresh
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(AI_CARD_COMPLETED_KEY);
+      if (stored) {
+        const parsed = JSON.parse(stored) as string[];
+        if (Array.isArray(parsed)) setCompletedItems(parsed);
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const persistCompleted = (ids: string[]) => {
+    setCompletedItems(ids);
+    try {
+      localStorage.setItem(AI_CARD_COMPLETED_KEY, JSON.stringify(ids));
+    } catch {
+      // ignore
+    }
+  };
 
   const getGradientBackgroundClasses = () => {
     switch (theme.primary) {
@@ -88,7 +116,8 @@ export function DashboardAICard({
   };
 
   const handleComplete = (id: string) => {
-    setCompletedItems((prev) => [...prev, id]);
+    const next = [...completedItems, id];
+    persistCompleted(next);
     onRecommendationComplete(id);
   };
 
@@ -122,6 +151,25 @@ export function DashboardAICard({
     if (rec.href) {
       router.push(rec.href);
     }
+  };
+
+  const actionLinkClass = "mt-1.5 inline-flex items-center gap-1 text-xs font-medium hover:underline focus:outline-none focus:ring-2 focus:ring-offset-1 rounded cursor-pointer";
+  const ActionLink = ({ rec }: { rec: Recommendation }) => {
+    if (!rec.action || !rec.href) return null;
+    return (
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          router.push(rec.href!);
+        }}
+        className={actionLinkClass}
+        style={{ color: themeColorHex }}
+      >
+        {rec.action}
+        <ArrowRight className="h-3 w-3" />
+      </button>
+    );
   };
 
   return (
@@ -213,6 +261,7 @@ export function DashboardAICard({
                     <p className="text-xs text-gray-600 leading-relaxed">
                       {rec.description}
                     </p>
+                    <ActionLink rec={rec} />
                   </div>
                 );
               })
@@ -273,6 +322,7 @@ export function DashboardAICard({
                     <p className="text-xs text-gray-600 leading-tight line-clamp-2">
                       {rec.description}
                     </p>
+                    <ActionLink rec={rec} />
                   </div>
                 );
               })

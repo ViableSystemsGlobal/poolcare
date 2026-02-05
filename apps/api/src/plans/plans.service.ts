@@ -656,7 +656,6 @@ Thank you for choosing PoolCare!`;
   }
 
   async skipNext(orgId: string, id: string) {
-    // TODO: Find next scheduled job, cancel/delete it, recalculate nextVisitAt
     const plan = await prisma.servicePlan.findFirst({
       where: { id, orgId },
     });
@@ -665,8 +664,24 @@ Thank you for choosing PoolCare!`;
       throw new NotFoundException("Service plan not found");
     }
 
-    // Simplified: just recalculate nextVisitAt (skip one occurrence)
-    // Full implementation would find and cancel the next job
+    // Find next scheduled job for this plan and cancel it
+    const nextJob = await prisma.job.findFirst({
+      where: {
+        planId: id,
+        orgId,
+        status: "scheduled",
+        windowStart: { gte: new Date() },
+      },
+      orderBy: { windowStart: "asc" },
+    });
+
+    if (nextJob) {
+      await prisma.job.update({
+        where: { id: nextJob.id },
+        data: { status: "cancelled" },
+      });
+    }
+
     const nextVisitAt = this.calculateNextVisit(
       plan.frequency,
       plan.dow || undefined,

@@ -1,4 +1,7 @@
 import { Injectable, UnauthorizedException, BadRequestException } from "@nestjs/common";
+
+const INVITE_ONLY_MESSAGE =
+  "You don't have access yet. Contact your organization to get an invite.";
 import { JwtService } from "@nestjs/jwt";
 import { ConfigService } from "@nestjs/config";
 import { prisma } from "@poolcare/db";
@@ -227,7 +230,9 @@ export class AuthService {
         data: { usedAt: new Date() },
       });
 
-      // Find or create user
+      const app = dto.app || "client";
+
+      // Find user (never create for admin or carer)
       let user = await prisma.user.findFirst({
         where:
           dto.channel === "phone"
@@ -235,6 +240,56 @@ export class AuthService {
             : { email: dto.target },
       });
 
+      if (app === "admin" || app === "carer") {
+        // Invite-only: must already be in the system
+        if (!user) {
+          console.log('[AuthService] Invite-only: no user for', dto.target);
+          throw new UnauthorizedException(INVITE_ONLY_MESSAGE);
+        }
+        let membership = await prisma.orgMember.findFirst({
+          where: { userId: user.id },
+          include: { org: true },
+        });
+        if (app === "carer") {
+          membership = await prisma.orgMember.findFirst({
+            where: { userId: user.id, role: "CARER" },
+            include: { org: true },
+          });
+        }
+        if (!membership) {
+          console.log('[AuthService] Invite-only: no membership for user', user.id);
+          throw new UnauthorizedException(INVITE_ONLY_MESSAGE);
+        }
+        // Issue JWT (same as below; we'll reuse the token block)
+        const jwtSecret = this.configService.get<string>("JWT_SECRET") || "dev-secret-change-in-prod";
+        const token = this.jwtService.sign(
+          {
+            sub: user.id,
+            org_id: membership.orgId,
+            role: membership.role,
+          },
+          {
+            secret: jwtSecret,
+            expiresIn: this.configService.get<string>("JWT_EXPIRES_IN") || "7d",
+          }
+        );
+        return {
+          token,
+          user: {
+            id: user.id,
+            phone: user.phone,
+            email: user.email,
+            name: user.name,
+          },
+          org: {
+            id: membership.org.id,
+            name: membership.org.name,
+          },
+          role: membership.role,
+        };
+      }
+
+      // Client app: find or create user and org (self-signup allowed)
       if (!user) {
         console.log('[AuthService] Creating new user for:', dto.target);
         try {
@@ -247,15 +302,12 @@ export class AuthService {
           console.log('[AuthService] User created:', user.id);
         } catch (error: any) {
           console.error('[AuthService] Failed to create user:', error);
-          console.error('[AuthService] Error code:', error.code);
-          console.error('[AuthService] Error meta:', error.meta);
           throw new BadRequestException(`Failed to create user: ${error.message}`);
         }
       } else {
         console.log('[AuthService] Found existing user:', user.id);
       }
 
-      // Find or create org membership (first org or create default)
       let membership = await prisma.orgMember.findFirst({
         where: { userId: user.id },
         include: { org: true },
@@ -264,11 +316,9 @@ export class AuthService {
       if (!membership) {
         console.log('[AuthService] Creating default org for user');
         try {
-          // Create default org for new user
           const org = await prisma.organization.create({
             data: { name: `${user.phone || user.email}'s Organization` },
           });
-          console.log('[AuthService] Org created:', org.id);
           membership = await prisma.orgMember.create({
             data: {
               orgId: org.id,
@@ -277,11 +327,8 @@ export class AuthService {
             },
             include: { org: true },
           });
-          console.log('[AuthService] Membership created');
         } catch (error: any) {
           console.error('[AuthService] Failed to create org/membership:', error);
-          console.error('[AuthService] Error code:', error.code);
-          console.error('[AuthService] Error meta:', error.meta);
           throw new BadRequestException(`Failed to create organization: ${error.message}`);
         }
       } else {

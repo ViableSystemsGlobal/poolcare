@@ -100,13 +100,23 @@ export class FilesController {
   @Public()
   async serveLocalFileLegacy(@Param("fileName") fileName: string, @Res() res: Response) {
     const safeFileName = fileName.replace(/[^a-zA-Z0-9._-]/g, "");
-    const filePath = path.join(process.cwd(), "uploads", "carers", safeFileName);
     
-    if (!fs.existsSync(filePath)) {
-      return res.status(404).json({ error: "File not found" });
+    // Try common scopes in order of likelihood
+    const scopes = ["carers", "org_logo", "org_favicon", "visit_photos", "clients"];
+    for (const scope of scopes) {
+      const filePath = path.join(process.cwd(), "uploads", scope, safeFileName);
+      if (fs.existsSync(filePath)) {
+        return this.sendFile(filePath, safeFileName, res);
+      }
     }
-
-    return this.sendFile(filePath, safeFileName, res);
+    
+    // Fallback: check uploads root
+    const rootPath = path.join(process.cwd(), "uploads", safeFileName);
+    if (fs.existsSync(rootPath)) {
+      return this.sendFile(rootPath, safeFileName, res);
+    }
+    
+    return res.status(404).json({ error: "File not found" });
   }
 
   private sendFile(filePath: string, fileName: string, res: Response) {

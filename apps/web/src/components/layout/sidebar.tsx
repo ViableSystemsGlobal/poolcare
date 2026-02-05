@@ -29,6 +29,8 @@ import {
   Package,
   Warehouse,
   Truck,
+  Sparkles,
+  ShoppingCart,
 } from "lucide-react";
 
 const navigationGroups = [
@@ -111,6 +113,12 @@ const navigationGroups = [
         ],
       },
       {
+        name: "Shop Orders",
+        href: "/orders",
+        icon: ShoppingCart,
+        module: "orders",
+      },
+      {
         name: "Financial",
         href: "/invoices",
         icon: DollarSign,
@@ -159,6 +167,12 @@ const navigationGroups = [
     label: "Management",
     items: [
       {
+        name: "AI Business Partner",
+        href: "/ai-partner",
+        icon: Sparkles,
+        module: "ai-partner",
+      },
+      {
         name: "Reports & Data",
         href: "/analytics",
         icon: BarChart3,
@@ -167,6 +181,12 @@ const navigationGroups = [
           { name: "Analytics", href: "/analytics", icon: BarChart3 },
           { name: "Files", href: "/files", icon: FolderOpen },
         ],
+      },
+      {
+        name: "Team",
+        href: "/team",
+        icon: Users,
+        module: "team",
       },
       {
         name: "Settings",

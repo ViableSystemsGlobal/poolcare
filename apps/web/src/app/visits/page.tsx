@@ -88,6 +88,18 @@ export default function VisitsPage() {
     averageRating: 0,
   });
 
+  // AI recommendations: from API when available, else client-side from metrics
+  const [visitAIRecommendations, setVisitAIRecommendations] = useState<Array<{
+    id: string;
+    title: string;
+    description: string;
+    priority: "high" | "medium" | "low";
+    completed: boolean;
+    action?: string;
+    href?: string;
+  }>>([]);
+  const [visitAIRecommendationsSource, setVisitAIRecommendationsSource] = useState<"api" | "fallback" | null>(null);
+
   // Track if component is mounted to avoid race conditions
   const isMounted = useRef(true);
   const fetchCount = useRef(0);
@@ -121,6 +133,70 @@ export default function VisitsPage() {
       calculateMetrics(visits);
     }
   }, [searchQuery, visits]);
+
+  // Fetch Visits AI recommendations from API (with fallback to client-side)
+  useEffect(() => {
+    let cancelled = false;
+    const token = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
+    const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+    const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+    fetch(`${API_URL}/ai/recommendations?context=visits`, { headers, cache: "no-store" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (cancelled) return;
+        if (Array.isArray(data) && data.length > 0) {
+          setVisitAIRecommendations(data);
+          setVisitAIRecommendationsSource("api");
+        } else {
+          setVisitAIRecommendationsSource("fallback");
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setVisitAIRecommendationsSource("fallback");
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+  // When using fallback, recompute when metrics change
+  useEffect(() => {
+    if (visitAIRecommendationsSource !== "fallback") return;
+    const recommendations = [];
+    if (metrics.inProgressVisits > 0) {
+      recommendations.push({
+        id: "track-in-progress",
+        title: "📍 Track in-progress visits",
+        description: `${metrics.inProgressVisits} visits are currently in progress - monitor completion.`,
+        priority: "high" as const,
+        action: "View Visits",
+        href: "/visits",
+        completed: false,
+      });
+    }
+    if (metrics.completedVisits < metrics.totalVisits && metrics.totalVisits > 0) {
+      const incomplete = metrics.totalVisits - metrics.completedVisits;
+      recommendations.push({
+        id: "complete-pending-visits",
+        title: "✅ Complete pending visits",
+        description: `${incomplete} visits need completion - ensure all data is captured.`,
+        priority: "medium" as const,
+        action: "Review Visits",
+        href: "/visits",
+        completed: false,
+      });
+    }
+    if (metrics.averageRating > 0 && metrics.averageRating < 4) {
+      recommendations.push({
+        id: "improve-visit-quality",
+        title: "📊 Improve visit quality",
+        description: "Average rating below 4 - review feedback and improve service quality.",
+        priority: "medium" as const,
+        action: "View Feedback",
+        href: "/visits",
+        completed: false,
+      });
+    }
+    setVisitAIRecommendations(recommendations.slice(0, 3));
+  }, [visitAIRecommendationsSource, metrics.totalVisits, metrics.completedVisits, metrics.inProgressVisits, metrics.averageRating]);
 
   // Selection handlers
   const handleSelectAll = (checked: boolean) => {
@@ -293,52 +369,6 @@ export default function VisitsPage() {
       minute: "2-digit",
     });
   };
-
-  // AI Recommendations for Visits
-  const generateVisitAIRecommendations = () => {
-    const recommendations = [];
-
-    if (metrics.inProgressVisits > 0) {
-      recommendations.push({
-        id: "track-in-progress",
-        title: "📍 Track in-progress visits",
-        description: `${metrics.inProgressVisits} visits are currently in progress - monitor completion.`,
-        priority: "high" as const,
-        action: "View Visits",
-        href: "/visits",
-        completed: false,
-      });
-    }
-
-    if (metrics.completedVisits < metrics.totalVisits && metrics.totalVisits > 0) {
-      const incomplete = metrics.totalVisits - metrics.completedVisits;
-      recommendations.push({
-        id: "complete-pending-visits",
-        title: "✅ Complete pending visits",
-        description: `${incomplete} visits need completion - ensure all data is captured.`,
-        priority: "medium" as const,
-        action: "Review Visits",
-        href: "/visits",
-        completed: false,
-      });
-    }
-
-    if (metrics.averageRating > 0 && metrics.averageRating < 4) {
-      recommendations.push({
-        id: "improve-visit-quality",
-        title: "📊 Improve visit quality",
-        description: "Average rating below 4 - review feedback and improve service quality.",
-        priority: "medium" as const,
-        action: "View Feedback",
-        href: "/visits",
-        completed: false,
-      });
-    }
-
-    return recommendations.slice(0, 3);
-  };
-
-  const visitAIRecommendations = generateVisitAIRecommendations();
 
   const handleRecommendationComplete = (id: string) => {
     console.log("Visit recommendation completed:", id);

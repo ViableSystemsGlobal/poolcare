@@ -157,6 +157,18 @@ export default function JobsPage() {
     completedJobs: 0,
   });
 
+  // AI recommendations: from API when available, else client-side from metrics
+  const [jobAIRecommendations, setJobAIRecommendations] = useState<Array<{
+    id: string;
+    title: string;
+    description: string;
+    priority: "high" | "medium" | "low";
+    completed: boolean;
+    action?: string;
+    href?: string;
+  }>>([]);
+  const [jobAIRecommendationsSource, setJobAIRecommendationsSource] = useState<"api" | "fallback" | null>(null);
+
   // Initialize and update dateFilter from URL params
   useEffect(() => {
     const dateParam = searchParams?.get("date") || "";
@@ -180,6 +192,69 @@ export default function JobsPage() {
     fetchPools();
     fetchCarers();
   }, [statusFilter, dateFilter, showPast, showAllJobs, currentPage, pageSize]);
+
+  // Fetch Jobs AI recommendations from API (with fallback to client-side)
+  useEffect(() => {
+    let cancelled = false;
+    const token = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
+    const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+    const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+    fetch(`${API_URL}/ai/recommendations?context=jobs`, { headers, cache: "no-store" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (cancelled) return;
+        if (Array.isArray(data) && data.length > 0) {
+          setJobAIRecommendations(data);
+          setJobAIRecommendationsSource("api");
+        } else {
+          setJobAIRecommendationsSource("fallback");
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setJobAIRecommendationsSource("fallback");
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+  // When using fallback, recompute when metrics change
+  useEffect(() => {
+    if (jobAIRecommendationsSource !== "fallback") return;
+    const recommendations = [];
+    if (metrics.scheduledJobs > 0 && metrics.scheduledJobs === metrics.totalJobs) {
+      recommendations.push({
+        id: "assign-scheduled-jobs",
+        title: "⚡ Assign scheduled jobs",
+        description: `${metrics.scheduledJobs} jobs need carer assignment for today.`,
+        priority: "high" as const,
+        action: "Assign Jobs",
+        href: "/jobs",
+        completed: false,
+      });
+    }
+    if (metrics.inProgressJobs > 0) {
+      recommendations.push({
+        id: "track-in-progress",
+        title: "📍 Track in-progress jobs",
+        description: `${metrics.inProgressJobs} jobs are currently en route or on site - monitor progress.`,
+        priority: "medium" as const,
+        action: "View Jobs",
+        href: "/jobs",
+        completed: false,
+      });
+    }
+    if (metrics.scheduledJobs > 5) {
+      recommendations.push({
+        id: "optimize-routes",
+        title: "🗺️ Optimize routes",
+        description: "Multiple jobs scheduled - optimize routes for efficiency.",
+        priority: "medium" as const,
+        action: "Optimize",
+        href: "/jobs",
+        completed: false,
+      });
+    }
+    setJobAIRecommendations(recommendations.slice(0, 3));
+  }, [jobAIRecommendationsSource, metrics.scheduledJobs, metrics.totalJobs, metrics.inProgressJobs]);
 
   // Helper function to set date filter and update URL
   const handleDateFilterChange = (date: string) => {
@@ -678,51 +753,6 @@ export default function JobsPage() {
     return styles[status] || "bg-gray-100 text-gray-700";
   };
 
-  // AI Recommendations for Jobs
-  const generateJobAIRecommendations = () => {
-    const recommendations = [];
-
-    if (metrics.scheduledJobs > 0 && metrics.scheduledJobs === metrics.totalJobs) {
-      recommendations.push({
-        id: "assign-scheduled-jobs",
-        title: "⚡ Assign scheduled jobs",
-        description: `${metrics.scheduledJobs} jobs need carer assignment for today.`,
-        priority: "high" as const,
-        action: "Assign Jobs",
-        href: "/jobs",
-        completed: false,
-      });
-    }
-
-    if (metrics.inProgressJobs > 0) {
-      recommendations.push({
-        id: "track-in-progress",
-        title: "📍 Track in-progress jobs",
-        description: `${metrics.inProgressJobs} jobs are currently en route or on site - monitor progress.`,
-        priority: "medium" as const,
-        action: "View Jobs",
-        href: "/jobs",
-        completed: false,
-      });
-    }
-
-    if (metrics.scheduledJobs > 5) {
-      recommendations.push({
-        id: "optimize-routes",
-        title: "🗺️ Optimize routes",
-        description: "Multiple jobs scheduled - optimize routes for efficiency.",
-        priority: "medium" as const,
-        action: "Optimize",
-        href: "/jobs",
-        completed: false,
-      });
-    }
-
-    return recommendations.slice(0, 3);
-  };
-
-  const jobAIRecommendations = generateJobAIRecommendations();
-
   const handleRecommendationComplete = (id: string) => {
     console.log("Job recommendation completed:", id);
   };
@@ -1151,6 +1181,7 @@ export default function JobsPage() {
             subtitle="Intelligent recommendations for job management"
             recommendations={jobAIRecommendations}
             onRecommendationComplete={handleRecommendationComplete}
+            recommendationsSource={jobAIRecommendationsSource}
           />
         </div>
 

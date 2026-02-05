@@ -121,11 +121,11 @@ class ApiClient {
     }
   }
 
-  // Auth endpoints
+  // Auth endpoints (admin console = invite-only)
   async requestOtp(channel: "phone" | "email", target: string) {
     return this.request("/auth/otp/request", {
       method: "POST",
-      body: JSON.stringify({ channel, target }),
+      body: JSON.stringify({ channel, target, app: "admin" }),
       requireAuth: false,
     });
   }
@@ -142,7 +142,7 @@ class ApiClient {
       role: string;
     }>("/auth/otp/verify", {
       method: "POST",
-      body: JSON.stringify({ channel, target, code }),
+      body: JSON.stringify({ channel, target, code, app: "admin" }),
       requireAuth: false,
     });
 
