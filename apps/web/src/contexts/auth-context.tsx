@@ -152,6 +152,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = () => {
     localStorage.removeItem("auth_token");
+    localStorage.removeItem("themeColor");
+    localStorage.removeItem("customLogo");
     setToken(null);
     setUser(null);
     setOrg(null);

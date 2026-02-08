@@ -2,18 +2,29 @@ import * as SecureStore from "expo-secure-store";
 import { Platform } from "react-native";
 import { getNetworkIp } from "./network-utils";
 
-// Get network IP for mobile devices (localhost doesn't work on physical devices/simulators)
+// Get network IP for mobile devices (localhost doesn't work on physical devices)
 const getApiUrl = (): string => {
   const baseUrl = process.env.EXPO_PUBLIC_API_URL || "http://localhost:4000/api";
-  
-  // On mobile platforms, replace localhost with network IP
+
+  // Use localhost when set (for iOS Simulator / Android emulator on same machine)
+  if (process.env.EXPO_PUBLIC_USE_LOCALHOST === "true") {
+    console.log("[API Client] Using localhost (EXPO_PUBLIC_USE_LOCALHOST=true)");
+    return baseUrl;
+  }
+
+  // On mobile, replace localhost so device can reach the API
   if (Platform.OS !== "web" && baseUrl.includes("localhost")) {
+    if (Platform.OS === "android") {
+      const url = baseUrl.replace("localhost", "10.0.2.2");
+      console.log("[API Client] Using 10.0.2.2 for Android");
+      return url;
+    }
     const networkIp = getNetworkIp();
     const finalUrl = baseUrl.replace("localhost", networkIp);
     console.log(`[API Client] Platform: ${Platform.OS}, Network IP: ${networkIp}, API URL: ${finalUrl}`);
     return finalUrl;
   }
-  
+
   console.log(`[API Client] Platform: ${Platform.OS}, API URL: ${baseUrl}`);
   return baseUrl;
 };

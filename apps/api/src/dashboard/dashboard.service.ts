@@ -296,6 +296,7 @@ export class DashboardService {
       select: {
         totalCents: true,
         paidCents: true,
+        dueDate: true,
       },
     });
 
@@ -304,6 +305,22 @@ export class DashboardService {
         (sum, inv) => sum + (inv.totalCents - (inv.paidCents || 0)),
         0
       ) || 0;
+
+    // Payables due (outstanding + overdue + due this week)
+    const todayStart = new Date(today);
+    todayStart.setHours(0, 0, 0, 0);
+    const in7Days = new Date(today);
+    in7Days.setDate(in7Days.getDate() + 7);
+
+    const overdueCount = arInvoices.filter(
+      (inv) => inv.dueDate && new Date(inv.dueDate) < todayStart
+    ).length;
+    const dueWithin7DaysCount = arInvoices.filter(
+      (inv) =>
+        inv.dueDate &&
+        new Date(inv.dueDate) >= todayStart &&
+        new Date(inv.dueDate) <= in7Days
+    ).length;
 
     // Quality metrics
     const completedVisits = await prisma.visitEntry.findMany({
@@ -381,6 +398,12 @@ export class DashboardService {
           monthlyInvoiced: totalInvoiced._sum.totalCents || 0,
           monthlyCollected: totalCollected._sum.amountCents || 0,
           accountsReceivable,
+        },
+        // Payables due (invoices owed by clients)
+        payablesDue: {
+          outstandingAmountCents: accountsReceivable,
+          overdueCount,
+          dueWithin7DaysCount,
         },
         // Quality
         quality: {

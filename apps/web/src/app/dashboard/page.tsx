@@ -52,6 +52,11 @@ interface DashboardData {
       photoCompliance: number;
       totalVisits30d: number;
     };
+    payablesDue?: {
+      outstandingAmountCents: number;
+      overdueCount: number;
+      dueWithin7DaysCount: number;
+    };
     supplies?: {
       pendingRequests: number;
       urgentRequests: number;
@@ -151,6 +156,7 @@ export default function Dashboard() {
   };
   const operations = metrics.operations || { jobsCompleted30d: 0, onTimePercentage: 0, avgVisitDuration: 0 };
   const quality = metrics.quality || { photoCompliance: 0, totalVisits30d: 0 };
+  const payablesDue = metrics.payablesDue || { outstandingAmountCents: 0, overdueCount: 0, dueWithin7DaysCount: 0 };
   const supplies = metrics.supplies || { pendingRequests: 0, urgentRequests: 0 };
 
   const recentActivity = dashboardData?.recentActivity || [];
@@ -410,14 +416,21 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
-        <Card className="border-0 shadow-sm bg-white hover:shadow-md transition-shadow">
+        <Card
+          className="border-0 shadow-sm bg-white hover:shadow-md transition-shadow cursor-pointer"
+          onClick={() => router.push("/invoices")}
+        >
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-gray-600">Photo Compliance</CardTitle>
-            <ClipboardCheck className="h-4 w-4 text-blue-600" />
+            <CardTitle className="text-sm font-medium text-gray-600">Payables Due</CardTitle>
+            <Receipt className="h-4 w-4 text-orange-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-gray-900">{quality.photoCompliance}%</div>
-            <div className="text-xs text-gray-500 mt-1">Visits with photos</div>
+            <div className="text-2xl font-bold text-gray-900">
+              {`GH₵${(payablesDue.outstandingAmountCents / 100).toFixed(0)}`}
+            </div>
+            <div className="text-xs text-gray-500 mt-1">
+              {payablesDue.overdueCount} overdue · {payablesDue.dueWithin7DaysCount} due this week
+            </div>
           </CardContent>
         </Card>
       </div>

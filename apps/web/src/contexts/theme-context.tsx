@@ -1,6 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { useAuth } from '@/contexts/auth-context';
 
 export type ThemeColor = 'purple' | 'blue' | 'green' | 'orange' | 'red' | 'indigo' | 'pink' | 'teal';
 
@@ -110,58 +111,62 @@ const colorMap: { [key: string]: string } = {
 };
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
+  const { token } = useAuth();
   const [themeColor, setThemeColorState] = useState<ThemeColor>('orange');
   const [customLogo, setCustomLogo] = useState<string | null>(null);
 
   useEffect(() => {
-    // Load from localStorage first (for immediate display)
-    const saved = localStorage.getItem('themeColor') as ThemeColor;
-    if (saved && themeConfig[saved]) {
-      setThemeColorState(saved);
-    }
-    const logo = localStorage.getItem('customLogo');
-    if (logo) {
-      setCustomLogo(logo);
+    if (!token) {
+      // Logged out: reset to defaults and clear branding from localStorage
+      // so the next user doesn't see stale org branding on shared computers
+      setThemeColorState('orange');
+      setCustomLogo(null);
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('themeColor');
+        localStorage.removeItem('customLogo');
+      }
+      return;
     }
 
-    // Then try to load from API if authenticated
-    const token = localStorage.getItem('auth_token');
-    if (token) {
-      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
-      fetch(`${API_URL}/settings/org`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      })
-        .then((res) => res.json())
-        .then((data) => {
-          if (data.profile) {
-            if (data.profile.themeColor && themeConfig[data.profile.themeColor as ThemeColor]) {
-              setThemeColorState(data.profile.themeColor as ThemeColor);
-              localStorage.setItem('themeColor', data.profile.themeColor);
-            }
-            if (data.profile.logoUrl) {
-              setCustomLogo(data.profile.logoUrl);
-              localStorage.setItem('customLogo', data.profile.logoUrl);
-            }
-            if (data.profile.faviconUrl) {
-              const link = document.querySelector("link[rel='icon']") as HTMLLinkElement;
-              if (link) {
-                link.href = data.profile.faviconUrl;
-              } else {
-                const newLink = document.createElement("link");
-                newLink.rel = "icon";
-                newLink.href = data.profile.faviconUrl;
-                document.head.appendChild(newLink);
-              }
+    // Authenticated: org settings from API are the ONLY source of truth
+    // (set by super admin; everyone in the org sees the same branding)
+    const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+    fetch(`${API_URL}/settings/org`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.profile) {
+          if (data.profile.themeColor && themeConfig[data.profile.themeColor as ThemeColor]) {
+            setThemeColorState(data.profile.themeColor as ThemeColor);
+            localStorage.setItem('themeColor', data.profile.themeColor);
+          }
+          if (data.profile.logoUrl) {
+            setCustomLogo(data.profile.logoUrl);
+            localStorage.setItem('customLogo', data.profile.logoUrl);
+          } else {
+            setCustomLogo(null);
+            localStorage.removeItem('customLogo');
+          }
+          if (data.profile.faviconUrl) {
+            const link = document.querySelector("link[rel='icon']") as HTMLLinkElement;
+            if (link) {
+              link.href = data.profile.faviconUrl;
+            } else {
+              const newLink = document.createElement("link");
+              newLink.rel = "icon";
+              newLink.href = data.profile.faviconUrl;
+              document.head.appendChild(newLink);
             }
           }
-        })
-        .catch((err) => {
-          console.error("Failed to load theme settings:", err);
-        });
-    }
-  }, []);
+        }
+      })
+      .catch((err) => {
+        console.error("Failed to load org branding:", err);
+      });
+  }, [token]);
 
   const setThemeColor = (color: ThemeColor) => {
     setThemeColorState(color);
