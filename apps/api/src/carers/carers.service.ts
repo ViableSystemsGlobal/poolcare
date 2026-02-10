@@ -1,7 +1,8 @@
-import { Injectable, NotFoundException, ForbiddenException } from "@nestjs/common";
+import { Injectable, NotFoundException, ForbiddenException, BadRequestException, ConflictException } from "@nestjs/common";
 import { prisma } from "@poolcare/db";
 import { MapsService } from "../maps/maps.service";
 import { CreateCarerDto, UpdateCarerDto } from "./dto";
+import { normalizePhone, emptyAsNull } from "../utils/phone.util";
 
 @Injectable()
 export class CarersService {
@@ -70,35 +71,50 @@ export class CarersService {
   }
 
   async create(orgId: string, dto: CreateCarerDto) {
+    const phone = emptyAsNull(dto.phone) ?? undefined;
+    const email = emptyAsNull(dto.email) ?? undefined;
+
     let userId = dto.userId;
 
     // If no userId provided, create user from phone/email
     if (!userId) {
-      if (!dto.phone && !dto.email) {
-        throw new Error("Either userId, phone, or email must be provided");
+      if (!phone && !email) {
+        throw new BadRequestException("Either userId, phone, or email must be provided");
       }
 
-      const orConditions: any[] = [];
-      if (dto.phone) orConditions.push({ phone: dto.phone });
-      if (dto.email) orConditions.push({ email: dto.email });
+      const orConditions: Array<{ phone?: string; email?: string }> = [];
+      if (phone) orConditions.push({ phone: normalizePhone(phone) ?? phone });
+      if (email) orConditions.push({ email });
 
-      const existingUser = orConditions.length > 0
-        ? await prisma.user.findFirst({
-            where: { OR: orConditions },
-          })
+      let existingUser = email
+        ? await prisma.user.findFirst({ where: { email } })
         : null;
+      if (!existingUser && orConditions.length > 0) {
+        existingUser = await prisma.user.findFirst({
+          where: { OR: orConditions },
+        });
+      }
 
       if (existingUser) {
         userId = existingUser.id;
       } else {
-        const newUser = await prisma.user.create({
-          data: {
-            phone: dto.phone,
-            email: dto.email,
-            name: dto.name,
-          },
-        });
-        userId = newUser.id;
+        try {
+          const newUser = await prisma.user.create({
+            data: {
+              phone: phone ? (normalizePhone(phone) ?? phone) : undefined,
+              email: email || undefined,
+              name: dto.name,
+            },
+          });
+          userId = newUser.id;
+        } catch (err: any) {
+          if (err?.code === "P2002") {
+            const target = err?.meta?.target as string[] | undefined;
+            const field = target?.includes("email") ? "email" : target?.includes("phone") ? "phone" : "identifier";
+            throw new ConflictException(`A user with this ${field} already exists.`);
+          }
+          throw err;
+        }
 
         // Add membership if not exists
         await prisma.orgMember.upsert({
@@ -123,7 +139,7 @@ export class CarersService {
         orgId,
         userId,
         name: dto.name,
-        phone: dto.phone,
+        phone: phone ?? dto.phone,
         homeBaseLat: dto.homeBase?.lat,
         homeBaseLng: dto.homeBase?.lng,
         active: dto.active ?? true,

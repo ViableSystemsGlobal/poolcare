@@ -1,8 +1,9 @@
-import { Injectable, NotFoundException, ForbiddenException, BadRequestException, Logger } from "@nestjs/common";
+import { Injectable, NotFoundException, ForbiddenException, BadRequestException, ConflictException, Logger } from "@nestjs/common";
 import { prisma } from "@poolcare/db";
 import { CreateClientDto, UpdateClientDto, CreateHouseholdDto, InviteHouseholdMemberDto } from "./dto";
 import { NotificationsService } from "../notifications/notifications.service";
 import { createWelcomeEmailTemplate, createEmailTemplate } from "../email/email-template.util";
+import { normalizePhone, emptyAsNull } from "../utils/phone.util";
 
 @Injectable()
 export class ClientsService {
@@ -69,34 +70,49 @@ export class ClientsService {
   }
 
   async create(orgId: string, dto: CreateClientDto) {
-    if (!dto.phone && !dto.email) {
+    const phone = emptyAsNull(dto.phone) ?? undefined;
+    const email = emptyAsNull(dto.email) ?? undefined;
+    if (!phone && !email) {
       throw new BadRequestException("At least one of phone or email must be provided");
     }
 
     // Find or create user if userId not provided
     let userId = dto.userId;
     if (!userId) {
-      const orConditions: any[] = [];
-      if (dto.phone) orConditions.push({ phone: dto.phone });
-      if (dto.email) orConditions.push({ email: dto.email });
+      const orConditions: Array<{ phone?: string; email?: string }> = [];
+      if (phone) orConditions.push({ phone: normalizePhone(phone) ?? phone });
+      if (email) orConditions.push({ email });
 
-      const existingUser = orConditions.length > 0
-        ? await prisma.user.findFirst({
-            where: { OR: orConditions },
-          })
+      // Prefer lookup by email to avoid creating duplicate user when email already exists
+      let existingUser = email
+        ? await prisma.user.findFirst({ where: { email } })
         : null;
+      if (!existingUser && orConditions.length > 0) {
+        existingUser = await prisma.user.findFirst({
+          where: { OR: orConditions },
+        });
+      }
 
       if (existingUser) {
         userId = existingUser.id;
       } else {
-        const newUser = await prisma.user.create({
-          data: {
-            phone: dto.phone,
-            email: dto.email,
-            name: dto.name,
-          },
-        });
-        userId = newUser.id;
+        try {
+          const newUser = await prisma.user.create({
+            data: {
+              phone: phone ? (normalizePhone(phone) ?? phone) : undefined,
+              email: email || undefined,
+              name: dto.name,
+            },
+          });
+          userId = newUser.id;
+        } catch (err: any) {
+          if (err?.code === "P2002") {
+            const target = err?.meta?.target as string[] | undefined;
+            const field = target?.includes("email") ? "email" : target?.includes("phone") ? "phone" : "identifier";
+            throw new ConflictException(`A user with this ${field} already exists. Try adding the client by linking to an existing user.`);
+          }
+          throw err;
+        }
 
         // Add membership
         await prisma.orgMember.upsert({
@@ -121,8 +137,8 @@ export class ClientsService {
         orgId,
         userId,
         name: dto.name,
-        email: dto.email,
-        phone: dto.phone,
+        email: email || undefined,
+        phone: phone || undefined,
         imageUrl: dto.imageUrl,
         billingAddress: dto.billingAddress,
         preferredChannels: dto.preferredChannels || ["WHATSAPP"],
@@ -145,7 +161,7 @@ export class ClientsService {
       const logoUrl = profile?.logoUrl;
 
       // Send welcome email if email is provided
-      if (dto.email) {
+      if (email) {
         try {
           const emailHtml = createWelcomeEmailTemplate(dto.name, orgName, {
             logoUrl,
@@ -154,7 +170,7 @@ export class ClientsService {
 
           await this.notificationsService.send(orgId, {
             channel: "email",
-            to: dto.email,
+            to: email,
             subject: `Welcome to ${orgName}!`,
             body: `Welcome to ${orgName}! Your account has been created. Download our mobile app to manage your pool services.`,
             metadata: { html: emailHtml },
@@ -162,30 +178,30 @@ export class ClientsService {
             recipientType: "user",
           });
 
-          this.logger.log(`Welcome email sent to ${dto.email} for client ${client.id}`);
+          this.logger.log(`Welcome email sent to ${email} for client ${client.id}`);
         } catch (emailError) {
-          this.logger.error(`Failed to send welcome email to ${dto.email}:`, emailError);
+          this.logger.error(`Failed to send welcome email to ${email}:`, emailError);
           // Don't fail client creation if email fails
         }
       }
 
       // Send welcome SMS if phone is provided
-      if (dto.phone) {
+      if (phone) {
         try {
           const smsMessage = `Welcome to ${orgName}! Your account has been created. Download our mobile app to manage your pool services.`;
 
           await this.notificationsService.send(orgId, {
             channel: "sms",
-            to: dto.phone,
+            to: phone,
             subject: "Welcome",
             body: smsMessage,
             recipientId: userId || undefined,
             recipientType: "user",
           });
 
-          this.logger.log(`Welcome SMS sent to ${dto.phone} for client ${client.id}`);
+          this.logger.log(`Welcome SMS sent to ${phone} for client ${client.id}`);
         } catch (smsError) {
-          this.logger.error(`Failed to send welcome SMS to ${dto.phone}:`, smsError);
+          this.logger.error(`Failed to send welcome SMS to ${phone}:`, smsError);
           // Don't fail client creation if SMS fails
         }
       }

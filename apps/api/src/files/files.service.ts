@@ -423,11 +423,11 @@ export class FilesService {
       },
     });
 
-    // Return a URL that the API can serve
-    // Use RENDER_EXTERNAL_URL for production, or construct from request
-    const baseUrl = this.configService.get<string>("RENDER_EXTERNAL_URL") 
+    // Return a URL that the API can serve. Prefer API_PUBLIC_URL so file URLs use the canonical domain (e.g. api.poolcare.africa) instead of Render host.
+    const baseUrl = this.configService.get<string>("API_PUBLIC_URL")
+      || this.configService.get<string>("RENDER_EXTERNAL_URL")
       || this.configService.get<string>("API_URL")
-      || this.configService.get<string>("NEXT_PUBLIC_APP_URL") 
+      || this.configService.get<string>("NEXT_PUBLIC_APP_URL")
       || "http://localhost:4000";
     return `${baseUrl}/api/files/local/${scope}/${fileName}`;
   }

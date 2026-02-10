@@ -8,6 +8,7 @@ import { prisma } from "@poolcare/db";
 import { OtpService } from "./otp.service";
 import { OtpRequestDto, OtpVerifyDto } from "./dto";
 import * as bcrypt from "bcryptjs";
+import { normalizePhone } from "../utils/phone.util";
 
 // In-memory store for dev OTP codes (only in development)
 export const devOtpStore = new Map<string, { code: string; expiresAt: Date }>();
@@ -35,11 +36,12 @@ export class AuthService {
         throw new BadRequestException("Database not configured. Please set DATABASE_URL.");
       }
       
+      const requestTarget = dto.channel === "phone" ? (normalizePhone(dto.target) ?? dto.target) : dto.target;
       // Check cooldown with timeout
       const existing = await Promise.race([
         prisma.otpRequest.findFirst({
           where: {
-            target: dto.target,
+            target: requestTarget,
             purpose: "login",
             cooldownAt: {
               gt: new Date(),
@@ -73,7 +75,7 @@ export class AuthService {
     await prisma.otpRequest.create({
       data: {
         channel: dto.channel,
-        target: dto.target,
+        target: requestTarget,
         codeHash,
         purpose: "login",
         expiresAt,
@@ -85,11 +87,14 @@ export class AuthService {
       // Send OTP via SMS and/or Email
       try {
         // Check if user exists to see if they have both phone and email AND get their org
+        const userLookup = dto.channel === "phone"
+          ? (() => {
+              const normalized = normalizePhone(dto.target);
+              return normalized ? { OR: [{ phone: dto.target }, { phone: normalized }] } : { phone: dto.target };
+            })()
+          : { email: dto.target };
         const existingUser = await prisma.user.findFirst({
-          where:
-            dto.channel === "phone"
-              ? { phone: dto.target }
-              : { email: dto.target },
+          where: userLookup,
           include: {
             memberships: {
               include: {
@@ -185,10 +190,11 @@ export class AuthService {
     console.log('[AuthService] Verifying OTP for:', dto.channel, dto.target);
     const maxAttempts = this.configService.get<number>("OTP_MAX_ATTEMPTS") || 5;
 
+    const otpTargetForVerify = dto.channel === "phone" ? (normalizePhone(dto.target) ?? dto.target) : dto.target;
     const otpRequest = await prisma.otpRequest.findFirst({
       where: {
         channel: dto.channel,
-        target: dto.target,
+        target: otpTargetForVerify,
         purpose: "login",
         usedAt: null,
         expiresAt: {
@@ -232,12 +238,15 @@ export class AuthService {
 
       const app = dto.app || "client";
 
-      // Find user (never create for admin or carer)
+      // Find user (never create for admin or carer); normalize phone so 0200000799 and 200000799 match
+      const userLookupVerify = dto.channel === "phone"
+        ? (() => {
+            const normalized = normalizePhone(dto.target);
+            return normalized ? { OR: [{ phone: dto.target }, { phone: normalized }] } : { phone: dto.target };
+          })()
+        : { email: dto.target };
       let user = await prisma.user.findFirst({
-        where:
-          dto.channel === "phone"
-            ? { phone: dto.target }
-            : { email: dto.target },
+        where: userLookupVerify,
       });
 
       if (app === "admin" || app === "carer") {
@@ -293,11 +302,10 @@ export class AuthService {
       if (!user) {
         console.log('[AuthService] Creating new user for:', dto.target);
         try {
+          const phoneForCreate = dto.channel === "phone" ? (normalizePhone(dto.target) ?? dto.target) : undefined;
+          const emailForCreate = dto.channel === "email" ? dto.target : undefined;
           user = await prisma.user.create({
-            data:
-              dto.channel === "phone"
-                ? { phone: dto.target }
-                : { email: dto.target },
+            data: { phone: phoneForCreate, email: emailForCreate },
           });
           console.log('[AuthService] User created:', user.id);
         } catch (error: any) {
