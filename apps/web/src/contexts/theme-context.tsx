@@ -8,6 +8,8 @@ export type ThemeColor = 'purple' | 'blue' | 'green' | 'orange' | 'red' | 'indig
 interface ThemeContextType {
   themeColor: ThemeColor;
   setThemeColor: (color: ThemeColor) => void;
+  customColorHex: string | null;
+  setCustomColorHex: (hex: string | null) => void;
   getThemeClasses: () => {
     primary: string;
     primaryLight: string;
@@ -110,9 +112,32 @@ const colorMap: { [key: string]: string } = {
   'teal-600': '#0d9488',
 };
 
+/** Convert hex to r,g,b for generating lighter/darker shades */
+function hexToRgbArr(hex: string): [number, number, number] {
+  const n = parseInt(hex.replace(/^#/, ''), 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+
+function lighten(hex: string, amount: number): string {
+  const [r, g, b] = hexToRgbArr(hex);
+  const lr = Math.min(255, Math.round(r + (255 - r) * amount));
+  const lg = Math.min(255, Math.round(g + (255 - g) * amount));
+  const lb = Math.min(255, Math.round(b + (255 - b) * amount));
+  return `#${((1 << 24) + (lr << 16) + (lg << 8) + lb).toString(16).slice(1)}`;
+}
+
+function darken(hex: string, amount: number): string {
+  const [r, g, b] = hexToRgbArr(hex);
+  const dr = Math.max(0, Math.round(r * (1 - amount)));
+  const dg = Math.max(0, Math.round(g * (1 - amount)));
+  const db = Math.max(0, Math.round(b * (1 - amount)));
+  return `#${((1 << 24) + (dr << 16) + (dg << 8) + db).toString(16).slice(1)}`;
+}
+
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const { token } = useAuth();
   const [themeColor, setThemeColorState] = useState<ThemeColor>('orange');
+  const [customColorHex, setCustomColorHexState] = useState<string | null>(null);
   const [customLogo, setCustomLogo] = useState<string | null>(null);
 
   useEffect(() => {
@@ -120,9 +145,11 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       // Logged out: reset to defaults and clear branding from localStorage
       // so the next user doesn't see stale org branding on shared computers
       setThemeColorState('orange');
+      setCustomColorHexState(null);
       setCustomLogo(null);
       if (typeof window !== 'undefined') {
         localStorage.removeItem('themeColor');
+        localStorage.removeItem('customColorHex');
         localStorage.removeItem('customLogo');
       }
       return;
@@ -142,6 +169,13 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
           if (data.profile.themeColor && themeConfig[data.profile.themeColor as ThemeColor]) {
             setThemeColorState(data.profile.themeColor as ThemeColor);
             localStorage.setItem('themeColor', data.profile.themeColor);
+          }
+          if (data.profile.customColorHex) {
+            setCustomColorHexState(data.profile.customColorHex);
+            localStorage.setItem('customColorHex', data.profile.customColorHex);
+          } else {
+            setCustomColorHexState(null);
+            localStorage.removeItem('customColorHex');
           }
           if (data.profile.logoUrl) {
             setCustomLogo(data.profile.logoUrl);
@@ -173,20 +207,42 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     localStorage.setItem('themeColor', color);
   };
 
+  const setCustomColorHex = (hex: string | null) => {
+    setCustomColorHexState(hex);
+    if (hex) {
+      localStorage.setItem('customColorHex', hex);
+    } else {
+      localStorage.removeItem('customColorHex');
+    }
+  };
+
   const getThemeClasses = () => {
     return themeConfig[themeColor];
   };
 
   const getThemeColor = () => {
+    // Return exact custom color if set, otherwise the preset hex
+    if (customColorHex) return customColorHex;
     const classes = themeConfig[themeColor];
     return colorMap[classes.primary] || colorMap['orange-600'];
   };
+
+  // Apply CSS custom properties so components can use var(--theme-color)
+  useEffect(() => {
+    const hex = customColorHex || colorMap[themeConfig[themeColor].primary] || '#ea580c';
+    document.documentElement.style.setProperty('--theme-color', hex);
+    document.documentElement.style.setProperty('--theme-color-light', lighten(hex, 0.4));
+    document.documentElement.style.setProperty('--theme-color-lighter', lighten(hex, 0.85));
+    document.documentElement.style.setProperty('--theme-color-dark', darken(hex, 0.15));
+  }, [themeColor, customColorHex]);
 
   return (
     <ThemeContext.Provider
       value={{
         themeColor,
         setThemeColor,
+        customColorHex,
+        setCustomColorHex,
         getThemeClasses,
         getThemeColor,
         customLogo,

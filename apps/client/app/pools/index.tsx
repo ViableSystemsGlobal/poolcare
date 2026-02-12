@@ -13,6 +13,7 @@ import {
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useTheme } from "../../src/contexts/ThemeContext";
 import { api } from "../../src/lib/api-client";
 import { fixUrlForMobile } from "../../src/lib/network-utils";
 
@@ -38,6 +39,7 @@ interface Pool {
 }
 
 export default function PoolsListScreen() {
+  const { themeColor } = useTheme();
   const [pools, setPools] = useState<Pool[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -136,81 +138,86 @@ export default function PoolsListScreen() {
   };
 
   const getChemistryStatus = (pool: Pool) => {
-    if (!pool.lastReading) return { status: "unknown", color: "#9ca3af" };
-    
+    if (!pool.lastReading) return { status: "unknown", color: "#9ca3af", label: "No data" };
     const { ph, chlorine, alkalinity } = pool.lastReading;
-    const phOk = ph && ph >= 7.2 && ph <= 7.6;
-    const chlorineOk = chlorine && chlorine >= 1 && chlorine <= 3;
-    const alkalinityOk = alkalinity && alkalinity >= 80 && alkalinity <= 120;
-
+    const phOk = ph != null && ph >= 7.2 && ph <= 7.6;
+    const chlorineOk = chlorine != null && chlorine >= 1 && chlorine <= 3;
+    const alkalinityOk = alkalinity != null && alkalinity >= 80 && alkalinity <= 120;
     if (phOk && chlorineOk && alkalinityOk) {
-      return { status: "excellent", color: "#16a34a" };
-    } else if (phOk || chlorineOk || alkalinityOk) {
-      return { status: "good", color: "#14b8a6" };
+      return { status: "excellent", color: "#16a34a", label: "Balanced" };
     }
-    return { status: "needs_attention", color: "#f59e0b" };
+    if (phOk || chlorineOk || alkalinityOk) {
+      return { status: "good", color: themeColor, label: "Good" };
+    }
+    return { status: "needs_attention", color: "#f59e0b", label: "Needs attention" };
   };
 
   const renderPoolCard = ({ item }: { item: Pool }) => {
     const chemistry = getChemistryStatus(item);
-    // Fix image URL if it contains localhost
     const rawImage = item.photos && item.photos.length > 0 ? item.photos[0] : null;
-    const poolImage = fixUrlForMobile(rawImage);
-    
+    const poolImage = rawImage ? fixUrlForMobile(rawImage) : null;
+    const accentColor = chemistry.color;
+
     return (
       <TouchableOpacity
         style={styles.poolCard}
         onPress={() => router.push(`/pools/${item.id}`)}
         activeOpacity={0.7}
       >
-        {poolImage && (
-          <Image
-            source={{ uri: poolImage }}
-            style={styles.poolCardBackgroundImage}
-            resizeMode="cover"
-          />
+        <View style={[styles.poolCardAccent, { backgroundColor: accentColor }]} />
+        {poolImage ? (
+          <>
+            <Image source={{ uri: poolImage }} style={styles.poolCardBackgroundImage} resizeMode="cover" />
+            <View style={styles.poolCardOverlay} />
+          </>
+        ) : (
+          <View style={[styles.poolCardPlaceholder, { backgroundColor: themeColor + "18" }]}>
+            <Ionicons name="water" size={40} color={themeColor} />
+          </View>
         )}
-        {poolImage && <View style={styles.poolCardOverlay} />}
         <View style={styles.poolCardContent}>
           <View style={styles.poolCardHeader}>
             <View style={styles.poolHeaderLeft}>
-              <View style={[styles.poolStatusDot, { backgroundColor: chemistry.color }]} />
+              <View style={[styles.chemistryBadge, { backgroundColor: accentColor + "22" }]}>
+                <View style={[styles.chemistryDot, { backgroundColor: accentColor }]} />
+                <Text style={[styles.chemistryLabel, { color: accentColor }]}>{chemistry.label}</Text>
+              </View>
               <View style={styles.poolInfo}>
                 <Text style={poolImage ? styles.poolNameWhite : styles.poolName}>{item.name}</Text>
-                {item.address && (
-                  <Text style={poolImage ? styles.poolAddressWhite : styles.poolAddress}>{item.address}</Text>
-                )}
-                {item.type && (
+                {item.address ? (
+                  <Text style={poolImage ? styles.poolAddressWhite : styles.poolAddress} numberOfLines={1}>{item.address}</Text>
+                ) : null}
+                {item.type ? (
                   <Text style={poolImage ? styles.poolTypeWhite : styles.poolType}>{item.type}</Text>
-                )}
+                ) : null}
               </View>
             </View>
-            <Ionicons name="chevron-forward" size={20} color={poolImage ? "#ffffff" : "#9ca3af"} />
+            <View style={[styles.chevronWrap, poolImage && styles.chevronWrapWhite]}>
+              <Ionicons name="chevron-forward" size={20} color={poolImage ? "#fff" : "#9ca3af"} />
+            </View>
           </View>
 
-          {/* Quick Stats */}
           {item.lastReading && (
             <View style={[styles.quickStats, poolImage && styles.quickStatsWithImage]}>
               <View style={styles.statItem}>
                 <Text style={poolImage ? styles.statLabelWhite : styles.statLabel}>pH</Text>
-                <Text style={poolImage ? styles.statValueWhite : styles.statValue}>{item.lastReading.ph?.toFixed(1) || "N/A"}</Text>
+                <Text style={poolImage ? styles.statValueWhite : styles.statValue}>{item.lastReading.ph?.toFixed(1) ?? "—"}</Text>
               </View>
               <View style={styles.statItem}>
                 <Text style={poolImage ? styles.statLabelWhite : styles.statLabel}>FC</Text>
-                <Text style={poolImage ? styles.statValueWhite : styles.statValue}>{item.lastReading.chlorine?.toFixed(1) || "N/A"}</Text>
+                <Text style={poolImage ? styles.statValueWhite : styles.statValue}>{item.lastReading.chlorine?.toFixed(1) ?? "—"}</Text>
               </View>
               <View style={styles.statItem}>
                 <Text style={poolImage ? styles.statLabelWhite : styles.statLabel}>TA</Text>
-                <Text style={poolImage ? styles.statValueWhite : styles.statValue}>{item.lastReading.alkalinity || "N/A"}</Text>
+                <Text style={poolImage ? styles.statValueWhite : styles.statValue}>{item.lastReading.alkalinity ?? "—"}</Text>
               </View>
             </View>
           )}
 
-          {/* Last Visit & Next Service */}
           <View style={[styles.poolFooter, poolImage && styles.poolFooterWithImage]}>
             {item.lastVisit && (
               <View style={styles.footerItem}>
-                <Ionicons name="checkmark-circle-outline" size={14} color={poolImage ? "#ffffff" : "#6b7280"} />
+                <Ionicons name="checkmark-circle-outline" size={14} color={poolImage ? "#fff" : "#6b7280"} />
                 <Text style={[styles.footerText, poolImage && styles.footerTextWhite]}>
                   Last: {new Date(item.lastVisit.date).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
                 </Text>
@@ -218,9 +225,9 @@ export default function PoolsListScreen() {
             )}
             {item.nextService && (
               <View style={styles.footerItem}>
-                <Ionicons name="calendar-outline" size={14} color={poolImage ? "#ffffff" : "#14b8a6"} />
-                <Text style={[styles.footerText, !poolImage && styles.nextServiceText, poolImage && styles.footerTextWhite]}>
-                  Next: {new Date(item.nextService.date).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                <Ionicons name="calendar-outline" size={14} color={poolImage ? "#fff" : themeColor} />
+                <Text style={[styles.footerText, !poolImage && { color: themeColor, fontWeight: "600" }, poolImage && styles.footerTextWhite]}>
+                  Next: {item.nextService.date} · {item.nextService.time}
                 </Text>
               </View>
             )}
@@ -230,43 +237,62 @@ export default function PoolsListScreen() {
     );
   };
 
+  const subtitle = pools.length === 0
+    ? "Add a pool to get started"
+    : pools.length === 1 ? "1 pool" : `${pools.length} pools`;
+
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
-      {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}>
-          <Ionicons name="arrow-back" size={24} color="#111827" />
+        <TouchableOpacity
+          style={styles.headerBackWrap}
+          onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))}
+        >
+          <Ionicons name="arrow-back" size={22} color="#111827" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Your Pools</Text>
-        <TouchableOpacity onPress={() => router.push("/pools/add")}>
-          <Ionicons name="add-circle-outline" size={24} color="#14b8a6" />
+        <View style={styles.headerCenter}>
+          <Text style={styles.headerTitle}>Your Pools</Text>
+          <Text style={styles.headerSubtitle}>{subtitle}</Text>
+        </View>
+        <TouchableOpacity
+          style={[styles.headerAddWrap, { backgroundColor: themeColor }]}
+          onPress={() => router.push("/pools/add")}
+        >
+          <Ionicons name="add" size={22} color="#fff" />
         </TouchableOpacity>
       </View>
 
       {loading ? (
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#14b8a6" />
-          <Text style={styles.loadingText}>Loading pools...</Text>
+          <ActivityIndicator size="large" color={themeColor} />
+          <Text style={styles.loadingText}>Loading your pools…</Text>
         </View>
       ) : (
         <FlatList
           data={pools}
           renderItem={renderPoolCard}
           keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.listContent}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+          contentContainerStyle={pools.length === 0 ? styles.listContentEmpty : styles.listContent}
+          style={styles.list}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={themeColor} />
+          }
           ListEmptyComponent={
             <View style={styles.emptyState}>
-              <Ionicons name="water-outline" size={64} color="#d1d5db" />
+              <View style={[styles.emptyIconWrap, { backgroundColor: themeColor + "20" }]}>
+                <Ionicons name="water" size={48} color={themeColor} />
+              </View>
               <Text style={styles.emptyText}>No pools yet</Text>
               <Text style={styles.emptySubtext}>
-                Add your first pool to get started
+                Add your first pool to track chemistry, visits, and services.
               </Text>
               <TouchableOpacity
-                style={styles.addButton}
+                style={[styles.addButton, { backgroundColor: themeColor }]}
                 onPress={() => router.push("/pools/add")}
+                activeOpacity={0.85}
               >
-                <Text style={styles.addButtonText}>Add Pool</Text>
+                <Ionicons name="add-circle-outline" size={20} color="#fff" />
+                <Text style={styles.addButtonText}>Add pool</Text>
               </TouchableOpacity>
             </View>
           }
@@ -285,16 +311,42 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 20,
-    paddingVertical: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    paddingBottom: 16,
     backgroundColor: "#ffffff",
     borderBottomWidth: 1,
     borderBottomColor: "#e5e7eb",
+  },
+  headerBackWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "#f3f4f6",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  headerCenter: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
   },
   headerTitle: {
     fontSize: 20,
     fontWeight: "700",
     color: "#111827",
+  },
+  headerSubtitle: {
+    fontSize: 13,
+    color: "#6b7280",
+    marginTop: 2,
+  },
+  headerAddWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
   },
   loadingContainer: {
     flex: 1,
@@ -305,9 +357,19 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: "#6b7280",
   },
+  list: {
+    backgroundColor: "#f3f4f6",
+  },
   listContent: {
-    padding: 20,
-    paddingBottom: 100,
+    padding: 16,
+    paddingBottom: 120,
+  },
+  listContentEmpty: {
+    flexGrow: 1,
+    padding: 24,
+    paddingBottom: 120,
+    justifyContent: "center",
+    backgroundColor: "#f3f4f6",
   },
   poolCard: {
     backgroundColor: "#ffffff",
@@ -315,12 +377,29 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 2,
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    elevation: 3,
     overflow: "hidden",
     position: "relative",
-    minHeight: 200,
+    minHeight: 180,
+  },
+  poolCardAccent: {
+    position: "absolute",
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 4,
+    zIndex: 2,
+  },
+  poolCardPlaceholder: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 100,
+    alignItems: "center",
+    justifyContent: "center",
   },
   poolCardBackgroundImage: {
     position: "absolute",
@@ -354,15 +433,34 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     flex: 1,
+    gap: 10,
   },
-  poolStatusDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    marginRight: 12,
+  chemistryBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    gap: 6,
+  },
+  chemistryDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  chemistryLabel: {
+    fontSize: 11,
+    fontWeight: "600",
   },
   poolInfo: {
     flex: 1,
+    minWidth: 0,
+  },
+  chevronWrap: {
+    padding: 4,
+  },
+  chevronWrapWhite: {
+    opacity: 0.95,
   },
   poolName: {
     fontSize: 18,
@@ -456,33 +554,39 @@ const styles = StyleSheet.create({
     color: "#ffffff",
     opacity: 0.9,
   },
-  nextServiceText: {
-    color: "#14b8a6",
-    fontWeight: "600",
-  },
   emptyState: {
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 64,
+    paddingVertical: 48,
+  },
+  emptyIconWrap: {
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    alignItems: "center",
+    justifyContent: "center",
   },
   emptyText: {
-    fontSize: 18,
-    fontWeight: "600",
+    fontSize: 20,
+    fontWeight: "700",
     color: "#111827",
-    marginTop: 16,
+    marginTop: 20,
     marginBottom: 8,
   },
   emptySubtext: {
-    fontSize: 14,
+    fontSize: 15,
     color: "#6b7280",
-    marginBottom: 24,
+    marginBottom: 28,
     textAlign: "center",
+    paddingHorizontal: 24,
   },
   addButton: {
-    backgroundColor: "#14b8a6",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
     paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 8,
+    paddingVertical: 14,
+    borderRadius: 12,
   },
   addButtonText: {
     color: "#ffffff",

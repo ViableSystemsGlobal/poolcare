@@ -14,18 +14,27 @@ export const getNetworkIp = (): string => {
 };
 
 /**
- * Replace localhost with network IP in URLs for mobile platforms
+ * Replace localhost with network IP in URLs for mobile platforms,
+ * and rewrite old Render hostnames to the public API domain.
  */
 export const fixUrlForMobile = (url: string | null | undefined): string => {
   if (!url) return "";
-  
-  // Only replace on mobile platforms
-  if (Platform.OS !== "web" && url.includes("localhost")) {
+
+  let fixed = url;
+
+  // Rewrite old Render internal hostname to the public API domain
+  fixed = fixed.replace(
+    /https?:\/\/poolcare-ef74\.onrender\.com/g,
+    "https://api.poolcare.africa"
+  );
+
+  // On native, replace localhost with the Mac's LAN IP
+  if (Platform.OS !== "web" && fixed.includes("localhost")) {
     const networkIp = getNetworkIp();
-    return url.replace("localhost", networkIp);
+    fixed = fixed.replace("localhost", networkIp);
   }
-  
-  return url;
+
+  return fixed;
 };
 
 

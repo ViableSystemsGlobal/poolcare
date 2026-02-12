@@ -2,10 +2,13 @@ import { useState, useEffect } from "react";
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, TextInput, ActivityIndicator, Alert } from "react-native";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { useTheme } from "../../src/contexts/ThemeContext";
 import { api } from "@/lib/api-client";
 import { getPoolShopCart, clearPoolShopCart } from "@/lib/poolshop-cart";
 
 export default function PoolShopCheckoutScreen() {
+  const { themeColor } = useTheme();
   const [cart, setCart] = useState<ReturnType<typeof getPoolShopCart>>([]);
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -45,105 +48,175 @@ export default function PoolShopCheckoutScreen() {
     }
   };
 
+  const itemCount = cart.reduce((n, i) => n + i.quantity, 0);
+  const subtitle = cart.length === 0 ? "Your cart" : itemCount === 1 ? "1 item" : `${itemCount} items`;
+
+  const renderHeader = () => (
+    <View style={styles.header}>
+      <TouchableOpacity
+        style={styles.headerBackWrap}
+        onPress={() => (router.canGoBack() ? router.back() : router.replace("/poolshop"))}
+      >
+        <Ionicons name="arrow-back" size={22} color="#111827" />
+      </TouchableOpacity>
+      <View style={styles.headerCenter}>
+        <Text style={styles.headerTitle}>Checkout</Text>
+        <Text style={styles.headerSubtitle}>{subtitle}</Text>
+      </View>
+      <View style={styles.headerRight} />
+    </View>
+  );
+
   if (cart.length === 0 && !submitting) {
     return (
-      <View style={styles.container}>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()}>
-            <Ionicons name="arrow-back" size={24} color="#111827" />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Checkout</Text>
-          <View style={{ width: 24 }} />
-        </View>
+      <SafeAreaView style={styles.container} edges={["top"]}>
+        {renderHeader()}
         <View style={styles.emptyState}>
-          <Ionicons name="cart-outline" size={64} color="#9ca3af" />
-          <Text style={styles.emptyText}>Your cart is empty</Text>
-          <TouchableOpacity style={styles.backToShopButton} onPress={() => router.replace("/poolshop")}>
-            <Text style={styles.backToShopText}>Back to PoolShop</Text>
+          <View style={[styles.emptyStateIconWrap, { backgroundColor: themeColor + "20" }]}>
+            <Ionicons name="cart-outline" size={48} color={themeColor} />
+          </View>
+          <Text style={styles.emptyTitle}>Your cart is empty</Text>
+          <Text style={styles.emptySubtext}>Add items from the shop to checkout.</Text>
+          <TouchableOpacity
+            style={[styles.backToShopButton, { backgroundColor: themeColor }]}
+            onPress={() => router.replace("/poolshop")}
+            activeOpacity={0.85}
+          >
+            <Ionicons name="bag-outline" size={20} color="#fff" />
+            <Text style={styles.backToShopText}>Back to shop</Text>
           </TouchableOpacity>
         </View>
-      </View>
+      </SafeAreaView>
     );
   }
 
   return (
-    <View style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}>
-          <Ionicons name="arrow-back" size={24} color="#111827" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Checkout</Text>
-        <View style={{ width: 24 }} />
-      </View>
+    <SafeAreaView style={styles.container} edges={["top"]}>
+      {renderHeader()}
 
-      <ScrollView style={styles.content} contentContainerStyle={styles.contentInner}>
-        <Text style={styles.sectionTitle}>Order summary</Text>
-        {cart.map((item) => (
-          <View key={item.id} style={styles.row}>
-            <Text style={styles.rowName} numberOfLines={1}>{item.name}</Text>
-            <Text style={styles.rowQty}>×{item.quantity}</Text>
-            <Text style={styles.rowPrice}>GH₵{(item.price * item.quantity).toFixed(2)}</Text>
-          </View>
-        ))}
+      <ScrollView style={styles.content} contentContainerStyle={styles.contentInner} showsVerticalScrollIndicator={false}>
+        <View style={styles.card}>
+          <View style={[styles.cardAccent, { backgroundColor: themeColor }]} />
+          <Text style={styles.sectionTitle}>Order summary</Text>
+          {cart.map((item) => (
+            <View key={item.id} style={styles.row}>
+              <Text style={styles.rowName} numberOfLines={1}>{item.name}</Text>
+              <Text style={styles.rowQty}>×{item.quantity}</Text>
+              <Text style={[styles.rowPrice, { color: themeColor }]}>GH₵{(item.price * item.quantity).toFixed(2)}</Text>
+            </View>
+          ))}
+        </View>
 
-        <Text style={[styles.sectionTitle, { marginTop: 24 }]}>Delivery notes (optional)</Text>
-        <TextInput
-          style={styles.notesInput}
-          placeholder="e.g. Leave at gate"
-          value={notes}
-          onChangeText={setNotes}
-          multiline
-          numberOfLines={3}
-        />
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Delivery notes (optional)</Text>
+          <TextInput
+            style={[styles.notesInput, { borderColor: themeColor + "50" }]}
+            placeholder="e.g. Leave at gate"
+            placeholderTextColor="#9ca3af"
+            value={notes}
+            onChangeText={setNotes}
+            multiline
+            numberOfLines={3}
+          />
+        </View>
 
         <View style={styles.totalRow}>
           <Text style={styles.totalLabel}>Total</Text>
-          <Text style={styles.totalAmount}>GH₵{total.toFixed(2)}</Text>
+          <Text style={[styles.totalAmount, { color: themeColor }]}>GH₵{total.toFixed(2)}</Text>
         </View>
 
         <TouchableOpacity
-          style={[styles.placeButton, submitting && styles.placeButtonDisabled]}
+          style={[
+            styles.placeButton,
+            { backgroundColor: themeColor },
+            submitting && styles.placeButtonDisabled,
+          ]}
           onPress={handlePlaceOrder}
           disabled={submitting}
+          activeOpacity={0.85}
         >
           {submitting ? (
             <ActivityIndicator color="#fff" />
           ) : (
-            <Text style={styles.placeButtonText}>Place Order</Text>
+            <>
+              <Ionicons name="checkmark-circle-outline" size={22} color="#fff" />
+              <Text style={styles.placeButtonText}>Place order</Text>
+            </>
           )}
         </TouchableOpacity>
       </ScrollView>
-    </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#f0fdf4",
+    backgroundColor: "#f3f4f6",
   },
   header: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 20,
-    paddingTop: 60,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     paddingBottom: 16,
     backgroundColor: "#ffffff",
     borderBottomWidth: 1,
     borderBottomColor: "#e5e7eb",
+  },
+  headerBackWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "#f3f4f6",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  headerCenter: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
   },
   headerTitle: {
     fontSize: 20,
     fontWeight: "700",
     color: "#111827",
   },
+  headerSubtitle: {
+    fontSize: 13,
+    color: "#6b7280",
+    marginTop: 2,
+  },
+  headerRight: {
+    width: 40,
+  },
   content: {
     flex: 1,
   },
   contentInner: {
-    padding: 20,
-    paddingBottom: 40,
+    padding: 16,
+    paddingBottom: 120,
+  },
+  card: {
+    backgroundColor: "#ffffff",
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    elevation: 3,
+    overflow: "hidden",
+    position: "relative",
+  },
+  cardAccent: {
+    position: "absolute",
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 4,
   },
   sectionTitle: {
     fontSize: 16,
@@ -162,6 +235,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 15,
     color: "#111827",
+    marginRight: 8,
   },
   rowQty: {
     fontSize: 14,
@@ -171,27 +245,25 @@ const styles = StyleSheet.create({
   rowPrice: {
     fontSize: 15,
     fontWeight: "700",
-    color: "#14b8a6",
   },
   notesInput: {
     backgroundColor: "#fff",
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
+    borderWidth: 1.5,
     borderRadius: 12,
     padding: 14,
     fontSize: 15,
     color: "#111827",
-    minHeight: 80,
+    minHeight: 88,
     textAlignVertical: "top",
   },
   totalRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginTop: 24,
+    marginTop: 8,
+    marginBottom: 8,
     paddingVertical: 16,
-    borderTopWidth: 1,
-    borderTopColor: "#e5e7eb",
+    paddingHorizontal: 4,
   },
   totalLabel: {
     fontSize: 18,
@@ -199,16 +271,17 @@ const styles = StyleSheet.create({
     color: "#111827",
   },
   totalAmount: {
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: "700",
-    color: "#14b8a6",
   },
   placeButton: {
-    backgroundColor: "#14b8a6",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
     paddingVertical: 16,
     borderRadius: 12,
-    alignItems: "center",
-    marginTop: 16,
+    marginTop: 8,
   },
   placeButtonDisabled: {
     opacity: 0.7,
@@ -222,18 +295,34 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 64,
+    paddingVertical: 48,
   },
-  emptyText: {
-    fontSize: 16,
+  emptyStateIconWrap: {
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  emptyTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#111827",
+    marginTop: 20,
+    marginBottom: 8,
+  },
+  emptySubtext: {
+    fontSize: 15,
     color: "#6b7280",
-    marginTop: 16,
+    marginBottom: 28,
+    textAlign: "center",
   },
   backToShopButton: {
-    marginTop: 24,
-    paddingVertical: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingVertical: 14,
     paddingHorizontal: 24,
-    backgroundColor: "#14b8a6",
     borderRadius: 12,
   },
   backToShopText: {

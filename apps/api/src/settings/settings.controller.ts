@@ -138,6 +138,47 @@ export class SettingsController {
     }
   }
 
+  @Post("upload-home-card-image")
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "MANAGER")
+  @UseInterceptors(FileInterceptor("homeCardImage"))
+  async uploadHomeCardImage(
+    @CurrentUser() user: { org_id: string },
+    @UploadedFile(
+      new ParseFilePipe({
+        fileIsRequired: true,
+        validators: [
+          new MaxFileSizeValidator({ maxSize: 2 * 1024 * 1024 }), // 2MB
+          new FileTypeValidator({ fileType: /(jpeg|jpg|png|webp)$/ }),
+        ],
+      })
+    )
+    file: Express.Multer.File
+  ) {
+    if (!file) {
+      throw new BadRequestException("No file uploaded");
+    }
+
+    try {
+      const homeCardImageUrl = await this.filesService.uploadImage(
+        user.org_id,
+        file,
+        "home_card_image",
+        user.org_id
+      );
+
+      // Update org settings with home card image URL
+      await this.settingsService.updateOrgSettings(user.org_id, {
+        profile: { homeCardImageUrl },
+      });
+
+      return { homeCardImageUrl };
+    } catch (error: any) {
+      console.error("Home card image upload error:", error);
+      throw new BadRequestException(error.message || "Failed to upload home card image");
+    }
+  }
+
   @Post("upload-favicon")
   @UseGuards(RolesGuard)
   @Roles("ADMIN", "MANAGER")

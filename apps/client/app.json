@@ -20,7 +20,10 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.poolcare.client",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSAppTransportSecurity": {
+          "NSAllowsLocalNetworking": true
+        }
       }
     },
     "android": {

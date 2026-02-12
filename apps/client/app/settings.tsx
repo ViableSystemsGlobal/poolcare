@@ -14,6 +14,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as ImagePicker from "expo-image-picker";
+import { useTheme } from "../src/contexts/ThemeContext";
 
 interface UserProfile {
   name: string;
@@ -33,6 +34,7 @@ interface NotificationPreferences {
 }
 
 export default function SettingsScreen() {
+  const { themeColor } = useTheme();
   const [profile, setProfile] = useState<UserProfile>({
     name: "John Doe",
     email: "john.doe@example.com",
@@ -219,7 +221,7 @@ export default function SettingsScreen() {
     >
       <View style={styles.settingItemLeft}>
         <View style={styles.iconContainer}>
-          <Ionicons name={icon as any} size={20} color="#14b8a6" />
+          <Ionicons name={icon as any} size={20} color={themeColor} />
         </View>
         <Text style={styles.settingItemLabel}>{label}</Text>
       </View>
@@ -231,7 +233,7 @@ export default function SettingsScreen() {
     <SafeAreaView style={styles.container} edges={["top"]}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}>
+        <TouchableOpacity onPress={() => { router.canGoBack() ? router.back() : router.replace("/"); }}>
           <Ionicons name="arrow-back" size={24} color="#111827" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Settings</Text>
@@ -255,11 +257,11 @@ export default function SettingsScreen() {
                 style={styles.profileImage}
               />
             ) : (
-              <View style={styles.profileImagePlaceholder}>
-                <Ionicons name="person" size={40} color="#14b8a6" />
+              <View style={[styles.profileImagePlaceholder, { borderColor: themeColor }]}>
+                <Ionicons name="person" size={40} color={themeColor} />
               </View>
             )}
-            <View style={styles.editProfileBadge}>
+            <View style={[styles.editProfileBadge, { backgroundColor: themeColor }]}>
               <Ionicons name="camera" size={16} color="#ffffff" />
             </View>
           </TouchableOpacity>
@@ -267,20 +269,22 @@ export default function SettingsScreen() {
           <Text style={styles.profileEmail}>{profile.email}</Text>
           <Text style={styles.profilePhone}>{profile.phone}</Text>
           <TouchableOpacity
-            style={styles.editProfileButton}
+            style={[styles.editProfileButton, { borderColor: themeColor }]}
             onPress={handleEditProfile}
           >
-            <Text style={styles.editProfileButtonText}>Edit Profile</Text>
+            <Text style={[styles.editProfileButtonText, { color: themeColor }]}>Edit Profile</Text>
           </TouchableOpacity>
         </View>
 
-        {/* Account Settings */}
+        {/* Account: Billing & Plans first, then profile/payment options */}
         {renderSection(
           "Account",
           <>
+            {renderSettingItem("document-text-outline", "Billing", () => router.push("/billing"))}
+            {renderSettingItem("layers-outline", "Plans", () => router.push("/my-subscriptions"))}
             {renderSettingItem("person-outline", "Profile Information", handleEditProfile)}
-            {renderSettingItem("lock-closed-outline", "Change Password", handleChangePassword)}
             {renderSettingItem("card-outline", "Payment Methods", () => router.push("/payment-methods"))}
+            {renderSettingItem("lock-closed-outline", "Change Password", handleChangePassword)}
             {renderSettingItem("location-outline", "Addresses", () => Alert.alert("Addresses", "Address management coming soon!"))}
           </>
         )}
@@ -292,7 +296,7 @@ export default function SettingsScreen() {
             <View style={styles.settingItem}>
               <View style={styles.settingItemLeft}>
                 <View style={styles.iconContainer}>
-                  <Ionicons name="calendar-outline" size={20} color="#14b8a6" />
+                  <Ionicons name="calendar-outline" size={20} color={themeColor} />
                 </View>
                 <Text style={styles.settingItemLabel}>Service Reminders</Text>
               </View>
@@ -301,14 +305,14 @@ export default function SettingsScreen() {
                 onValueChange={(value) =>
                   setNotifications({ ...notifications, serviceReminders: value })
                 }
-                trackColor={{ false: "#d1d5db", true: "#14b8a6" }}
+                trackColor={{ false: "#d1d5db", true: themeColor }}
                 thumbColor="#ffffff"
               />
             </View>
             <View style={styles.settingItem}>
               <View style={styles.settingItemLeft}>
                 <View style={styles.iconContainer}>
-                  <Ionicons name="cash-outline" size={20} color="#14b8a6" />
+                  <Ionicons name="cash-outline" size={20} color={themeColor} />
                 </View>
                 <Text style={styles.settingItemLabel}>Payment Reminders</Text>
               </View>
@@ -317,14 +321,14 @@ export default function SettingsScreen() {
                 onValueChange={(value) =>
                   setNotifications({ ...notifications, paymentReminders: value })
                 }
-                trackColor={{ false: "#d1d5db", true: "#14b8a6" }}
+                trackColor={{ false: "#d1d5db", true: themeColor }}
                 thumbColor="#ffffff"
               />
             </View>
             <View style={styles.settingItem}>
               <View style={styles.settingItemLeft}>
                 <View style={styles.iconContainer}>
-                  <Ionicons name="notifications-outline" size={20} color="#14b8a6" />
+                  <Ionicons name="notifications-outline" size={20} color={themeColor} />
                 </View>
                 <Text style={styles.settingItemLabel}>Visit Updates</Text>
               </View>
@@ -333,14 +337,14 @@ export default function SettingsScreen() {
                 onValueChange={(value) =>
                   setNotifications({ ...notifications, visitUpdates: value })
                 }
-                trackColor={{ false: "#d1d5db", true: "#14b8a6" }}
+                trackColor={{ false: "#d1d5db", true: themeColor }}
                 thumbColor="#ffffff"
               />
             </View>
             <View style={styles.settingItem}>
               <View style={styles.settingItemLeft}>
                 <View style={styles.iconContainer}>
-                  <Ionicons name="megaphone-outline" size={20} color="#14b8a6" />
+                  <Ionicons name="megaphone-outline" size={20} color={themeColor} />
                 </View>
                 <Text style={styles.settingItemLabel}>Promotions & Offers</Text>
               </View>
@@ -349,7 +353,7 @@ export default function SettingsScreen() {
                 onValueChange={(value) =>
                   setNotifications({ ...notifications, promotions: value })
                 }
-                trackColor={{ false: "#d1d5db", true: "#14b8a6" }}
+                trackColor={{ false: "#d1d5db", true: themeColor }}
                 thumbColor="#ffffff"
               />
             </View>
@@ -357,7 +361,7 @@ export default function SettingsScreen() {
             <View style={styles.settingItem}>
               <View style={styles.settingItemLeft}>
                 <View style={styles.iconContainer}>
-                  <Ionicons name="mail-outline" size={20} color="#14b8a6" />
+                  <Ionicons name="mail-outline" size={20} color={themeColor} />
                 </View>
                 <Text style={styles.settingItemLabel}>Email Notifications</Text>
               </View>
@@ -366,14 +370,14 @@ export default function SettingsScreen() {
                 onValueChange={(value) =>
                   setNotifications({ ...notifications, emailNotifications: value })
                 }
-                trackColor={{ false: "#d1d5db", true: "#14b8a6" }}
+                trackColor={{ false: "#d1d5db", true: themeColor }}
                 thumbColor="#ffffff"
               />
             </View>
             <View style={styles.settingItem}>
               <View style={styles.settingItemLeft}>
                 <View style={styles.iconContainer}>
-                  <Ionicons name="chatbubble-outline" size={20} color="#14b8a6" />
+                  <Ionicons name="chatbubble-outline" size={20} color={themeColor} />
                 </View>
                 <Text style={styles.settingItemLabel}>SMS Notifications</Text>
               </View>
@@ -382,7 +386,7 @@ export default function SettingsScreen() {
                 onValueChange={(value) =>
                   setNotifications({ ...notifications, smsNotifications: value })
                 }
-                trackColor={{ false: "#d1d5db", true: "#14b8a6" }}
+                trackColor={{ false: "#d1d5db", true: themeColor }}
                 thumbColor="#ffffff"
               />
             </View>
@@ -400,7 +404,7 @@ export default function SettingsScreen() {
             >
               <View style={styles.settingItemLeft}>
                 <View style={styles.iconContainer}>
-                  <Ionicons name="image-outline" size={20} color="#14b8a6" />
+                  <Ionicons name="image-outline" size={20} color={themeColor} />
                 </View>
                 <View style={styles.settingItemTextContainer}>
                   <Text style={styles.settingItemLabel}>Next Visit Card Background</Text>
@@ -468,7 +472,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingBottom: 40,
+    paddingBottom: 120,
   },
   profileSection: {
     alignItems: "center",

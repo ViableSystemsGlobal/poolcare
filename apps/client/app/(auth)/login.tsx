@@ -1,15 +1,23 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from "react-native";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { api } from "../../src/lib/api-client";
+import { useTheme } from "../../src/contexts/ThemeContext";
 
 export default function LoginScreen() {
+  const { themeColor, setThemeFromOrgProfile } = useTheme();
   const [phone, setPhone] = useState("");
   const [otp, setOtp] = useState("");
   const [step, setStep] = useState<"phone" | "otp">("phone");
   const [loading, setLoading] = useState(false);
   const [devOtpCode, setDevOtpCode] = useState<string | null>(null);
+
+  useEffect(() => {
+    api.getPublicBranding().then((data) => {
+      setThemeFromOrgProfile({ themeColor: data.themeColor, customColorHex: data.primaryColorHex });
+    }).catch(() => {});
+  }, [setThemeFromOrgProfile]);
 
   const handleRequestOtp = async () => {
     if (!phone) {
@@ -85,7 +93,7 @@ export default function LoginScreen() {
               />
             </View>
             <TouchableOpacity
-              style={[styles.button, loading && styles.buttonDisabled]}
+              style={[styles.button, { backgroundColor: themeColor }, loading && styles.buttonDisabled]}
               onPress={handleRequestOtp}
               disabled={loading}
             >
@@ -113,7 +121,7 @@ export default function LoginScreen() {
               </View>
             )}
             <TouchableOpacity
-              style={[styles.button, loading && styles.buttonDisabled]}
+              style={[styles.button, { backgroundColor: themeColor }, loading && styles.buttonDisabled]}
               onPress={handleVerifyOtp}
               disabled={loading}
             >
@@ -125,7 +133,7 @@ export default function LoginScreen() {
               style={styles.linkButton}
               onPress={() => setStep("phone")}
             >
-              <Text style={styles.linkText}>Change phone number</Text>
+              <Text style={[styles.linkText, { color: themeColor }]}>Change phone number</Text>
             </TouchableOpacity>
           </>
         )}
@@ -175,7 +183,6 @@ const styles = StyleSheet.create({
     marginLeft: 12,
   },
   button: {
-    backgroundColor: "#14b8a6",
     padding: 16,
     borderRadius: 12,
     alignItems: "center",
@@ -193,7 +200,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   linkText: {
-    color: "#14b8a6",
     fontSize: 14,
   },
   devOtpContainer: {

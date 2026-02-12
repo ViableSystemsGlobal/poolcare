@@ -1696,12 +1696,12 @@ export default function JobsPage() {
             </div>
           )}
 
-          {/* Pagination */}
-          {pagination && pagination.pages > 1 && (
+          {/* Pagination - always show when we have pagination data and jobs */}
+          {pagination && pagination.total > 0 && (
             <div className="border-t px-6 py-4 mt-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Label htmlFor="pageSize" className="text-sm">
+              <div className="flex items-center justify-between flex-wrap gap-4">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Label htmlFor="pageSize" className="text-sm text-gray-600">
                     Items per page:
                   </Label>
                   <Select
@@ -1722,57 +1722,57 @@ export default function JobsPage() {
                     </SelectContent>
                   </Select>
                   <span className="text-sm text-gray-600">
-                    {pagination
-                      ? `Showing ${(currentPage - 1) * pageSize + 1} - ${Math.min(currentPage * pageSize, pagination.total)} of ${pagination.total} jobs`
-                      : `(${filteredJobs.length} jobs)`}
+                    Showing {(currentPage - 1) * pageSize + 1}–{Math.min(currentPage * pageSize, pagination.total)} of {pagination.total} jobs
                   </span>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                    disabled={currentPage === 1 || loading}
-                  >
-                    <ChevronLeft className="h-4 w-4" />
-                    Previous
-                  </Button>
-                  <div className="flex items-center gap-1">
-                    {Array.from({ length: Math.min(5, pagination.pages) }, (_, i) => {
-                      let pageNum: number;
-                      if (pagination.pages <= 5) {
-                        pageNum = i + 1;
-                      } else if (currentPage <= 3) {
-                        pageNum = i + 1;
-                      } else if (currentPage >= pagination.pages - 2) {
-                        pageNum = pagination.pages - 4 + i;
-                      } else {
-                        pageNum = currentPage - 2 + i;
-                      }
-                      return (
-                        <Button
-                          key={pageNum}
-                          variant={currentPage === pageNum ? "default" : "outline"}
-                          size="sm"
-                          onClick={() => setCurrentPage(pageNum)}
-                          disabled={loading}
-                          className="min-w-[40px]"
-                        >
-                          {pageNum}
-                        </Button>
-                      );
-                    })}
+                {pagination.pages > 1 && (
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                      disabled={currentPage === 1 || loading}
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                      Previous
+                    </Button>
+                    <div className="flex items-center gap-1">
+                      {Array.from({ length: Math.min(5, pagination.pages) }, (_, i) => {
+                        let pageNum: number;
+                        if (pagination.pages <= 5) {
+                          pageNum = i + 1;
+                        } else if (currentPage <= 3) {
+                          pageNum = i + 1;
+                        } else if (currentPage >= pagination.pages - 2) {
+                          pageNum = pagination.pages - 4 + i;
+                        } else {
+                          pageNum = currentPage - 2 + i;
+                        }
+                        return (
+                          <Button
+                            key={pageNum}
+                            variant={currentPage === pageNum ? "default" : "outline"}
+                            size="sm"
+                            onClick={() => setCurrentPage(pageNum)}
+                            disabled={loading}
+                            className="min-w-[40px]"
+                          >
+                            {pageNum}
+                          </Button>
+                        );
+                      })}
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage((p) => Math.min(pagination.pages, p + 1))}
+                      disabled={currentPage === pagination.pages || loading}
+                    >
+                      Next
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
                   </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setCurrentPage((p) => Math.min(pagination.pages, p + 1))}
-                    disabled={currentPage === pagination.pages || loading}
-                  >
-                    Next
-                    <ChevronRight className="h-4 w-4" />
-                  </Button>
-                </div>
+                )}
               </div>
             </div>
           )}

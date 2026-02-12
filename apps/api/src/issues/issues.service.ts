@@ -1,9 +1,33 @@
-import { Injectable, NotFoundException, ForbiddenException } from "@nestjs/common";
+import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from "@nestjs/common";
 import { prisma } from "@poolcare/db";
 import { CreateIssueDto, UpdateIssueDto } from "./dto";
+import { FilesService } from "../files/files.service";
 
 @Injectable()
 export class IssuesService {
+  constructor(private readonly filesService: FilesService) {}
+
+  async uploadPhoto(orgId: string, userId: string, file: Express.Multer.File) {
+    const url = await this.filesService.uploadImage(orgId, file, "issue_photos", "pending");
+
+    const photo = await prisma.photo.create({
+      data: {
+        orgId,
+        url,
+        label: "issue",
+        meta: {
+          width: 0,
+          height: 0,
+          originalName: file.originalname,
+          contentType: file.mimetype,
+          size: file.size,
+        },
+      },
+    });
+
+    return photo;
+  }
+
   async create(
     orgId: string,
     userId: string,

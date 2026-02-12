@@ -60,7 +60,10 @@ export class SettingsService {
 
     const rawLogoUrl = profile.logoUrl || null;
     const themeColor = profile.themeColor || "teal";
-    const primaryColorHex = this.getThemeColorHex(themeColor);
+    const customHex = profile.customColorHex && String(profile.customColorHex).trim();
+    const primaryColorHex = customHex
+      ? (customHex.startsWith("#") ? customHex : `#${customHex}`)
+      : this.getThemeColorHex(themeColor);
     // Ensure logo URL is absolute so login page (different origin) can load it
     const logoUrl = rawLogoUrl ? this.toAbsoluteLogoUrl(rawLogoUrl) : null;
     return {
@@ -118,7 +121,9 @@ export class SettingsService {
         name: org.name,
         logoUrl: profile.logoUrl || null,
         faviconUrl: profile.faviconUrl || null,
+        homeCardImageUrl: profile.homeCardImageUrl || null,
         themeColor: profile.themeColor || "orange",
+        customColorHex: profile.customColorHex || null,
         currency: profile.currency || "GHS",
         timezone: profile.timezone || "Africa/Accra",
         address: profile.address || null,
@@ -163,7 +168,9 @@ export class SettingsService {
           name: updated.name,
           logoUrl: profile.logoUrl !== undefined ? profile.logoUrl : (currentProfile.logoUrl || null),
           faviconUrl: profile.faviconUrl !== undefined ? profile.faviconUrl : (currentProfile.faviconUrl || null),
+          homeCardImageUrl: profile.homeCardImageUrl !== undefined ? (profile.homeCardImageUrl || null) : (currentProfile.homeCardImageUrl || null),
           themeColor: profile.themeColor || currentProfile.themeColor || "orange",
+          customColorHex: profile.customColorHex !== undefined ? (profile.customColorHex || null) : (currentProfile.customColorHex || null),
           currency: profile.currency || currentProfile.currency || "GHS",
           timezone: profile.timezone || currentProfile.timezone || "Africa/Accra",
           address: profile.address !== undefined ? profile.address : (currentProfile.address || null),
@@ -173,18 +180,22 @@ export class SettingsService {
       },
     });
 
+    const savedProfile = (await prisma.orgSetting.findUnique({ where: { orgId } }))?.profile as any || {};
+
     // Return in the format expected by frontend
     return {
       profile: {
         name: updated.name,
-        logoUrl: profile.logoUrl !== undefined ? profile.logoUrl : (currentProfile.logoUrl || null),
-        faviconUrl: profile.faviconUrl !== undefined ? profile.faviconUrl : (currentProfile.faviconUrl || null),
-        themeColor: profile.themeColor || currentProfile.themeColor || "orange",
-        currency: profile.currency || currentProfile.currency || "GHS",
-        timezone: profile.timezone || currentProfile.timezone || "Africa/Accra",
-        address: profile.address !== undefined ? profile.address : (currentProfile.address || null),
-        supportEmail: profile.supportEmail || currentProfile.supportEmail || null,
-        supportPhone: profile.supportPhone || currentProfile.supportPhone || null,
+        logoUrl: savedProfile.logoUrl || null,
+        faviconUrl: savedProfile.faviconUrl || null,
+        homeCardImageUrl: savedProfile.homeCardImageUrl || null,
+        themeColor: savedProfile.themeColor || "orange",
+        customColorHex: savedProfile.customColorHex || null,
+        currency: savedProfile.currency || "GHS",
+        timezone: savedProfile.timezone || "Africa/Accra",
+        address: savedProfile.address || null,
+        supportEmail: savedProfile.supportEmail || null,
+        supportPhone: savedProfile.supportPhone || null,
       },
     };
   }

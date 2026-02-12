@@ -18,6 +18,7 @@ import {
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useTheme } from "../../src/contexts/ThemeContext";
 import { api } from "../../src/lib/api-client";
 
 interface Visit {
@@ -34,6 +35,7 @@ interface Visit {
 }
 
 export default function VisitsPage() {
+  const { themeColor } = useTheme();
   const [selectedTab, setSelectedTab] = useState<"upcoming" | "past">("upcoming");
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -184,7 +186,7 @@ export default function VisitsPage() {
   const getStatusColor = (status: Visit["status"]) => {
     switch (status) {
       case "scheduled":
-        return "#14b8a6";
+        return themeColor;
       case "in-progress":
         return "#f59e0b";
       case "completed":
@@ -230,92 +232,100 @@ export default function VisitsPage() {
     }
   };
 
-  const renderVisitCard = ({ item }: { item: Visit }) => (
-    <TouchableOpacity
-      style={styles.visitCard}
-      onPress={() => router.push(`/visits/${item.id}`)}
-    >
-      <View style={styles.visitHeader}>
-        <View style={styles.visitDateContainer}>
-          <Text style={styles.visitDate}>{formatDate(item.date)}</Text>
-          <Text style={styles.visitTime}>{item.time}</Text>
-        </View>
-        <View
-          style={[
-            styles.statusBadge,
-            { backgroundColor: getStatusColor(item.status) + "15" },
-          ]}
-        >
-          <Text
-            style={[
-              styles.statusText,
-              { color: getStatusColor(item.status) },
-            ]}
-          >
-            {getStatusLabel(item.status)}
-          </Text>
-        </View>
-      </View>
-
-      <View style={styles.visitInfo}>
-        <View style={styles.visitInfoRow}>
-          <Ionicons name="water-outline" size={16} color="#6b7280" />
-          <Text style={styles.visitInfoText}>{item.pool}</Text>
-        </View>
-        <View style={styles.visitInfoRow}>
-          <Ionicons name="location-outline" size={16} color="#6b7280" />
-          <Text style={styles.visitInfoText}>{item.address}</Text>
-        </View>
-        {item.carer && (
-          <View style={styles.visitInfoRow}>
-            <Ionicons name="person-outline" size={16} color="#6b7280" />
-            <Text style={styles.visitInfoText}>{item.carer}</Text>
-          </View>
-        )}
-        {item.type === "emergency" && (
-          <View style={styles.emergencyBadge}>
-            <Ionicons name="warning" size={12} color="#ef4444" />
-            <Text style={styles.emergencyText}>Emergency</Text>
-          </View>
-        )}
-      </View>
-
-      {selectedTab === "upcoming" && item.status === "scheduled" && (
-        <View style={styles.visitActions}>
-          {item.canReschedule && (
-            <TouchableOpacity
-              style={styles.actionButton}
-              onPress={() => handleReschedule(item)}
-            >
-              <Ionicons name="calendar-outline" size={16} color="#14b8a6" />
-              <Text style={styles.actionButtonText}>Reschedule</Text>
-            </TouchableOpacity>
+  const renderVisitCard = ({ item, index }: { item: Visit; index: number }) => {
+    const statusColor = getStatusColor(item.status);
+    const isNextUp = selectedTab === "upcoming" && index === 0 && upcomingVisits.length > 0;
+    return (
+      <TouchableOpacity
+        style={[
+          styles.visitCard,
+          isNextUp && [styles.visitCardNext, { borderColor: themeColor }],
+        ]}
+        onPress={() => router.push(`/visits/${item.id}`)}
+        activeOpacity={0.7}
+      >
+        <View style={[styles.visitCardAccent, { backgroundColor: statusColor }]} />
+        <View style={styles.visitCardInner}>
+          {isNextUp && (
+            <View style={[styles.nextBadge, { backgroundColor: themeColor }]}>
+              <Text style={styles.nextBadgeText}>Next up</Text>
+            </View>
           )}
-          {item.canCancel && (
-            <TouchableOpacity
-              style={[styles.actionButton, styles.cancelButton]}
-              onPress={() => handleCancel(item)}
-            >
-              <Ionicons name="close-circle-outline" size={16} color="#ef4444" />
-              <Text style={[styles.actionButtonText, styles.cancelButtonText]}>
-                Cancel
+          <View style={styles.visitHeader}>
+            <View style={styles.visitDateContainer}>
+              <Text style={styles.visitDate}>{formatDate(item.date)}</Text>
+              <Text style={styles.visitTime}>{item.time}</Text>
+            </View>
+            <View style={[styles.statusBadge, { backgroundColor: statusColor + "18" }]}>
+              <Text style={[styles.statusText, { color: statusColor }]}>
+                {getStatusLabel(item.status)}
               </Text>
+            </View>
+          </View>
+
+          <View style={styles.visitInfo}>
+            <View style={styles.visitInfoRow}>
+              <View style={[styles.poolIconWrap, { backgroundColor: themeColor + "18" }]}>
+                <Ionicons name="water" size={16} color={themeColor} />
+              </View>
+              <Text style={styles.visitPoolName}>{item.pool}</Text>
+            </View>
+            {item.address ? (
+              <View style={styles.visitInfoRow}>
+                <Ionicons name="location-outline" size={14} color="#9ca3af" />
+                <Text style={styles.visitInfoText} numberOfLines={1}>{item.address}</Text>
+              </View>
+            ) : null}
+            {item.carer ? (
+              <View style={styles.visitInfoRow}>
+                <Ionicons name="person-outline" size={14} color="#9ca3af" />
+                <Text style={styles.visitInfoText}>{item.carer}</Text>
+              </View>
+            ) : null}
+            {item.type === "emergency" && (
+              <View style={styles.emergencyBadge}>
+                <Ionicons name="warning" size={12} color="#ef4444" />
+                <Text style={styles.emergencyText}>Emergency</Text>
+              </View>
+            )}
+          </View>
+
+          {selectedTab === "upcoming" && item.status === "scheduled" && (
+            <View style={styles.visitActions}>
+              {item.canReschedule && (
+                <TouchableOpacity
+                  style={[styles.actionButton, { borderColor: themeColor }]}
+                  onPress={() => handleReschedule(item)}
+                >
+                  <Ionicons name="calendar-outline" size={16} color={themeColor} />
+                  <Text style={[styles.actionButtonText, { color: themeColor }]}>Reschedule</Text>
+                </TouchableOpacity>
+              )}
+              {item.canCancel && (
+                <TouchableOpacity
+                  style={[styles.actionButton, styles.cancelButton]}
+                  onPress={() => handleCancel(item)}
+                >
+                  <Ionicons name="close-circle-outline" size={16} color="#ef4444" />
+                  <Text style={[styles.actionButtonText, styles.cancelButtonText]}>Cancel</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
+
+          {selectedTab === "past" && item.status === "completed" && (
+            <TouchableOpacity
+              style={styles.viewReportButton}
+              onPress={() => router.push(`/visits/${item.id}`)}
+            >
+              <Text style={[styles.viewReportText, { color: themeColor }]}>View report</Text>
+              <Ionicons name="chevron-forward" size={16} color={themeColor} />
             </TouchableOpacity>
           )}
         </View>
-      )}
-
-      {selectedTab === "past" && item.status === "completed" && (
-        <TouchableOpacity
-          style={styles.viewReportButton}
-          onPress={() => router.push(`/visits/${item.id}`)}
-        >
-          <Text style={styles.viewReportText}>View Report</Text>
-          <Ionicons name="chevron-forward" size={16} color="#14b8a6" />
-        </TouchableOpacity>
-      )}
-    </TouchableOpacity>
-  );
+      </TouchableOpacity>
+    );
+  };
 
   const currentVisits = selectedTab === "upcoming" ? upcomingVisits : pastVisits;
 
@@ -323,12 +333,25 @@ export default function VisitsPage() {
     <SafeAreaView style={styles.container} edges={["top"]}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}>
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => { router.canGoBack() ? router.back() : router.replace("/"); }}
+        >
           <Ionicons name="arrow-back" size={24} color="#111827" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>My Visits</Text>
-        <TouchableOpacity onPress={() => router.push("/book-service")}>
-          <Ionicons name="add-circle-outline" size={24} color="#14b8a6" />
+        <View style={styles.headerCenter}>
+          <Text style={styles.headerTitle}>My Visits</Text>
+          <Text style={styles.headerSubtitle}>
+            {selectedTab === "upcoming"
+              ? `${upcomingVisits.length} scheduled`
+              : `${pastVisits.length} completed`}
+          </Text>
+        </View>
+        <TouchableOpacity
+          style={[styles.addButton, { backgroundColor: themeColor + "18" }]}
+          onPress={() => router.push("/book-service")}
+        >
+          <Ionicons name="add" size={24} color={themeColor} />
         </TouchableOpacity>
       </View>
 
@@ -337,7 +360,7 @@ export default function VisitsPage() {
         <TouchableOpacity
           style={[
             styles.tab,
-            selectedTab === "upcoming" && styles.tabActive,
+            selectedTab === "upcoming" && [styles.tabActive, { backgroundColor: themeColor }],
           ]}
           onPress={() => setSelectedTab("upcoming")}
         >
@@ -347,60 +370,78 @@ export default function VisitsPage() {
               selectedTab === "upcoming" && styles.tabTextActive,
             ]}
           >
-            Upcoming ({upcomingVisits.length})
+            Upcoming
           </Text>
+          <View style={[styles.tabCount, selectedTab === "upcoming" && styles.tabCountActive]}>
+            <Text style={[styles.tabCountText, selectedTab === "upcoming" && styles.tabCountTextActive]}>
+              {upcomingVisits.length}
+            </Text>
+          </View>
         </TouchableOpacity>
         <TouchableOpacity
-          style={[styles.tab, selectedTab === "past" && styles.tabActive]}
+          style={[
+            styles.tab,
+            selectedTab === "past" && [styles.tabActive, { backgroundColor: themeColor }],
+          ]}
           onPress={() => setSelectedTab("past")}
         >
-          <Text
-            style={[
-              styles.tabText,
-              selectedTab === "past" && styles.tabTextActive,
-            ]}
-          >
-            Past ({pastVisits.length})
+          <Text style={[styles.tabText, selectedTab === "past" && styles.tabTextActive]}>
+            Past
           </Text>
+          <View style={[styles.tabCount, selectedTab === "past" && styles.tabCountActive]}>
+            <Text style={[styles.tabCountText, selectedTab === "past" && styles.tabCountTextActive]}>
+              {pastVisits.length}
+            </Text>
+          </View>
         </TouchableOpacity>
       </View>
 
       {/* Visits List */}
       {loading ? (
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#14b8a6" />
-          <Text style={styles.loadingText}>Loading visits...</Text>
+          <ActivityIndicator size="large" color={themeColor} />
+          <Text style={styles.loadingText}>Loading your visits…</Text>
         </View>
       ) : (
         <FlatList
           data={currentVisits}
           renderItem={renderVisitCard}
           keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.listContent}
+          contentContainerStyle={[
+            styles.listContent,
+            currentVisits.length === 0 && styles.listContentEmpty,
+          ]}
           refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={themeColor} />
           }
           ListEmptyComponent={
-          <View style={styles.emptyState}>
-            <Ionicons name="calendar-outline" size={64} color="#d1d5db" />
-            <Text style={styles.emptyText}>
-              No {selectedTab === "upcoming" ? "upcoming" : "past"} visits
-            </Text>
-            <Text style={styles.emptySubtext}>
-              {selectedTab === "upcoming" 
-                ? "You don't have any scheduled visits at the moment."
-                : "Your completed visits will appear here."}
-            </Text>
-            {selectedTab === "upcoming" && (
-              <TouchableOpacity
-                style={styles.bookButton}
-                onPress={() => router.push("/book-service")}
-              >
-                <Text style={styles.bookButtonText}>Book a Service</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-        }
+            <View style={styles.emptyState}>
+              <View style={[styles.emptyIconWrap, { backgroundColor: themeColor + "12" }]}>
+                <Ionicons
+                  name={selectedTab === "upcoming" ? "calendar-outline" : "checkmark-done-outline"}
+                  size={48}
+                  color={themeColor}
+                />
+              </View>
+              <Text style={styles.emptyTitle}>
+                {selectedTab === "upcoming" ? "No upcoming visits" : "No past visits yet"}
+              </Text>
+              <Text style={styles.emptySubtext}>
+                {selectedTab === "upcoming"
+                  ? "Request a visit when you're ready for service."
+                  : "Completed visits and reports will show here."}
+              </Text>
+              {selectedTab === "upcoming" && (
+                <TouchableOpacity
+                  style={[styles.bookButton, { backgroundColor: themeColor }]}
+                  onPress={() => router.push("/book-service")}
+                >
+                  <Ionicons name="add" size={20} color="#fff" />
+                  <Text style={styles.bookButtonText}>Request a visit</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          }
         />
       )}
 
@@ -539,52 +580,101 @@ export default function VisitsPage() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#f9fafb",
+    backgroundColor: "#f3f4f6",
   },
   header: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 20,
-    paddingVertical: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     backgroundColor: "#ffffff",
     borderBottomWidth: 1,
-    borderBottomColor: "#e5e7eb",
+    borderBottomColor: "#f3f4f6",
+  },
+  backButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "#f3f4f6",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 12,
+  },
+  headerCenter: {
+    flex: 1,
   },
   headerTitle: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: "700",
     color: "#111827",
-    letterSpacing: -0.3,
+  },
+  headerSubtitle: {
+    fontSize: 13,
+    color: "#6b7280",
+    marginTop: 2,
+  },
+  addButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
   },
   tabs: {
     flexDirection: "row",
     backgroundColor: "#ffffff",
-    paddingHorizontal: 20,
-    paddingTop: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    gap: 10,
     borderBottomWidth: 1,
-    borderBottomColor: "#e5e7eb",
+    borderBottomColor: "#f3f4f6",
   },
   tab: {
-    paddingBottom: 12,
-    marginRight: 24,
-    borderBottomWidth: 2,
-    borderBottomColor: "transparent",
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    backgroundColor: "#f3f4f6",
   },
-  tabActive: {
-    borderBottomColor: "#14b8a6",
-  },
+  tabActive: {},
   tabText: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: "600",
     color: "#6b7280",
   },
   tabTextActive: {
-    color: "#14b8a6",
+    color: "#ffffff",
+  },
+  tabCount: {
+    minWidth: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: "rgba(0,0,0,0.08)",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 6,
+  },
+  tabCountActive: {
+    backgroundColor: "rgba(255,255,255,0.3)",
+  },
+  tabCountText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#374151",
+  },
+  tabCountTextActive: {
+    color: "#ffffff",
   },
   listContent: {
-    padding: 20,
-    paddingBottom: 100,
+    padding: 16,
+    paddingBottom: 120,
+  },
+  listContentEmpty: {
+    flexGrow: 1,
   },
   loadingContainer: {
     flex: 1,
@@ -594,19 +684,46 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     marginTop: 12,
-    fontSize: 16,
+    fontSize: 15,
     color: "#6b7280",
   },
   visitCard: {
+    flexDirection: "row",
     backgroundColor: "#ffffff",
     borderRadius: 16,
-    padding: 20,
-    marginBottom: 16,
+    marginBottom: 12,
+    overflow: "hidden",
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 4,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  visitCardNext: {
+    borderWidth: 2,
+  },
+  visitCardAccent: {
+    width: 4,
+    borderRadius: 2,
+  },
+  visitCardInner: {
+    flex: 1,
+    padding: 16,
+    paddingLeft: 20,
+  },
+  nextBadge: {
+    alignSelf: "flex-start",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+    marginBottom: 10,
+  },
+  nextBadgeText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#ffffff",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
   },
   visitHeader: {
     flexDirection: "row",
@@ -649,10 +766,23 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 8,
   },
+  poolIconWrap: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  visitPoolName: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#111827",
+    flex: 1,
+  },
   visitInfoText: {
-    fontSize: 15,
-    color: "#374151",
-    fontWeight: "500",
+    fontSize: 14,
+    color: "#6b7280",
+    flex: 1,
   },
   emergencyBadge: {
     flexDirection: "row",
@@ -720,8 +850,23 @@ const styles = StyleSheet.create({
   emptyState: {
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 80,
-    paddingHorizontal: 40,
+    paddingVertical: 60,
+    paddingHorizontal: 32,
+  },
+  emptyIconWrap: {
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 20,
+  },
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#111827",
+    marginBottom: 8,
+    textAlign: "center",
   },
   emptyText: {
     fontSize: 18,
@@ -734,11 +879,14 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: "#6b7280",
     textAlign: "center",
-    marginBottom: 24,
+    marginBottom: 28,
+    lineHeight: 22,
   },
   bookButton: {
-    backgroundColor: "#14b8a6",
-    paddingHorizontal: 28,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 24,
     paddingVertical: 14,
     borderRadius: 12,
   },

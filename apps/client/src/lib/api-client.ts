@@ -2,30 +2,28 @@ import * as SecureStore from "expo-secure-store";
 import { Platform } from "react-native";
 import { getNetworkIp } from "./network-utils";
 
-// Get network IP for mobile devices (localhost doesn't work on physical devices)
+// Get network IP for mobile devices (localhost on device = the device itself, not your Mac)
 const getApiUrl = (): string => {
   const baseUrl = process.env.EXPO_PUBLIC_API_URL || "http://localhost:4000/api";
 
-  // Use localhost when set (for iOS Simulator / Android emulator on same machine)
-  if (process.env.EXPO_PUBLIC_USE_LOCALHOST === "true") {
-    console.log("[API Client] Using localhost (EXPO_PUBLIC_USE_LOCALHOST=true)");
-    return baseUrl;
-  }
-
-  // On mobile, replace localhost so device can reach the API
+  // On native (iOS/Android), localhost only works in Simulator/Emulator. Physical devices must use your machine's LAN IP.
   if (Platform.OS !== "web" && baseUrl.includes("localhost")) {
     if (Platform.OS === "android") {
       const url = baseUrl.replace("localhost", "10.0.2.2");
-      console.log("[API Client] Using 10.0.2.2 for Android");
+      console.log("[API Client] Android emulator, API URL:", url);
       return url;
     }
     const networkIp = getNetworkIp();
     const finalUrl = baseUrl.replace("localhost", networkIp);
-    console.log(`[API Client] Platform: ${Platform.OS}, Network IP: ${networkIp}, API URL: ${finalUrl}`);
+    console.log(`[API Client] Native (${Platform.OS}), using API URL: ${finalUrl} (localhost would not work on device)`);
     return finalUrl;
   }
 
-  console.log(`[API Client] Platform: ${Platform.OS}, API URL: ${baseUrl}`);
+  // Web or explicit non-localhost URL
+  if (process.env.EXPO_PUBLIC_USE_LOCALHOST === "true") {
+    console.log("[API Client] Using localhost:", baseUrl);
+  }
+  console.log("[API Client] API URL:", baseUrl);
   return baseUrl;
 };
 
@@ -53,6 +51,17 @@ class ApiClient {
       return await SecureStore.getItemAsync(TOKEN_KEY);
     } catch (error) {
       console.error("Error getting auth token:", error);
+      return null;
+    }
+  }
+
+  async getStoredUser(): Promise<{ name?: string; email?: string } | null> {
+    try {
+      const raw = await SecureStore.getItemAsync(USER_KEY);
+      if (!raw) return null;
+      return JSON.parse(raw) as { name?: string; email?: string };
+    } catch (error) {
+      console.error("Error getting stored user:", error);
       return null;
     }
   }
@@ -141,7 +150,11 @@ class ApiClient {
         if (__DEV__) {
           console.warn("API request timed out or aborted:", url);
         }
-        throw new Error("Request timed out. Please check your connection and try again.");
+        const isLocalNetwork = /^https?:\/\/(localhost|192\.168\.|10\.|172\.(1[6-9]|2[0-9]|3[0-1])\.)/.test(url);
+        const hint = isLocalNetwork
+          ? " Ensure the API is running (e.g. in apps/api: pnpm run start:dev), this device is on the same Wi‑Fi as your computer, and your Mac firewall allows port 4000."
+          : " Please check your connection and try again.";
+        throw new Error("Request timed out." + hint);
       }
       if (error.message?.includes("fetch") || error.message?.includes("Failed to fetch")) {
         throw new Error("Cannot connect to server. Please check your internet connection.");
@@ -302,6 +315,26 @@ class ApiClient {
     });
   }
 
+  async uploadIssuePhoto(formData: FormData) {
+    // For FormData, we don't set Content-Type header manually, fetch does it
+    const url = `${API_URL}/issues/upload-photo`;
+    const token = await this.getAuthToken();
+    
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      body: formData,
+    });
+
+    if (!response.ok) {
+      throw new Error("Failed to upload photo");
+    }
+
+    return response.json();
+  }
+
   // Subscription Templates
   async getSubscriptionTemplates() {
     return this.request("/subscription-templates?active=true");
@@ -346,6 +379,16 @@ class ApiClient {
   // Settings
   async getOrgSettings() {
     return this.request("/settings/org");
+  }
+
+  /** Public branding (no auth) for login and unauthenticated views */
+  async getPublicBranding() {
+    return this.request<{
+      organizationName: string;
+      logoUrl: string | null;
+      themeColor: string;
+      primaryColorHex: string;
+    }>("/settings/branding", { requireAuth: false });
   }
 
   // PoolShop – products (from inventory)

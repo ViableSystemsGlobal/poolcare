@@ -231,47 +231,19 @@ export default function Sidebar() {
     }
   }, [pathname]);
 
-  const getBackgroundClasses = (isActive: boolean) => {
-    const colorMap: { [key: string]: string } = {
-      "purple-600": "bg-purple-600",
-      "blue-600": "bg-blue-600",
-      "green-600": "bg-green-600",
-      "orange-600": "bg-orange-600",
-      "red-600": "bg-red-600",
-      "indigo-600": "bg-indigo-600",
-      "pink-600": "bg-pink-600",
-      "teal-600": "bg-teal-600",
-    };
-    return colorMap[theme.primary] || "bg-orange-600";
-  };
+  const themeHex = getThemeColor();
+  const themeHexDark = `var(--theme-color-dark, ${themeHex})`;
 
-  const getHoverBackgroundClasses = () => {
-    const colorMap: { [key: string]: string } = {
-      "purple-600": "hover:bg-purple-600",
-      "blue-600": "hover:bg-blue-600",
-      "green-600": "hover:bg-green-600",
-      "orange-600": "hover:bg-orange-600",
-      "red-600": "hover:bg-red-600",
-      "indigo-600": "hover:bg-indigo-600",
-      "pink-600": "hover:bg-pink-600",
-      "teal-600": "hover:bg-teal-600",
-    };
-    return colorMap[theme.primary] || "hover:bg-orange-600";
-  };
+  // Return inline style objects that use the exact custom color
+  const getActiveStyle = (): React.CSSProperties => ({
+    backgroundColor: themeHex,
+    color: '#ffffff',
+  });
 
-  const getGradientBackgroundClasses = () => {
-    const colorMap: { [key: string]: string } = {
-      "purple-600": "bg-gradient-to-br from-purple-600 to-purple-700",
-      "blue-600": "bg-gradient-to-br from-blue-600 to-blue-700",
-      "green-600": "bg-gradient-to-br from-green-600 to-green-700",
-      "orange-600": "bg-gradient-to-br from-orange-600 to-orange-700",
-      "red-600": "bg-gradient-to-br from-red-600 to-red-700",
-      "indigo-600": "bg-gradient-to-br from-indigo-600 to-indigo-700",
-      "pink-600": "bg-gradient-to-br from-pink-600 to-pink-700",
-      "teal-600": "bg-gradient-to-br from-teal-600 to-teal-700",
-    };
-    return colorMap[theme.primary] || "bg-gradient-to-br from-orange-600 to-orange-700";
-  };
+  const getGradientStyle = (): React.CSSProperties => ({
+    background: `linear-gradient(to bottom right, ${themeHex}, var(--theme-color-dark, ${themeHex}))`,
+    color: '#ffffff',
+  });
 
   const toggleSection = (sectionName: string) => {
     setExpandedSections((prev) =>
@@ -298,7 +270,8 @@ export default function Sidebar() {
           />
         ) : (
           <div
-            className={`h-16 w-16 rounded-lg ${getGradientBackgroundClasses()} flex items-center justify-center shadow-lg`}
+            className="h-16 w-16 rounded-lg flex items-center justify-center shadow-lg"
+            style={getGradientStyle()}
           >
             <Droplet className="h-9 w-9 text-white" />
           </div>
@@ -330,12 +303,10 @@ export default function Sidebar() {
                     {hasChildren ? (
                       <button
                         onClick={() => toggleSection(item.name)}
-                        className={cn(
-                          "group flex w-full items-center rounded-lg px-3 py-2 text-sm font-medium transition-colors",
-                          isActiveItem
-                            ? `${getBackgroundClasses(true)} text-white`
-                            : `text-gray-700 ${getHoverBackgroundClasses()} hover:text-white`
-                        )}
+                        className="group flex w-full items-center rounded-lg px-3 py-2 text-sm font-medium transition-colors text-gray-700 hover:text-white"
+                        style={isActiveItem ? getActiveStyle() : undefined}
+                        onMouseEnter={(e) => { if (!isActiveItem) { e.currentTarget.style.backgroundColor = themeHex; e.currentTarget.style.color = '#fff'; } }}
+                        onMouseLeave={(e) => { if (!isActiveItem) { e.currentTarget.style.backgroundColor = ''; e.currentTarget.style.color = ''; } }}
                       >
                         <item.icon className="mr-3 h-5 w-5 flex-shrink-0" />
                         {!collapsed && (
@@ -359,12 +330,10 @@ export default function Sidebar() {
                     ) : (
                       <Link
                         href={item.href || "#"}
-                        className={cn(
-                          "group flex items-center rounded-lg px-3 py-2 text-sm font-medium transition-colors w-full text-left",
-                          isActiveItem
-                            ? `${getBackgroundClasses(true)} text-white`
-                            : `text-gray-700 ${getHoverBackgroundClasses()} hover:text-white`
-                        )}
+                        className="group flex items-center rounded-lg px-3 py-2 text-sm font-medium transition-colors w-full text-left text-gray-700 hover:text-white"
+                        style={isActiveItem ? getActiveStyle() : undefined}
+                        onMouseEnter={(e) => { if (!isActiveItem) { e.currentTarget.style.backgroundColor = themeHex; e.currentTarget.style.color = '#fff'; } }}
+                        onMouseLeave={(e) => { if (!isActiveItem) { e.currentTarget.style.backgroundColor = ''; e.currentTarget.style.color = ''; } }}
                       >
                         <item.icon className="mr-3 h-5 w-5 flex-shrink-0" />
                         {!collapsed && item.name}
@@ -378,12 +347,8 @@ export default function Sidebar() {
                           <Link
                             key={child.name}
                             href={child.href}
-                            className={cn(
-                              "group flex items-center rounded-lg px-3 py-2 text-sm font-medium transition-colors w-full text-left",
-                              isActive(child.href)
-                                ? `text-${theme.primary} font-medium`
-                                : "text-gray-600 hover:text-gray-900"
-                            )}
+                            className="group flex items-center rounded-lg px-3 py-2 text-sm font-medium transition-colors w-full text-left text-gray-600 hover:text-gray-900"
+                            style={isActive(child.href) ? { color: themeHex, fontWeight: 500 } : undefined}
                           >
                             <child.icon className="mr-3 h-4 w-4 flex-shrink-0" />
                             {child.name}

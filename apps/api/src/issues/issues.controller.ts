@@ -7,7 +7,12 @@ import {
   Query,
   Body,
   UseGuards,
+  UseInterceptors,
+  UploadedFile,
+  BadRequestException,
 } from "@nestjs/common";
+import { FileInterceptor } from "@nestjs/platform-express";
+import { ParseFilePipe, MaxFileSizeValidator, FileTypeValidator } from "@nestjs/common/pipes";
 import { IssuesService } from "./issues.service";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { RolesGuard } from "../auth/guards/roles.guard";
@@ -19,6 +24,38 @@ import { CreateIssueDto, UpdateIssueDto } from "./dto";
 @UseGuards(JwtAuthGuard)
 export class IssuesController {
   constructor(private readonly issuesService: IssuesService) {}
+
+  @Post("upload-photo")
+  @UseInterceptors(FileInterceptor("image"))
+  async uploadPhoto(
+    @CurrentUser() user: { org_id: string; sub: string },
+    @UploadedFile(
+      new ParseFilePipe({
+        fileIsRequired: true,
+        validators: [
+          new MaxFileSizeValidator({ maxSize: 10 * 1024 * 1024 }), // 10MB
+          new FileTypeValidator({ fileType: /(jpeg|jpg|png|webp|gif)$/ }),
+        ],
+      })
+    )
+    file: Express.Multer.File
+  ) {
+    if (!file) {
+      throw new BadRequestException("No file uploaded");
+    }
+
+    try {
+      const photo = await this.issuesService.uploadPhoto(user.org_id, user.sub, file);
+      return {
+        id: photo.id,
+        url: photo.url,
+      };
+    } catch (error: any) {
+      console.error("Photo upload error:", error);
+      throw new BadRequestException(error.message || "Failed to upload photo");
+    }
+  }
+
 
   @Post()
   async create(

@@ -1,9 +1,14 @@
 import { useEffect, useState } from "react";
-import { View, StyleSheet } from "react-native";
-import { Stack } from "expo-router";
+import { View, StyleSheet, BackHandler } from "react-native";
+import { Stack, usePathname, router } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import * as SplashScreen from "expo-splash-screen";
+import { ThemeProvider } from "../src/contexts/ThemeContext";
 import Loader from "../src/components/Loader";
+import BottomNav from "../src/components/BottomNav";
+
+// Screens where the floating bottom nav should be visible (and where we consume back press)
+const TAB_ROUTES = ["/", "/index", "index", "/visits", "visits", "/pools", "pools", "/poolshop", "poolshop", "/settings", "settings"];
 
 // Keep the splash screen visible while we fetch resources
 SplashScreen.preventAutoHideAsync();
@@ -29,8 +34,35 @@ export default function RootLayout() {
   }, []);
 
   if (!appIsReady) {
-    return <Loader />;
+    return (
+      <ThemeProvider>
+        <Loader />
+      </ThemeProvider>
+    );
   }
+
+  return (
+    <ThemeProvider>
+      <LayoutInner />
+    </ThemeProvider>
+  );
+}
+
+function LayoutInner() {
+  const pathname = usePathname();
+  const showNav = TAB_ROUTES.includes(pathname);
+
+  // Prevent "GO_BACK was not handled" on any screen that shows the floating nav (all 5 tab roots)
+  useEffect(() => {
+    const onBack = () => {
+      if (showNav) {
+        return true; // consume back press so navigator doesn't dispatch GO_BACK
+      }
+      return false;
+    };
+    const sub = BackHandler.addEventListener("hardwareBackPress", onBack);
+    return () => sub.remove();
+  }, [showNav]);
 
   return (
     <View style={styles.container}>
@@ -62,6 +94,7 @@ export default function RootLayout() {
         <Stack.Screen name="pay/[invoiceId]" options={{ headerShown: false }} />
         <Stack.Screen name="pay/success" options={{ headerShown: false }} />
       </Stack>
+      {showNav && <BottomNav />}
     </View>
   );
 }

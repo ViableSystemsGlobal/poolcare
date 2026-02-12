@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -35,13 +35,37 @@ const colorMap: { [key: string]: string } = {
   'teal-600': '#0d9488',
 };
 
+/** Hex to RGB for distance calculation */
+function hexToRgb(hex: string): [number, number, number] {
+  const n = parseInt(hex.replace(/^#/, ''), 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+
+/** Perceptual distance in RGB space; returns the preset name (e.g. "green") that is closest to the given hex */
+function closestThemeColor(hex: string): string {
+  const [r, g, b] = hexToRgb(hex);
+  let bestKey = 'orange-600';
+  let bestDist = Infinity;
+  for (const [key, value] of Object.entries(colorMap)) {
+    const [pr, pg, pb] = hexToRgb(value);
+    const dist = (r - pr) ** 2 + (g - pg) ** 2 + (b - pb) ** 2;
+    if (dist < bestDist) {
+      bestDist = dist;
+      bestKey = key;
+    }
+  }
+  return bestKey.split('-')[0];
+}
+
 type SettingsTab = "org" | "tax" | "policies" | "integrations";
 
 interface OrgProfile {
   name: string;
   logoUrl?: string | null;
   faviconUrl?: string | null;
+  homeCardImageUrl?: string | null;
   themeColor?: string;
+  customColorHex?: string | null;
   timezone: string;
   address?: string | null;
   currency: string;
@@ -94,7 +118,7 @@ interface LlmSettings {
 }
 
 export default function SettingsPage() {
-  const { getThemeClasses, setThemeColor, setCustomLogo } = useTheme();
+  const { getThemeClasses, setThemeColor, setCustomColorHex, setCustomLogo } = useTheme();
   const theme = getThemeClasses();
   const [activeTab, setActiveTab] = useState<SettingsTab>("org");
   const [loading, setLoading] = useState(true);
@@ -110,6 +134,7 @@ export default function SettingsPage() {
     name: "",
     logoUrl: null,
     faviconUrl: null,
+    homeCardImageUrl: null,
     themeColor: "orange",
     timezone: "Africa/Accra",
     address: null,
@@ -122,8 +147,12 @@ export default function SettingsPage() {
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
   const [faviconFile, setFaviconFile] = useState<File | null>(null);
   const [faviconPreview, setFaviconPreview] = useState<string | null>(null);
+  const [homeCardImageFile, setHomeCardImageFile] = useState<File | null>(null);
+  const [homeCardImagePreview, setHomeCardImagePreview] = useState<string | null>(null);
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [uploadingFavicon, setUploadingFavicon] = useState(false);
+  const [uploadingHomeCardImage, setUploadingHomeCardImage] = useState(false);
+  const colorInputRef = useRef<HTMLInputElement>(null);
 
   // Tax Settings
   const [taxSettings, setTaxSettings] = useState<TaxSettings>({
@@ -227,10 +256,12 @@ export default function SettingsPage() {
           setOrgProfile(orgData.profile);
           setLogoPreview(orgData.profile.logoUrl || null);
           setFaviconPreview(orgData.profile.faviconUrl || null);
+          setHomeCardImagePreview(orgData.profile.homeCardImageUrl || null);
           // Update theme context with saved values
           if (orgData.profile.themeColor) {
             setThemeColor(orgData.profile.themeColor as any);
           }
+          setCustomColorHex(orgData.profile.customColorHex || null);
           if (orgData.profile.logoUrl) {
             setCustomLogo(orgData.profile.logoUrl);
           }
@@ -457,30 +488,87 @@ export default function SettingsPage() {
     }
   };
 
+  const handleHomeCardImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setHomeCardImageFile(file);
+      const reader = new FileReader();
+      reader.onloadend = () => setHomeCardImagePreview(reader.result as string);
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const uploadHomeCardImage = async (): Promise<string | null> => {
+    if (!homeCardImageFile) return null;
+
+    try {
+      setUploadingHomeCardImage(true);
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+      const uploadFormData = new FormData();
+      uploadFormData.append("homeCardImage", homeCardImageFile);
+
+      const response = await fetch(`${API_URL}/settings/upload-home-card-image`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
+        },
+        body: uploadFormData,
+      });
+
+      if (!response.ok) {
+        let errorMessage = "Failed to upload home card image";
+        try {
+          const error = await response.json();
+          errorMessage = error.error || error.message || errorMessage;
+        } catch (e) {
+          errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+        }
+        throw new Error(errorMessage);
+      }
+
+      const data = await response.json();
+      setOrgProfile({ ...orgProfile, homeCardImageUrl: data.homeCardImageUrl });
+      setHomeCardImageFile(null);
+      return data.homeCardImageUrl;
+    } catch (error: any) {
+      console.error("Failed to upload home card image:", error);
+      alert(`Failed to upload home card image: ${error.message || "Unknown error"}`);
+      return null;
+    } finally {
+      setUploadingHomeCardImage(false);
+    }
+  };
+
   const handleSaveOrg = async () => {
     try {
       setSaving(true);
       setSaveSuccess(false);
 
-      // Upload logo and favicon first if files were selected; capture returned URLs
+      // Upload logo, favicon, and home card image first if files were selected
       let uploadedLogoUrl: string | null = null;
       let uploadedFaviconUrl: string | null = null;
+      let uploadedHomeCardImageUrl: string | null = null;
       if (logoFile) {
         uploadedLogoUrl = await uploadLogo();
-        if (!uploadedLogoUrl) return; // Stop if upload failed
+        if (!uploadedLogoUrl) return;
       }
       if (faviconFile) {
         uploadedFaviconUrl = await uploadFavicon();
-        if (!uploadedFaviconUrl) return; // Stop if upload failed
+        if (!uploadedFaviconUrl) return;
+      }
+      if (homeCardImageFile) {
+        uploadedHomeCardImageUrl = await uploadHomeCardImage();
+        if (!uploadedHomeCardImageUrl) return;
       }
 
       const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
 
-      // Include newly uploaded logo/favicon in profile so we don't overwrite with stale state
+      // Include newly uploaded images in profile so we don't overwrite with stale state
       const profileToSave = {
         ...orgProfile,
         ...(uploadedLogoUrl != null && { logoUrl: uploadedLogoUrl }),
         ...(uploadedFaviconUrl != null && { faviconUrl: uploadedFaviconUrl }),
+        ...(uploadedHomeCardImageUrl != null && { homeCardImageUrl: uploadedHomeCardImageUrl }),
       };
 
       const response = await fetch(`${API_URL}/settings/org`, {
@@ -507,6 +595,8 @@ export default function SettingsPage() {
             if (data.profile.themeColor) {
               setThemeColor(data.profile.themeColor as any);
             }
+            // Update custom color hex in context
+            setCustomColorHex(data.profile.customColorHex || null);
             // Update logo in context
             if (data.profile.logoUrl) {
               setCustomLogo(data.profile.logoUrl);
@@ -732,21 +822,58 @@ export default function SettingsPage() {
                       )}
                     </div>
 
+                    {/* Client app home card image (shown next to Balance Owed on client app) */}
+                    <div className="space-y-2 md:col-span-2">
+                      <Label htmlFor="homeCardImage" className="flex items-center gap-2">
+                        <Image className="h-4 w-4" />
+                        Client App Home Card Image
+                      </Label>
+                      <div className="flex items-center gap-4">
+                        <div className="flex-1">
+                          <Input
+                            id="homeCardImage"
+                            type="file"
+                            accept="image/*"
+                            onChange={handleHomeCardImageChange}
+                            className="cursor-pointer"
+                          />
+                          <p className="text-xs text-gray-500 mt-1">Upload an image for the Balance Owed card on the client app (max 2MB). Select a file then click Save.</p>
+                        </div>
+                        {(homeCardImagePreview || orgProfile.homeCardImageUrl) && (
+                          <div className="relative">
+                            <img
+                              src={homeCardImagePreview || orgProfile.homeCardImageUrl || ""}
+                              alt="Home card image preview"
+                              className="w-16 h-16 rounded object-cover border-2 border-gray-200"
+                              onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                            />
+                            {orgProfile.homeCardImageUrl && !homeCardImageFile && (
+                              <p className="text-xs text-gray-500 mt-1">Current image</p>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                      {uploadingHomeCardImage && (
+                        <p className="text-sm text-gray-500">Uploading home card image...</p>
+                      )}
+                    </div>
+
                     {/* Theme Color Picker */}
                     <div className="space-y-2 md:col-span-2">
                       <Label htmlFor="theme-color" className="flex items-center gap-2">
                         <Palette className="h-4 w-4" />
                         Theme Color
                       </Label>
-                      <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-3 flex-wrap">
+                        {/* Preset swatches */}
                         <div className="flex gap-2 flex-wrap">
                           {['orange', 'purple', 'blue', 'green', 'red', 'indigo', 'pink', 'teal'].map((color) => (
                             <button
                               key={color}
                               type="button"
-                              onClick={() => setOrgProfile({ ...orgProfile, themeColor: color })}
+                              onClick={() => setOrgProfile({ ...orgProfile, themeColor: color, customColorHex: null })}
                               className={`w-10 h-10 rounded-full border-2 transition-all ${
-                                orgProfile.themeColor === color
+                                orgProfile.themeColor === color && !orgProfile.customColorHex
                                   ? 'border-gray-900 scale-110'
                                   : 'border-gray-300 hover:border-gray-400'
                               }`}
@@ -757,28 +884,68 @@ export default function SettingsPage() {
                             />
                           ))}
                         </div>
-                        <div className="flex-1">
-                          <Input
-                            id="theme-color"
+                        {/* Custom color: swatch + hex input */}
+                        <div className="flex items-center gap-2">
+                          {/* Hidden native color picker */}
+                          <input
+                            ref={colorInputRef}
                             type="color"
-                            value={colorMap[`${orgProfile.themeColor || 'orange'}-600`] || '#ea580c'}
+                            id="theme-color-native"
+                            value={orgProfile.customColorHex || colorMap[`${orgProfile.themeColor || 'orange'}-600`] || '#ea580c'}
                             onChange={(e) => {
-                              // Find closest matching color
                               const hex = e.target.value;
-                              const closest = Object.entries(colorMap).reduce((prev, [key, value]) => {
-                                const prevDiff = Math.abs(
-                                  parseInt(prev[1].slice(1), 16) - parseInt(hex.slice(1), 16)
-                                );
-                                const currDiff = Math.abs(
-                                  parseInt(value.slice(1), 16) - parseInt(hex.slice(1), 16)
-                                );
-                                return currDiff < prevDiff ? [key, value] : prev;
-                              }, ['orange-600', '#ea580c'])[0].split('-')[0];
-                              setOrgProfile({ ...orgProfile, themeColor: closest });
+                              const closest = closestThemeColor(hex);
+                              setOrgProfile({ ...orgProfile, themeColor: closest, customColorHex: hex });
                             }}
-                            className="w-20 h-10 cursor-pointer"
+                            className="absolute opacity-0 w-0 h-0 overflow-hidden"
+                            aria-label="Theme color picker"
                           />
-                          <p className="text-xs text-gray-500 mt-1">Or pick a custom color</p>
+                          {/* Clickable swatch */}
+                          <button
+                            type="button"
+                            onClick={() => colorInputRef.current?.click()}
+                            className={`w-10 h-10 rounded-lg border-2 transition-colors cursor-pointer flex-shrink-0 ${
+                              orgProfile.customColorHex
+                                ? 'border-gray-900 ring-2 ring-gray-300'
+                                : 'border-gray-300 hover:border-gray-400'
+                            }`}
+                            style={{
+                              backgroundColor: orgProfile.customColorHex || colorMap[`${orgProfile.themeColor || 'orange'}-600`] || '#ea580c',
+                            }}
+                            title="Pick a custom color"
+                            aria-label="Pick theme color"
+                          />
+                          {/* Hex text input */}
+                          <Input
+                            id="theme-color-hex"
+                            value={orgProfile.customColorHex || colorMap[`${orgProfile.themeColor || 'orange'}-600`] || '#ea580c'}
+                            onChange={(e) => {
+                              let val = e.target.value;
+                              // Auto-add # prefix
+                              if (val && !val.startsWith('#')) val = '#' + val;
+                              // Only update if it's a valid hex (partial typing allowed)
+                              if (/^#[0-9a-fA-F]{0,6}$/.test(val)) {
+                                if (/^#[0-9a-fA-F]{6}$/.test(val)) {
+                                  // Full valid hex: update color
+                                  const closest = closestThemeColor(val);
+                                  setOrgProfile({ ...orgProfile, themeColor: closest, customColorHex: val.toLowerCase() });
+                                } else {
+                                  // Partial typing: just update the field
+                                  setOrgProfile({ ...orgProfile, customColorHex: val.toLowerCase() });
+                                }
+                              }
+                            }}
+                            onBlur={() => {
+                              // On blur, if not a valid 6-digit hex, revert
+                              const hex = orgProfile.customColorHex;
+                              if (hex && !/^#[0-9a-fA-F]{6}$/.test(hex)) {
+                                setOrgProfile({ ...orgProfile, customColorHex: null });
+                              }
+                            }}
+                            placeholder="#0f7b5f"
+                            className="w-28 h-10 font-mono text-sm"
+                            maxLength={7}
+                          />
                         </div>
                       </div>
                     </div>

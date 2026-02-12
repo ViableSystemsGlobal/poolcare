@@ -1,9 +1,10 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, RefreshControl, FlatList, Dimensions, Image, Alert, ActivityIndicator } from "react-native";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { api } from "../src/lib/api-client";
 import { fixUrlForMobile } from "../src/lib/network-utils";
+import { useTheme } from "../src/contexts/ThemeContext";
 import Loader from "../src/components/Loader";
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -24,10 +25,13 @@ function getDailyTip(): string {
   return DAILY_TIPS[day];
 }
 
-// Theme colors - matching admin teal/turquoise
-const PRIMARY_COLOR = "#14b8a6"; // Teal-500 (from admin color swatch)
-const PRIMARY_LIGHT = "#5eead4"; // Teal-300
-const PRIMARY_DARK = "#0f766e"; // Teal-700
+function getTimeBasedGreeting(): string {
+  const hour = new Date().getHours();
+  if (hour < 12) return "Good Morning";
+  if (hour < 17) return "Good Afternoon";
+  return "Good Evening";
+}
+
 const SUCCESS_COLOR = "#16a34a"; // Green for success states
 
 interface Pool {
@@ -69,6 +73,8 @@ interface Invoice {
   reference: string;
   due: boolean;
   status?: string;
+  totalCents?: number;
+  paidCents?: number;
 }
 
 interface Quote {
@@ -78,6 +84,7 @@ interface Quote {
 }
 
 export default function ClientDashboard() {
+  const { themeColor, setThemeFromOrgProfile } = useTheme();
   const [pools, setPools] = useState<Pool[]>([]);
   const [nextVisits, setNextVisits] = useState<NextVisit[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
@@ -87,6 +94,9 @@ export default function ClientDashboard() {
   const [currentPoolIndex, setCurrentPoolIndex] = useState(0);
   const [currentVisitIndex, setCurrentVisitIndex] = useState(0);
   const [checkingAuth, setCheckingAuth] = useState(true);
+  const [homeCardImageUrl, setHomeCardImageUrl] = useState<string | null>(null);
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [userFirstName, setUserFirstName] = useState<string>("");
 
   useEffect(() => {
     // Check if user is authenticated
@@ -116,13 +126,23 @@ export default function ClientDashboard() {
     try {
       setLoading(true);
 
-      // Fetch all data in parallel
-      const [poolsResponse, jobsResponse, invoicesResponse, quotesResponse] = await Promise.all([
+      // Fetch all data in parallel (including org settings for home card image)
+      const [poolsResponse, jobsResponse, invoicesResponse, quotesResponse, orgSettingsResponse] = await Promise.all([
         api.getPools().catch(() => ({ items: [], total: 0 })),
         api.getJobs({ status: "scheduled" }).catch(() => ({ items: [], total: 0 })),
-        api.getInvoices().catch(() => ({ items: [], total: 0 })), // Get all invoices, not just outstanding
+        api.getInvoices().catch(() => ({ items: [], total: 0 })),
         api.getQuotes({ status: "pending" }).catch(() => ({ items: [], total: 0 })),
-      ]) as [any, any, any, any];
+        api.getOrgSettings().catch(() => ({ profile: {} })),
+      ]) as [any, any, any, any, any];
+
+      const profile = (orgSettingsResponse?.profile || {}) as { homeCardImageUrl?: string | null; logoUrl?: string | null; themeColor?: string; customColorHex?: string | null };
+      setThemeFromOrgProfile(profile);
+      setHomeCardImageUrl(profile.homeCardImageUrl && profile.homeCardImageUrl.trim() ? profile.homeCardImageUrl.trim() : null);
+      setLogoUrl(profile.logoUrl && profile.logoUrl.trim() ? profile.logoUrl.trim() : null);
+
+      const user = await api.getStoredUser();
+      const first = user?.name?.trim().split(/\s+/)[0] || "";
+      setUserFirstName(first);
 
       // Transform pools data
       const poolsData: Pool[] = ((poolsResponse as any).items || poolsResponse || []).map((pool: any) => {
@@ -233,14 +253,20 @@ export default function ClientDashboard() {
         },
       ]);
 
-      // Transform invoices - get all invoices, not just outstanding
-      const invoicesData: Invoice[] = ((invoicesResponse as any).items || invoicesResponse || []).map((invoice: any) => ({
-        id: invoice.id,
-        amount: (invoice.totalCents || invoice.total || 0) / 100,
-        reference: invoice.invoiceNumber || `Invoice #${invoice.id.slice(0, 8)}`,
-        due: invoice.status === "outstanding" || invoice.status === "overdue",
-        status: invoice.status,
-      }));
+      // Transform invoices - keep totalCents/paidCents for balance owed
+      const invoicesData: Invoice[] = ((invoicesResponse as any).items || invoicesResponse || []).map((invoice: any) => {
+        const totalCents = invoice.totalCents ?? (invoice.total ? Math.round(Number(invoice.total) * 100) : 0);
+        const paidCents = invoice.paidCents ?? 0;
+        return {
+          id: invoice.id,
+          amount: totalCents / 100,
+          reference: invoice.invoiceNumber || `Invoice #${invoice.id.slice(0, 8)}`,
+          due: invoice.status === "outstanding" || invoice.status === "overdue",
+          status: invoice.status,
+          totalCents,
+          paidCents,
+        };
+      });
 
       setInvoices(invoicesData);
 
@@ -261,6 +287,15 @@ export default function ClientDashboard() {
       setRefreshing(false);
     }
   };
+
+  // Total balance owed across all outstanding invoices (always show card, even when 0)
+  const balanceOwed = useMemo(() => {
+    const cents = invoices.reduce(
+      (sum, inv) => sum + Math.max(0, (inv.totalCents ?? Math.round(inv.amount * 100)) - (inv.paidCents ?? 0)),
+      0
+    );
+    return cents / 100;
+  }, [invoices]);
 
   const getChemistryStatus = (reading: Pool["lastReading"]) => {
     if (!reading) return { status: "unknown", color: "#9ca3af", label: "No Data" };
@@ -304,16 +339,26 @@ export default function ClientDashboard() {
       >
         <View style={styles.nextVisitContentWrapper}>
           <View style={styles.nextVisitContent}>
-            <Text style={styles.nextVisitLabel}>Next Visit</Text>
+            <View style={styles.nextVisitHeader}>
+              <View style={[styles.calendarIcon, { borderColor: themeColor }]}>
+                <Ionicons name="calendar" size={18} color={themeColor} />
+              </View>
+              <Text style={styles.nextVisitLabel}>Next Visit</Text>
+            </View>
             <Text style={styles.nextVisitDate}>{item.date}</Text>
-            <Text style={styles.nextVisitTime}>{item.time}</Text>
-            <View style={styles.locationRow}>
-              <Ionicons name="location-outline" size={14} color="#6b7280" style={{ marginRight: 4 }} />
-              <Text style={styles.locationText}>{item.location}</Text>
+            <View style={styles.nextVisitDetails}>
+              <View style={styles.detailItem}>
+                <Ionicons name="time-outline" size={14} color="#6b7280" />
+                <Text style={styles.nextVisitTime}>{item.time}</Text>
+              </View>
+              <View style={styles.detailItem}>
+                <Ionicons name="location-outline" size={14} color="#6b7280" />
+                <Text style={styles.locationText} numberOfLines={1}>{item.location}</Text>
+              </View>
             </View>
           </View>
         </View>
-        <View style={styles.statusButton}>
+        <View style={[styles.statusButton, { backgroundColor: themeColor }]}>
           <Text style={styles.statusButtonText}>{item.status}</Text>
         </View>
       </TouchableOpacity>
@@ -329,29 +374,34 @@ export default function ClientDashboard() {
       <TouchableOpacity
         style={[styles.poolCard, { width: POOL_CARD_WIDTH_75 }]}
         onPress={() => router.push(`/pools/${item.id}`)}
-        activeOpacity={0.7}
+        activeOpacity={0.9}
       >
-        {poolImage && (
-          <Image
-            source={{ uri: poolImage }}
-            style={styles.poolCardBackgroundImage}
-            resizeMode="cover"
-          />
-        )}
-        {poolImage && <View style={styles.poolCardOverlay} />}
-        <View style={styles.poolCardContent}>
-          {/* Pool Header - Bottom only, clean and simple */}
-          <View style={styles.poolCardHeader}>
-            <View style={styles.poolHeaderLeft}>
-              <View style={[styles.poolStatusDot, { backgroundColor: chemistry.color }]} />
-              <View style={styles.poolTextContainer}>
-                <Text style={styles.poolName}>{item.name}</Text>
-                {item.address && (
-                  <Text style={styles.poolAddress}>{item.address}</Text>
-                )}
-              </View>
+        <View style={styles.poolCardImageContainer}>
+          {poolImage ? (
+            <Image
+              source={{ uri: poolImage }}
+              style={styles.poolCardBackgroundImage}
+              resizeMode="cover"
+            />
+          ) : (
+            <View style={[styles.poolCardBackgroundImage, { backgroundColor: "#e5e7eb", alignItems: "center", justifyContent: "center" }]}>
+              <Ionicons name="water" size={48} color="#9ca3af" />
             </View>
+          )}
+          
+          <View style={styles.poolStatusBadge}>
+            <View style={[styles.poolStatusDot, { backgroundColor: chemistry.color }]} />
+            <Text style={styles.poolStatusText}>{chemistry.label}</Text>
           </View>
+        </View>
+
+        <View style={styles.poolCardContent}>
+          <Text style={styles.poolName} numberOfLines={1}>{item.name}</Text>
+          {item.address ? (
+            <Text style={styles.poolAddress} numberOfLines={1}>{item.address}</Text>
+          ) : (
+            <Text style={styles.poolAddress}>No address set</Text>
+          )}
         </View>
       </TouchableOpacity>
     );
@@ -364,7 +414,7 @@ export default function ClientDashboard() {
 
   return (
     <View style={styles.container}>
-      {/* Custom Header */}
+      {/* Custom Header - Logo centered (large), settings left, icons right */}
       <View style={styles.header}>
         <TouchableOpacity
           style={styles.headerLeft}
@@ -372,17 +422,21 @@ export default function ClientDashboard() {
           activeOpacity={0.7}
         >
           <View style={styles.profileImage}>
-            <Ionicons name="person" size={24} color="#14b8a6" />
+            <Ionicons name="person" size={24} color={themeColor} />
           </View>
-          <Text style={styles.headerGreeting}>Good afternoon, Ama</Text>
         </TouchableOpacity>
+        <View style={styles.headerCenter}>
+          {logoUrl ? (
+            <Image
+              source={{ uri: fixUrlForMobile(logoUrl) }}
+              style={styles.headerLogo}
+              resizeMode="contain"
+            />
+          ) : (
+            <Text style={[styles.headerLogoPlaceholder, { color: themeColor }]}>PoolCare</Text>
+          )}
+        </View>
         <View style={styles.headerRight}>
-          <TouchableOpacity 
-            style={styles.headerIconButton}
-            onPress={() => router.push("/poolshop")}
-          >
-            <Ionicons name="storefront-outline" size={24} color="#14b8a6" />
-          </TouchableOpacity>
           <TouchableOpacity style={styles.notificationButton}>
             <Ionicons name="notifications-outline" size={24} color="#111827" />
           </TouchableOpacity>
@@ -391,7 +445,7 @@ export default function ClientDashboard() {
 
       {loading && !refreshing ? (
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#14b8a6" />
+          <ActivityIndicator size="large" color={themeColor} />
           <Text style={styles.loadingText}>Loading dashboard...</Text>
         </View>
       ) : (
@@ -401,84 +455,78 @@ export default function ClientDashboard() {
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
           showsVerticalScrollIndicator={false}
         >
-        {/* Invoice Due and Pending Quotes Cards - Moved to top */}
-        {(invoices.length > 0 || (quotes.length > 0 && quotes[0].pending)) && (
-          <View style={styles.financialCards}>
-            {invoices.length > 0 && (
-              <TouchableOpacity 
-                style={[styles.financialCard, invoices[0].due && styles.financialCardUrgent]}
-                onPress={() => router.push(`/pay/${invoices[0].id}`)}
-                activeOpacity={0.7}
-              >
-                <View style={styles.financialCardContent}>
-                  <View style={styles.financialCardHeader}>
-                    <View style={styles.financialCardTitleRow}>
-                      <Ionicons name="receipt-outline" size={16} color="#6b7280" />
-                      <Text style={styles.financialCardTitle}>
-                        {invoices[0].due ? "Outstanding Invoice" : "Invoice"}
-                      </Text>
-                    </View>
-                    {invoices[0].due && (
-                      <View style={styles.urgentBadge}>
-                        <Text style={styles.urgentBadgeText}>Due</Text>
-                      </View>
-                    )}
-                  </View>
-                  <Text style={styles.financialCardAmount}>GH₵{formatAmount(invoices[0].amount)}</Text>
-                  <Text style={styles.financialCardRef}>{invoices[0].reference}</Text>
-                </View>
-              </TouchableOpacity>
-            )}
-            
-            {quotes.length > 0 && quotes[0].pending && (
-              <TouchableOpacity 
-                style={styles.financialCard}
-                onPress={() => router.push(`/quotes/${quotes[0].id}`)}
-                activeOpacity={0.7}
-              >
-                <View style={styles.financialCardContent}>
-                  <View style={styles.financialCardHeader}>
-                    <View style={styles.financialCardTitleRow}>
-                      <Ionicons name="document-text-outline" size={16} color="#6b7280" />
-                      <Text style={styles.financialCardTitle}>Pending Quote</Text>
-                    </View>
-                  </View>
-                  <Text style={styles.financialCardAmount}>GH₵{formatAmount(quotes[0].amount)}</Text>
-                  <Text style={styles.financialCardRef}>Review & approve</Text>
-                </View>
-              </TouchableOpacity>
-            )}
+        {/* Greeting above Balance Owed card */}
+        <Text style={styles.greetingAboveCard}>
+          {getTimeBasedGreeting()}{userFirstName ? ` ${userFirstName}` : ""}
+        </Text>
+
+        {/* Permanent Balance Owed card (balance left, image right inside same card) */}
+        <TouchableOpacity
+          style={styles.balanceCard}
+          onPress={() => router.push("/billing")}
+          activeOpacity={0.7}
+        >
+          <View style={styles.balanceCardContent}>
+            <View style={styles.financialCardHeader}>
+              <View style={styles.financialCardTitleRow}>
+                <Ionicons name="wallet-outline" size={16} color="#6b7280" />
+                <Text style={styles.financialCardTitle}>Balance Owed</Text>
+              </View>
+            </View>
+            <Text style={styles.financialCardAmount}>GH₵{formatAmount(balanceOwed)}</Text>
+            <Text style={styles.financialCardRef}>Tap to view billing</Text>
           </View>
+          {homeCardImageUrl ? (
+            <View style={styles.homeCardImageWrap}>
+              <Image
+                source={{ uri: fixUrlForMobile(homeCardImageUrl) }}
+                style={styles.homeCardImage}
+                resizeMode="cover"
+              />
+            </View>
+          ) : null}
+        </TouchableOpacity>
+
+        {/* Pending quote card when present */}
+        {quotes.length > 0 && quotes[0].pending && (
+          <TouchableOpacity
+            style={[styles.financialCard, { marginBottom: 16 }]}
+            onPress={() => router.push(`/quotes/${quotes[0].id}`)}
+            activeOpacity={0.7}
+          >
+            <View style={styles.financialCardContent}>
+              <View style={styles.financialCardHeader}>
+                <View style={styles.financialCardTitleRow}>
+                  <Ionicons name="document-text-outline" size={16} color="#6b7280" />
+                  <Text style={styles.financialCardTitle}>Pending Quote</Text>
+                </View>
+              </View>
+              <Text style={styles.financialCardAmount}>GH₵{formatAmount(quotes[0].amount)}</Text>
+              <Text style={styles.financialCardRef}>Review & approve</Text>
+            </View>
+          </TouchableOpacity>
         )}
 
-        {/* Book Service + Request/Complaints */}
-        <TouchableOpacity 
-          style={styles.requestButton}
-          onPress={() => router.push("/book-service")}
-          activeOpacity={0.7}
-        >
-          <Ionicons name="calendar-outline" size={22} color="#14b8a6" />
-          <Text style={styles.requestButtonText}>Book a Service</Text>
-          <Ionicons name="chevron-forward" size={20} color="#6b7280" />
-        </TouchableOpacity>
-        <TouchableOpacity 
-          style={[styles.requestButton, { marginTop: 0 }]}
-          onPress={() => router.push("/kwame-ai")}
-          activeOpacity={0.7}
-        >
-          <Ionicons name="chatbubble-ellipses-outline" size={22} color="#14b8a6" />
-          <Text style={styles.requestButtonText}>Request / Complaints</Text>
-          <Ionicons name="chevron-forward" size={20} color="#6b7280" />
-        </TouchableOpacity>
-        <TouchableOpacity 
-          style={[styles.requestButton, { marginTop: 0 }]}
-          onPress={() => router.push("/report-issue")}
-          activeOpacity={0.7}
-        >
-          <Ionicons name="warning-outline" size={22} color="#14b8a6" />
-          <Text style={styles.requestButtonText}>Report an Issue</Text>
-          <Ionicons name="chevron-forward" size={20} color="#6b7280" />
-        </TouchableOpacity>
+        {/* Request or report (one screen: book a visit / report an issue) + Chat */}
+        <View style={styles.requestButtonsRow}>
+          <TouchableOpacity 
+            style={styles.requestButtonCompact}
+            onPress={() => router.push("/book-service")}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="create-outline" size={22} color={themeColor} />
+            <Text style={styles.requestButtonCompactText} numberOfLines={2}>Request or report</Text>
+            <Text style={styles.requestButtonSubtext}>Book a visit • Report an issue</Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={styles.requestButtonCompact}
+            onPress={() => router.push("/kwame-ai")}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="chatbubble-ellipses-outline" size={22} color={themeColor} />
+            <Text style={styles.requestButtonCompactText} numberOfLines={2}>Chat / Ask</Text>
+          </TouchableOpacity>
+        </View>
 
         {/* Next Visit Card - Slider */}
         {nextVisits.length > 0 ? (
@@ -505,7 +553,7 @@ export default function ClientDashboard() {
                     key={index}
                     style={[
                       styles.paginationDot,
-                      index === currentVisitIndex && styles.paginationDotActive,
+                      index === currentVisitIndex && [styles.paginationDotActive, { backgroundColor: themeColor }],
                     ]}
                   />
                 ))}
@@ -548,7 +596,7 @@ export default function ClientDashboard() {
                       key={index}
                       style={[
                         styles.paginationDot,
-                        index === currentPoolIndex && styles.paginationDotActive,
+                        index === currentPoolIndex && [styles.paginationDotActive, { backgroundColor: themeColor }],
                       ]}
                     />
                   ))}
@@ -576,7 +624,7 @@ export default function ClientDashboard() {
             <Ionicons name="water-outline" size={48} color="#9ca3af" />
             <Text style={styles.emptyText}>No pools yet</Text>
             <TouchableOpacity 
-              style={styles.addButton}
+              style={[styles.addButton, { backgroundColor: themeColor }]}
               onPress={() => router.push("/pools/add")}
             >
               <Text style={styles.addButtonText}>Add Your First Pool</Text>
@@ -585,42 +633,6 @@ export default function ClientDashboard() {
         )}
       </ScrollView>
       )}
-
-      {/* Bottom Navigation Bar */}
-      <View style={styles.bottomNav}>
-        <TouchableOpacity style={styles.navItem}>
-          <Ionicons name="home" size={24} color="#14b8a6" />
-          <Text style={[styles.navLabel, styles.navLabelActive]}>Home</Text>
-        </TouchableOpacity>
-        <TouchableOpacity 
-          style={styles.navItem}
-          onPress={() => router.push("/visits")}
-        >
-          <Ionicons name="calendar-outline" size={24} color="#6b7280" />
-          <Text style={styles.navLabel}>Visits</Text>
-        </TouchableOpacity>
-        <TouchableOpacity 
-          style={styles.navItem}
-          onPress={() => router.push("/pools")}
-        >
-          <Ionicons name="water-outline" size={24} color="#6b7280" />
-          <Text style={styles.navLabel}>Pools</Text>
-        </TouchableOpacity>
-        <TouchableOpacity 
-          style={styles.navItem}
-          onPress={() => router.push("/billing")}
-        >
-          <Ionicons name="document-text-outline" size={24} color="#6b7280" />
-          <Text style={styles.navLabel}>Billing</Text>
-        </TouchableOpacity>
-        <TouchableOpacity 
-          style={styles.navItem}
-          onPress={() => router.push("/my-subscriptions")}
-        >
-          <Ionicons name="card-outline" size={24} color="#6b7280" />
-          <Text style={styles.navLabel}>Plans</Text>
-        </TouchableOpacity>
-      </View>
     </View>
   );
 }
@@ -628,7 +640,7 @@ export default function ClientDashboard() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#ffffff",
+    backgroundColor: "#f9fafb",
   },
   header: {
     flexDirection: "row",
@@ -638,10 +650,31 @@ const styles = StyleSheet.create({
     paddingTop: 60,
     paddingBottom: 20,
     backgroundColor: "#ffffff",
+    borderBottomWidth: 1,
+    borderBottomColor: "#f3f4f6",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.03,
+    shadowRadius: 8,
+    elevation: 3,
+    zIndex: 10,
   },
   headerLeft: {
-    flexDirection: "row",
+    width: 40,
+    alignItems: "flex-start",
+  },
+  headerCenter: {
+    flex: 1,
+    justifyContent: "center",
     alignItems: "center",
+  },
+  headerLogo: {
+    width: 180,
+    height: 56,
+  },
+  headerLogoPlaceholder: {
+    fontSize: 20,
+    fontWeight: "700",
   },
   profileImage: {
     width: 40,
@@ -650,17 +683,11 @@ const styles = StyleSheet.create({
     backgroundColor: "#ffffff",
     justifyContent: "center",
     alignItems: "center",
-    marginRight: 12,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 2,
-  },
-  headerGreeting: {
-    fontSize: 20,
-    fontWeight: "700",
-    color: "#111827",
   },
   headerRight: {
     flexDirection: "row",
@@ -700,6 +727,13 @@ const styles = StyleSheet.create({
     padding: 20,
     paddingBottom: 120,
   },
+  greetingAboveCard: {
+    fontSize: 24,
+    fontWeight: "800",
+    color: "#111827",
+    marginBottom: 16,
+    letterSpacing: -0.5,
+  },
   visitsSection: {
     marginBottom: 20,
   },
@@ -731,24 +765,45 @@ const styles = StyleSheet.create({
   },
   nextVisitLabel: {
     fontSize: 13,
-    fontWeight: "600",
+    fontWeight: "700",
     color: "#6b7280",
-    marginBottom: 8,
     textTransform: "uppercase",
     letterSpacing: 0.5,
   },
   nextVisitDate: {
-    fontSize: 20,
-    fontWeight: "700",
+    fontSize: 22,
+    fontWeight: "800",
     color: "#111827",
-    marginBottom: 4,
-    letterSpacing: -0.3,
+    marginBottom: 12,
+    letterSpacing: -0.5,
   },
   nextVisitTime: {
-    fontSize: 13,
-    color: "#6b7280",
+    fontSize: 14,
+    color: "#4b5563",
     fontWeight: "500",
-    marginBottom: 10,
+  },
+  nextVisitHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 8,
+    gap: 8,
+  },
+  calendarIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    borderWidth: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#ffffff",
+  },
+  nextVisitDetails: {
+    gap: 6,
+  },
+  detailItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
   },
   locationRow: {
     flexDirection: "row",
@@ -756,7 +811,6 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   statusButton: {
-    backgroundColor: "#14b8a6",
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 12,
@@ -770,10 +824,37 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   locationText: {
-    fontSize: 12,
+    fontSize: 14,
+    color: "#4b5563",
     fontWeight: "500",
-    color: "#6b7280",
     flex: 1,
+  },
+  balanceCard: {
+    flexDirection: "row",
+    alignItems: "stretch",
+    backgroundColor: "#ffffff",
+    borderRadius: 16,
+    overflow: "hidden",
+    marginBottom: 16,
+    height: 120,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  balanceCardContent: {
+    flex: 1,
+    justifyContent: "center",
+    padding: 20,
+  },
+  homeCardImageWrap: {
+    width: 120,
+    height: 120,
+  },
+  homeCardImage: {
+    width: 120,
+    height: 120,
   },
   financialCards: {
     flexDirection: "row",
@@ -859,7 +940,6 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   payButton: {
-    backgroundColor: "#14b8a6",
     paddingVertical: 6,
     paddingHorizontal: 12,
     borderRadius: 10,
@@ -870,6 +950,41 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "600",
     color: "#ffffff",
+  },
+  requestButtonsRow: {
+    flexDirection: "row",
+    gap: 12,
+    marginBottom: 20,
+  },
+  requestButtonCompact: {
+    flex: 1,
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#ffffff",
+    borderRadius: 20,
+    padding: 16,
+    height: 110,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 4,
+    gap: 10,
+    borderWidth: 1,
+    borderColor: "#f3f4f6",
+  },
+  requestButtonCompactText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#1f2937",
+    textAlign: "center",
+    lineHeight: 18,
+  },
+  requestButtonSubtext: {
+    fontSize: 11,
+    color: "#6b7280",
+    textAlign: "center",
   },
   requestButton: {
     flexDirection: "row",
@@ -895,11 +1010,13 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   sectionTitle: {
-    fontSize: 20,
-    fontWeight: "700",
+    fontSize: 18,
+    fontWeight: "800",
     color: "#111827",
     marginBottom: 16,
-    letterSpacing: -0.3,
+    letterSpacing: -0.5,
+    textTransform: "uppercase",
+    opacity: 0.8,
   },
   emptyState: {
     backgroundColor: "#ffffff",
@@ -931,71 +1048,74 @@ const styles = StyleSheet.create({
   },
   poolCard: {
     backgroundColor: "#ffffff",
-    borderRadius: 20,
-    marginRight: 12,
-    height: 140, // Reduced height
+    borderRadius: 24,
+    marginRight: 16,
+    height: 260, // Taller to accommodate split layout
+    width: POOL_CARD_WIDTH_75,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 4,
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.15,
+    shadowRadius: 20,
+    elevation: 10,
     overflow: "hidden",
+    flexDirection: "column",
+  },
+  poolCardImageContainer: {
+    height: "65%",
+    width: "100%",
     position: "relative",
   },
   poolCardBackgroundImage: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
     width: "100%",
     height: "100%",
-  },
-  poolCardOverlay: {
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: "50%",
-    backgroundColor: "rgba(0, 0, 0, 0.35)",
   },
   poolCardContent: {
+    height: "35%",
     padding: 16,
-    position: "relative",
-    zIndex: 1,
-    height: "100%",
-    justifyContent: "flex-end",
-  },
-  poolCardHeader: {
-    width: "100%",
-  },
-  poolHeaderLeft: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-  },
-  poolStatusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    marginRight: 8,
-    marginTop: 4,
-  },
-  poolTextContainer: {
-    flex: 1,
+    backgroundColor: "#ffffff",
+    justifyContent: "center",
   },
   poolName: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#ffffff",
-    marginBottom: 2,
-    lineHeight: 20,
+    fontSize: 18,
+    fontWeight: "800",
+    color: "#111827",
+    marginBottom: 4,
+    lineHeight: 22,
   },
   poolAddress: {
-    fontSize: 14,
-    color: "#ffffff",
-    opacity: 0.9,
-    fontWeight: "400",
+    fontSize: 13,
+    color: "#6b7280",
+    fontWeight: "500",
     lineHeight: 18,
+  },
+  poolStatusBadge: {
+    position: "absolute",
+    top: 12,
+    right: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 12,
+    backgroundColor: "rgba(255, 255, 255, 0.95)",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  poolStatusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  poolStatusText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#374151",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
   },
   lastVisitStats: {
     marginBottom: 12,
@@ -1051,40 +1171,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#d1d5db",
   },
   paginationDotActive: {
-    backgroundColor: "#14b8a6",
     width: 24,
-  },
-  bottomNav: {
-    flexDirection: "row",
-    backgroundColor: "#ffffff",
-    borderRadius: 24,
-    paddingTop: 12,
-    paddingBottom: 24,
-    paddingHorizontal: 16,
-    justifyContent: "space-around",
-    alignItems: "center",
-    position: "absolute",
-    bottom: 16,
-    left: 16,
-    right: 16,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.12,
-    shadowRadius: 12,
-    elevation: 8,
-  },
-  navItem: {
-    alignItems: "center",
-    flex: 1,
-  },
-  navLabel: {
-    fontSize: 11,
-    color: "#6b7280",
-    marginTop: 4,
-  },
-  navLabelActive: {
-    color: "#14b8a6",
-    fontWeight: "600",
   },
   centerContent: {
     alignItems: "center",
@@ -1108,7 +1195,6 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   addButton: {
-    backgroundColor: "#14b8a6",
     paddingHorizontal: 24,
     paddingVertical: 14,
     borderRadius: 12,

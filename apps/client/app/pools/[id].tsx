@@ -3,6 +3,7 @@ import { View, Text, ScrollView, TouchableOpacity, StyleSheet, RefreshControl, D
 import { useLocalSearchParams, router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useTheme } from "../../src/contexts/ThemeContext";
 import { api } from "../../src/lib/api-client";
 import { fixUrlForMobile } from "../../src/lib/network-utils";
 
@@ -12,6 +13,7 @@ const CHART_HEIGHT = 180;
 
 export default function PoolDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const { themeColor } = useTheme();
   const [pool, setPool] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -153,7 +155,7 @@ export default function PoolDetailScreen() {
     if (value >= min && value <= max) {
       return { status: "good", color: "#16a34a" };
     }
-    return { status: "needs_attention", color: "#14b8a6" };
+    return { status: "needs_attention", color: themeColor };
   };
 
   const renderTrendChart = (title: string, dataKey: "ph" | "chlorine" | "alkalinity", color: string, min: number, max: number, unit: string) => {
@@ -312,19 +314,26 @@ export default function PoolDetailScreen() {
     );
   };
 
+  const renderHeader = () => (
+    <View style={styles.header}>
+      <TouchableOpacity
+        style={styles.headerBackWrap}
+        onPress={() => (router.canGoBack() ? router.back() : router.replace("/pools"))}
+      >
+        <Ionicons name="arrow-back" size={22} color="#111827" />
+      </TouchableOpacity>
+      <Text style={styles.headerTitle}>Pool Details</Text>
+      <View style={styles.headerRight} />
+    </View>
+  );
+
   if (loading) {
     return (
       <SafeAreaView style={styles.container} edges={["top"]}>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()}>
-            <Ionicons name="arrow-back" size={24} color="#111827" />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Pool Details</Text>
-          <View style={{ width: 24 }} />
-        </View>
+        {renderHeader()}
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#14b8a6" />
-          <Text style={styles.loadingText}>Loading pool details...</Text>
+          <ActivityIndicator size="large" color={themeColor} />
+          <Text style={styles.loadingText}>Loading pool details…</Text>
         </View>
       </SafeAreaView>
     );
@@ -333,20 +342,19 @@ export default function PoolDetailScreen() {
   if (!pool) {
     return (
       <SafeAreaView style={styles.container} edges={["top"]}>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()}>
-            <Ionicons name="arrow-back" size={24} color="#111827" />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Pool Details</Text>
-          <View style={{ width: 24 }} />
-        </View>
-        <View style={styles.loadingContainer}>
-          <Ionicons name="alert-circle-outline" size={64} color="#d1d5db" />
-          <Text style={styles.loadingText}>Pool not found</Text>
-          <TouchableOpacity 
-            style={styles.retryButton}
+        {renderHeader()}
+        <View style={styles.emptyStateContainer}>
+          <View style={[styles.emptyStateIconWrap, { backgroundColor: themeColor + "20" }]}>
+            <Ionicons name="water-outline" size={48} color={themeColor} />
+          </View>
+          <Text style={styles.emptyStateTitle}>Pool not found</Text>
+          <Text style={styles.emptyStateSubtitle}>We couldn’t load this pool. Check your connection and try again.</Text>
+          <TouchableOpacity
+            style={[styles.retryButton, { backgroundColor: themeColor }]}
             onPress={loadPool}
+            activeOpacity={0.85}
           >
+            <Ionicons name="refresh-outline" size={20} color="#fff" />
             <Text style={styles.retryButtonText}>Retry</Text>
           </TouchableOpacity>
         </View>
@@ -356,47 +364,45 @@ export default function PoolDetailScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}>
-          <Ionicons name="arrow-back" size={24} color="#111827" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Pool Details</Text>
-        <View style={{ width: 24 }} />
-      </View>
+      {renderHeader()}
 
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.content}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={themeColor} />
+        }
         showsVerticalScrollIndicator={false}
       >
         {/* Pool Header */}
         <View style={styles.headerCard}>
-        <View style={styles.headerRow}>
-          <View style={styles.headerIcon}>
-            <Ionicons name="water" size={32} color="#14b8a6" />
+          <View style={[styles.headerCardAccent, { backgroundColor: themeColor }]} />
+          <View style={styles.headerRow}>
+            <View style={[styles.headerIcon, { backgroundColor: themeColor + "22" }]}>
+              <Ionicons name="water" size={32} color={themeColor} />
+            </View>
+            <View style={styles.headerText}>
+              <Text style={styles.poolName}>{pool?.name}</Text>
+              {pool?.address ? (
+                <Text style={styles.poolAddress}>{pool.address}</Text>
+              ) : null}
+            </View>
           </View>
-          <View style={styles.headerText}>
-            <Text style={styles.poolName}>{pool?.name}</Text>
-            <Text style={styles.poolAddress}>{pool?.address}</Text>
+          <View style={styles.poolSpecs}>
+            <View style={styles.specItem}>
+              <Text style={styles.specLabel}>Type</Text>
+              <Text style={styles.specValue}>{pool?.poolType || "Standard"}</Text>
+            </View>
+            <View style={styles.specItem}>
+              <Text style={styles.specLabel}>Filtration</Text>
+              <Text style={styles.specValue}>{pool?.filtrationType || "—"}</Text>
+            </View>
+            <View style={styles.specItem}>
+              <Text style={styles.specLabel}>Volume</Text>
+              <Text style={styles.specValue}>{pool?.volumeL ? `${pool.volumeL.toLocaleString()} L` : "—"}</Text>
+            </View>
           </View>
         </View>
-        <View style={styles.poolSpecs}>
-          <View style={styles.specItem}>
-            <Text style={styles.specLabel}>Type</Text>
-            <Text style={styles.specValue}>{pool?.poolType || "Standard"}</Text>
-          </View>
-          <View style={styles.specItem}>
-            <Text style={styles.specLabel}>Filtration</Text>
-            <Text style={styles.specValue}>{pool?.filtrationType || "Chlorine"}</Text>
-          </View>
-          <View style={styles.specItem}>
-            <Text style={styles.specLabel}>Volume</Text>
-            <Text style={styles.specValue}>{pool?.volumeL?.toLocaleString()}L</Text>
-          </View>
-        </View>
-      </View>
 
       {/* Pool Photos */}
       {pool?.photos && pool.photos.length > 0 && (
@@ -407,7 +413,7 @@ export default function PoolDetailScreen() {
               <TouchableOpacity onPress={() => {
                 Alert.alert("View All Photos", `${pool.photos.length} photos available`);
               }}>
-                <Text style={styles.viewAllText}>View All</Text>
+                <Text style={[styles.viewAllText, { color: themeColor }]}>View all</Text>
               </TouchableOpacity>
             )}
           </View>
@@ -442,11 +448,13 @@ export default function PoolDetailScreen() {
           <Text style={styles.sectionTitle}>Equipment</Text>
           {pool.equipment.map((item: any, index: number) => (
             <View key={index} style={styles.equipmentItem}>
-              <Ionicons name="construct-outline" size={20} color="#14b8a6" />
+              <View style={[styles.equipmentIconWrap, { backgroundColor: themeColor + "18" }]}>
+                <Ionicons name="construct-outline" size={20} color={themeColor} />
+              </View>
               <View style={styles.equipmentInfo}>
                 <Text style={styles.equipmentName}>{item.name}</Text>
                 <Text style={styles.equipmentDetails}>
-                  {item.brand} {item.model}
+                  {[item.brand, item.model].filter(Boolean).join(" ") || "—"}
                 </Text>
               </View>
             </View>
@@ -457,18 +465,20 @@ export default function PoolDetailScreen() {
       {/* Quick Actions */}
       <View style={styles.quickActions}>
         <TouchableOpacity
-          style={styles.quickActionButton}
+          style={[styles.quickActionPrimary, { backgroundColor: themeColor }]}
           onPress={() => router.push(`/book-service?poolId=${id}`)}
+          activeOpacity={0.85}
         >
-          <Ionicons name="calendar" size={20} color="#14b8a6" />
-          <Text style={styles.quickActionText}>Book Service</Text>
+          <Ionicons name="calendar" size={20} color="#fff" />
+          <Text style={styles.quickActionPrimaryText}>Book Service</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={styles.quickActionButton}
           onPress={() => router.push(`/request?poolId=${id}`)}
+          activeOpacity={0.7}
         >
-          <Ionicons name="chatbubble-ellipses" size={20} color="#14b8a6" />
-          <Text style={styles.quickActionText}>Request Help</Text>
+          <Ionicons name="chatbubble-ellipses-outline" size={20} color={themeColor} />
+          <Text style={[styles.quickActionText, { color: themeColor }]}>Request Help</Text>
         </TouchableOpacity>
       </View>
 
@@ -479,7 +489,7 @@ export default function PoolDetailScreen() {
             <Text style={styles.cardTitle}>Water Quality Trends</Text>
             <Text style={styles.cardSubtitle}>Last 3 months</Text>
           </View>
-          {renderTrendChart("pH Level", "ph", "#14b8a6", 7.2, 7.6, "")}
+          {renderTrendChart("pH Level", "ph", themeColor, 7.2, 7.6, "")}
           {renderTrendChart("Free Chlorine", "chlorine", "#3b82f6", 1, 3, "ppm")}
           {renderTrendChart("Alkalinity", "alkalinity", "#f59e0b", 80, 120, "ppm")}
         </View>
@@ -541,13 +551,16 @@ export default function PoolDetailScreen() {
 
       {/* Next Service */}
       {pool?.nextService && (
-        <View style={styles.card}>
+        <View style={[styles.card, styles.cardWithAccent]}>
+          <View style={[styles.cardAccent, { backgroundColor: themeColor }]} />
           <View style={styles.cardHeader}>
-            <Ionicons name="calendar-outline" size={24} color="#14b8a6" />
+            <View style={[styles.cardIconWrap, { backgroundColor: themeColor + "20" }]}>
+              <Ionicons name="calendar-outline" size={24} color={themeColor} />
+            </View>
             <View style={styles.cardHeaderText}>
               <Text style={styles.cardTitle}>Next Service</Text>
               <Text style={styles.cardSubtitle}>
-                {new Date(pool.nextService.date).toLocaleDateString()} • {pool.nextService.time}
+                {new Date(pool.nextService.date).toLocaleDateString()} · {pool.nextService.time}
               </Text>
             </View>
           </View>
@@ -557,18 +570,22 @@ export default function PoolDetailScreen() {
       {/* Last Visit */}
       {pool?.lastVisit && (
         <TouchableOpacity
-          style={styles.card}
+          style={[styles.card, styles.cardWithAccent]}
           onPress={() => router.push(`/visits/${pool.lastVisit.id}`)}
+          activeOpacity={0.7}
         >
+          <View style={[styles.cardAccent, { backgroundColor: "#16a34a" }]} />
           <View style={styles.cardHeader}>
-            <Ionicons name="checkmark-circle" size={24} color="#16a34a" />
+            <View style={[styles.cardIconWrap, { backgroundColor: "#dcfce7" }]}>
+              <Ionicons name="checkmark-circle" size={24} color="#16a34a" />
+            </View>
             <View style={styles.cardHeaderText}>
               <Text style={styles.cardTitle}>Last Service</Text>
               <Text style={styles.cardSubtitle}>
                 {new Date(pool.lastVisit.date).toLocaleDateString()}
               </Text>
             </View>
-            {pool.lastVisit.rating && (
+            {pool.lastVisit.rating != null && pool.lastVisit.rating > 0 && (
               <View style={styles.ratingBadge}>
                 {[...Array(5)].map((_, i) => (
                   <Ionicons
@@ -581,7 +598,7 @@ export default function PoolDetailScreen() {
               </View>
             )}
           </View>
-          <Text style={styles.viewReportText}>View Report →</Text>
+          <Text style={[styles.viewReportText, { color: themeColor }]}>View report →</Text>
         </TouchableOpacity>
       )}
 
@@ -596,20 +613,19 @@ export default function PoolDetailScreen() {
           </View>
           <View style={styles.historyActions}>
             <TouchableOpacity
-              style={styles.exportButton}
+              style={[styles.exportButton, { backgroundColor: themeColor + "18" }]}
               onPress={() => {
-                // In production, this would trigger PDF generation and download
                 Alert.alert(
                   "Export History",
-                  "Exporting maintenance history as PDF...",
+                  "Exporting maintenance history as PDF…",
                   [{ text: "OK" }]
                 );
               }}
             >
-              <Ionicons name="download-outline" size={18} color="#14b8a6" />
+              <Ionicons name="download-outline" size={18} color={themeColor} />
             </TouchableOpacity>
             <TouchableOpacity onPress={() => router.push("/visits")}>
-              <Text style={styles.viewAllText}>View All</Text>
+              <Text style={[styles.viewAllText, { color: themeColor }]}>View all</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -622,8 +638,8 @@ export default function PoolDetailScreen() {
                   onPress={() => router.push(`/visits/${visit.id}`)}
                   activeOpacity={0.7}
                 >
-                  <View style={styles.visitIconContainer}>
-                    <Ionicons name="document-text-outline" size={20} color="#14b8a6" />
+                  <View style={[styles.visitIconContainer, { backgroundColor: themeColor + "18" }]}>
+                    <Ionicons name="document-text-outline" size={20} color={themeColor} />
                   </View>
                   <View style={styles.visitContent}>
                     <Text style={styles.visitDate}>
@@ -640,7 +656,7 @@ export default function PoolDetailScreen() {
                   <Ionicons name="chevron-forward" size={20} color="#9ca3af" />
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={styles.downloadButton}
+                  style={[styles.downloadButton, { borderColor: themeColor }]}
                   onPress={() => {
                     // In production, this would download the visit report PDF
                     // Linking.openURL(visit.reportPdfUrl);
@@ -651,16 +667,19 @@ export default function PoolDetailScreen() {
                     );
                   }}
                 >
-                  <Ionicons name="download-outline" size={16} color="#14b8a6" />
-                  <Text style={styles.downloadButtonText}>PDF</Text>
+                  <Ionicons name="download-outline" size={16} color={themeColor} />
+                  <Text style={[styles.downloadButtonText, { color: themeColor }]}>PDF</Text>
                 </TouchableOpacity>
               </View>
             ))}
           </>
         ) : (
           <View style={styles.emptyHistory}>
-            <Ionicons name="document-outline" size={48} color="#d1d5db" />
-            <Text style={styles.emptyHistoryText}>No maintenance history yet</Text>
+            <View style={[styles.emptyHistoryIconWrap, { backgroundColor: themeColor + "18" }]}>
+              <Ionicons name="document-text-outline" size={40} color={themeColor} />
+            </View>
+            <Text style={styles.emptyHistoryTitle}>No visits yet</Text>
+            <Text style={styles.emptyHistoryText}>Service reports will appear here after visits.</Text>
           </View>
         )}
       </View>
@@ -678,16 +697,28 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 20,
-    paddingVertical: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    paddingBottom: 16,
     backgroundColor: "#ffffff",
     borderBottomWidth: 1,
     borderBottomColor: "#e5e7eb",
+  },
+  headerBackWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "#f3f4f6",
+    alignItems: "center",
+    justifyContent: "center",
   },
   headerTitle: {
     fontSize: 20,
     fontWeight: "700",
     color: "#111827",
+  },
+  headerRight: {
+    width: 40,
   },
   scrollView: {
     flex: 1,
@@ -707,13 +738,41 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: "#6b7280",
     marginTop: 16,
+  },
+  emptyStateContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingVertical: 48,
+    paddingHorizontal: 32,
+  },
+  emptyStateIconWrap: {
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  emptyStateTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#111827",
+    marginTop: 20,
+    marginBottom: 8,
+  },
+  emptyStateSubtitle: {
+    fontSize: 15,
+    color: "#6b7280",
+    textAlign: "center",
     marginBottom: 24,
   },
   retryButton: {
-    backgroundColor: "#14b8a6",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
     paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 8,
+    paddingVertical: 14,
+    borderRadius: 12,
   },
   retryButtonText: {
     color: "#ffffff",
@@ -731,6 +790,15 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 8,
     elevation: 3,
+    overflow: "hidden",
+    position: "relative",
+  },
+  headerCardAccent: {
+    position: "absolute",
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 4,
   },
   headerRow: {
     flexDirection: "row",
@@ -741,7 +809,6 @@ const styles = StyleSheet.create({
     width: 64,
     height: 64,
     borderRadius: 32,
-    backgroundColor: "#14b8a620",
     justifyContent: "center",
     alignItems: "center",
     marginRight: 16,
@@ -784,38 +851,69 @@ const styles = StyleSheet.create({
     gap: 12,
     marginBottom: 16,
   },
+  quickActionPrimary: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 14,
+    borderRadius: 12,
+    gap: 8,
+  },
+  quickActionPrimaryText: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#ffffff",
+  },
   quickActionButton: {
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "#ffffff",
-    padding: 12,
+    paddingVertical: 14,
     borderRadius: 12,
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: "#e5e7eb",
+    gap: 8,
   },
   quickActionText: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: "600",
-    color: "#111827",
-    marginLeft: 8,
   },
   card: {
     backgroundColor: "#ffffff",
-    borderRadius: 12,
+    borderRadius: 16,
     padding: 16,
     marginBottom: 16,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
     elevation: 3,
+  },
+  cardWithAccent: {
+    overflow: "hidden",
+    position: "relative",
+  },
+  cardAccent: {
+    position: "absolute",
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 4,
   },
   cardHeader: {
     flexDirection: "row",
     alignItems: "center",
     marginBottom: 16,
+  },
+  cardIconWrap: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: "center",
+    justifyContent: "center",
   },
   cardHeaderText: {
     flex: 1,
@@ -882,13 +980,11 @@ const styles = StyleSheet.create({
   viewReportText: {
     fontSize: 14,
     fontWeight: "600",
-    color: "#14b8a6",
     marginTop: 8,
   },
   viewAllText: {
     fontSize: 14,
     fontWeight: "600",
-    color: "#14b8a6",
   },
   historyActions: {
     flexDirection: "row",
@@ -899,11 +995,9 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: "#f0fdf4",
+    backgroundColor: "#f3f4f6",
     justifyContent: "center",
     alignItems: "center",
-    borderWidth: 1,
-    borderColor: "#14b8a6",
   },
   visitItem: {
     flexDirection: "row",
@@ -922,7 +1016,6 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: "#f0fdf4",
     justifyContent: "center",
     alignItems: "center",
   },
@@ -947,24 +1040,35 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "#14b8a6",
+    borderWidth: 1.5,
     backgroundColor: "#ffffff",
   },
   downloadButtonText: {
     fontSize: 12,
     fontWeight: "600",
-    color: "#14b8a6",
   },
   emptyHistory: {
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 32,
+    paddingVertical: 40,
+  },
+  emptyHistoryIconWrap: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  emptyHistoryTitle: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: "#111827",
+    marginTop: 16,
+    marginBottom: 4,
   },
   emptyHistoryText: {
     fontSize: 14,
     color: "#6b7280",
-    marginTop: 12,
   },
   chartContainer: {
     marginBottom: 24,
@@ -1114,6 +1218,13 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: "#f3f4f6",
+  },
+  equipmentIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
   },
   equipmentInfo: {
     flex: 1,

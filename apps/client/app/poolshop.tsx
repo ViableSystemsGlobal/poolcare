@@ -2,6 +2,8 @@ import { useState, useEffect } from "react";
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, TextInput, ActivityIndicator, Alert } from "react-native";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { useTheme } from "../src/contexts/ThemeContext";
 import { api } from "@/lib/api-client";
 import { setPoolShopCart } from "@/lib/poolshop-cart";
 
@@ -36,6 +38,7 @@ function mapApiProduct(p: any): Product {
 }
 
 export default function PoolShopScreen() {
+  const { themeColor } = useTheme();
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -113,38 +116,48 @@ export default function PoolShopScreen() {
     return cart.reduce((total, item) => total + item.quantity, 0);
   };
 
+  const productCount = filteredProducts.length;
+  const subtitle = loading ? "Loading…" : error ? "Error" : productCount === 0 ? "No products" : `${productCount} product${productCount === 1 ? "" : "s"}`;
+
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container} edges={["top"]}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}>
-          <Ionicons name="arrow-back" size={24} color="#111827" />
+        <TouchableOpacity
+          style={styles.headerBackWrap}
+          onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))}
+        >
+          <Ionicons name="arrow-back" size={22} color="#111827" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>PoolShop</Text>
+        <View style={styles.headerCenter}>
+          <Text style={styles.headerTitle}>PoolShop</Text>
+          <Text style={styles.headerSubtitle}>{subtitle}</Text>
+        </View>
         <View style={styles.headerRight}>
           <TouchableOpacity onPress={() => router.push("/poolshop/orders")} style={styles.myOrdersButton}>
-            <Ionicons name="receipt-outline" size={20} color="#14b8a6" />
-            <Text style={styles.myOrdersText}>My orders</Text>
+            <Ionicons name="receipt-outline" size={20} color={themeColor} />
+            <Text style={[styles.myOrdersText, { color: themeColor }]}>Orders</Text>
           </TouchableOpacity>
-          <TouchableOpacity onPress={() => setShowCart(!showCart)}>
-          <View style={styles.cartIconContainer}>
-            <Ionicons name="cart-outline" size={24} color="#111827" />
-            {getCartItemCount() > 0 && (
-              <View style={styles.cartBadge}>
-                <Text style={styles.cartBadgeText}>{getCartItemCount()}</Text>
-              </View>
-            )}
-          </View>
+          <TouchableOpacity onPress={() => setShowCart(!showCart)} style={styles.cartButtonWrap}>
+            <View style={[styles.cartIconWrap, getCartItemCount() > 0 && { backgroundColor: themeColor + "18" }]}>
+              <Ionicons name="cart-outline" size={22} color={getCartItemCount() > 0 ? themeColor : "#6b7280"} />
+              {getCartItemCount() > 0 && (
+                <View style={[styles.cartBadge, { backgroundColor: themeColor }]}>
+                  <Text style={styles.cartBadgeText}>{getCartItemCount()}</Text>
+                </View>
+              )}
+            </View>
           </TouchableOpacity>
         </View>
       </View>
 
       {/* Search Bar */}
-      <View style={styles.searchContainer}>
-        <Ionicons name="search-outline" size={20} color="#6b7280" style={styles.searchIcon} />
+      <View style={[styles.searchContainer, { borderColor: themeColor + "40" }]}>
+        <Ionicons name="search-outline" size={20} color={themeColor} style={styles.searchIcon} />
         <TextInput
           style={styles.searchInput}
-          placeholder="Search products..."
+          placeholder="Search products…"
+          placeholderTextColor="#9ca3af"
           value={searchQuery}
           onChangeText={setSearchQuery}
         />
@@ -157,63 +170,71 @@ export default function PoolShopScreen() {
         style={styles.categoriesContainer}
         contentContainerStyle={styles.categoriesContent}
       >
-        {categories.map((category) => (
-          <TouchableOpacity
-            key={category.id}
-            style={[
-              styles.categoryButton,
-              selectedCategory === category.id && styles.categoryButtonActive,
-            ]}
-            onPress={() => setSelectedCategory(category.id)}
-          >
-            <Ionicons
-              name={category.icon as any}
-              size={18}
-              color={selectedCategory === category.id ? "#ffffff" : "#14b8a6"}
-            />
-            <Text
+        {categories.map((category) => {
+          const isActive = selectedCategory === category.id;
+          return (
+            <TouchableOpacity
+              key={category.id}
               style={[
-                styles.categoryText,
-                selectedCategory === category.id && styles.categoryTextActive,
+                styles.categoryButton,
+                isActive && [styles.categoryButtonActive, { backgroundColor: themeColor, borderColor: themeColor }],
               ]}
+              onPress={() => setSelectedCategory(category.id)}
+              activeOpacity={0.8}
             >
-              {category.name}
-            </Text>
-          </TouchableOpacity>
-        ))}
+              <Ionicons
+                name={category.icon as any}
+                size={18}
+                color={isActive ? "#ffffff" : themeColor}
+              />
+              <Text
+                style={[
+                  styles.categoryText,
+                  isActive ? styles.categoryTextActive : { color: themeColor },
+                ]}
+              >
+                {category.name}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
       </ScrollView>
 
       {/* Products Grid */}
       <ScrollView style={styles.productsContainer} contentContainerStyle={styles.productsContent}>
         {loading ? (
           <View style={styles.emptyState}>
-            <ActivityIndicator size="large" color="#14b8a6" />
-            <Text style={styles.emptyText}>Loading products...</Text>
+            <ActivityIndicator size="large" color={themeColor} />
+            <Text style={styles.emptyText}>Loading products…</Text>
           </View>
         ) : error ? (
           <View style={styles.emptyState}>
-            <Ionicons name="cloud-offline-outline" size={56} color="#dc2626" />
-            <Text style={styles.emptyTitle}>Couldn't load products</Text>
+            <View style={[styles.emptyStateIconWrap, { backgroundColor: themeColor + "20" }]}>
+              <Ionicons name="cloud-offline-outline" size={48} color={themeColor} />
+            </View>
+            <Text style={styles.emptyTitle}>Couldn’t load products</Text>
             <Text style={styles.emptyText}>{error}</Text>
-            <TouchableOpacity style={styles.retryButton} onPress={fetchProducts}>
-              <Ionicons name="refresh" size={20} color="#fff" />
+            <TouchableOpacity style={[styles.retryButton, { backgroundColor: themeColor }]} onPress={fetchProducts}>
+              <Ionicons name="refresh-outline" size={20} color="#fff" />
               <Text style={styles.retryButtonText}>Try again</Text>
             </TouchableOpacity>
           </View>
         ) : filteredProducts.length === 0 ? (
           <View style={styles.emptyState}>
-            <Ionicons name="search-outline" size={56} color="#9ca3af" />
+            <View style={[styles.emptyStateIconWrap, { backgroundColor: themeColor + "18" }]}>
+              <Ionicons name="search-outline" size={40} color={themeColor} />
+            </View>
             <Text style={styles.emptyTitle}>
-              {searchQuery || selectedCategory !== "all" ? "No products match your filters" : "No products yet"}
+              {searchQuery || selectedCategory !== "all" ? "No products match" : "No products yet"}
             </Text>
             <Text style={styles.emptyText}>
               {searchQuery || selectedCategory !== "all"
                 ? "Try a different search or category"
-                : "Products will appear here when they're added."}
+                : "Products will appear here when they’re added."}
             </Text>
             {(searchQuery || selectedCategory !== "all") && (
               <TouchableOpacity
-                style={styles.retryButton}
+                style={[styles.retryButton, { backgroundColor: themeColor }]}
                 onPress={() => {
                   setSearchQuery("");
                   setSelectedCategory("all");
@@ -232,26 +253,26 @@ export default function PoolShopScreen() {
                 onPress={() => router.push(`/poolshop/${product.id}`)}
                 activeOpacity={0.7}
               >
-                <View style={styles.productImageContainer}>
-                  <Ionicons name="cube-outline" size={16} color="#14b8a6" />
+                <View style={[styles.productImageContainer, { backgroundColor: themeColor + "12" }]}>
+                  <Ionicons name="cube-outline" size={32} color={themeColor} />
                   {!product.inStock && (
                     <View style={styles.outOfStockBadge}>
-                      <Text style={styles.outOfStockText}>Out of Stock</Text>
+                      <Text style={styles.outOfStockText}>Out of stock</Text>
                     </View>
                   )}
                 </View>
                 <View style={styles.productInfo}>
-                  {product.brand && (
+                  {product.brand ? (
                     <Text style={styles.productBrand}>{product.brand}</Text>
-                  )}
+                  ) : null}
                   <Text style={styles.productName} numberOfLines={2}>
                     {product.name}
                   </Text>
-                  <Text style={styles.productPrice}>GH₵{product.price.toFixed(2)}</Text>
+                  <Text style={[styles.productPrice, { color: themeColor }]}>GH₵{product.price.toFixed(2)}</Text>
                   <TouchableOpacity
                     style={[
                       styles.addToCartButton,
-                      !product.inStock && styles.addToCartButtonDisabled,
+                      product.inStock ? { backgroundColor: themeColor } : styles.addToCartButtonDisabled,
                     ]}
                     onPress={() => product.inStock && addToCart(product)}
                     disabled={!product.inStock}
@@ -267,7 +288,7 @@ export default function PoolShopScreen() {
                         !product.inStock && styles.addToCartTextDisabled,
                       ]}
                     >
-                      Add to Cart
+                      Add to cart
                     </Text>
                   </TouchableOpacity>
                 </View>
@@ -295,13 +316,17 @@ export default function PoolShopScreen() {
 
             {cart.length === 0 ? (
               <View style={styles.emptyCart}>
-                <Ionicons name="cart-outline" size={64} color="#9ca3af" />
-                <Text style={styles.emptyCartText}>Your cart is empty</Text>
+                <View style={[styles.emptyCartIconWrap, { backgroundColor: themeColor + "18" }]}>
+                  <Ionicons name="cart-outline" size={48} color={themeColor} />
+                </View>
+                <Text style={styles.emptyCartTitle}>Your cart is empty</Text>
                 <Text style={styles.emptyCartSubtext}>Add items from the shop to get started</Text>
                 <TouchableOpacity
-                  style={styles.browseProductsButton}
+                  style={[styles.browseProductsButton, { backgroundColor: themeColor }]}
                   onPress={() => setShowCart(false)}
+                  activeOpacity={0.85}
                 >
+                  <Ionicons name="bag-outline" size={20} color="#fff" />
                   <Text style={styles.browseProductsButtonText}>Browse products</Text>
                 </TouchableOpacity>
               </View>
@@ -312,23 +337,23 @@ export default function PoolShopScreen() {
                     <View key={item.id} style={styles.cartItem}>
                       <View style={styles.cartItemInfo}>
                         <Text style={styles.cartItemName}>{item.name}</Text>
-                        <Text style={styles.cartItemPrice}>
+                        <Text style={[styles.cartItemPrice, { color: themeColor }]}>
                           GH₵{(item.price * item.quantity).toFixed(2)}
                         </Text>
                       </View>
                       <View style={styles.quantityControls}>
                         <TouchableOpacity
-                          style={styles.quantityButton}
+                          style={[styles.quantityButton, { borderColor: themeColor }]}
                           onPress={() => updateQuantity(item.id, item.quantity - 1)}
                         >
-                          <Ionicons name="remove" size={18} color="#14b8a6" />
+                          <Ionicons name="remove" size={18} color={themeColor} />
                         </TouchableOpacity>
                         <Text style={styles.quantityText}>{item.quantity}</Text>
                         <TouchableOpacity
-                          style={styles.quantityButton}
+                          style={[styles.quantityButton, { borderColor: themeColor }]}
                           onPress={() => updateQuantity(item.id, item.quantity + 1)}
                         >
-                          <Ionicons name="add" size={18} color="#14b8a6" />
+                          <Ionicons name="add" size={18} color={themeColor} />
                         </TouchableOpacity>
                       </View>
                     </View>
@@ -337,17 +362,18 @@ export default function PoolShopScreen() {
                 <View style={styles.cartFooter}>
                   <View style={styles.cartTotal}>
                     <Text style={styles.cartTotalLabel}>Total</Text>
-                    <Text style={styles.cartTotalAmount}>GH₵{getTotalPrice().toFixed(2)}</Text>
+                    <Text style={[styles.cartTotalAmount, { color: themeColor }]}>GH₵{getTotalPrice().toFixed(2)}</Text>
                   </View>
                   <TouchableOpacity
-                    style={styles.checkoutButton}
+                    style={[styles.checkoutButton, { backgroundColor: themeColor }]}
                     onPress={() => {
                       setShowCart(false);
                       setPoolShopCart(cart);
                       router.push("/poolshop/checkout");
                     }}
+                    activeOpacity={0.85}
                   >
-                    <Text style={styles.checkoutButtonText}>Proceed to Checkout</Text>
+                    <Text style={styles.checkoutButtonText}>Proceed to checkout</Text>
                   </TouchableOpacity>
                 </View>
               </>
@@ -355,54 +381,85 @@ export default function PoolShopScreen() {
           </View>
         </View>
       )}
-    </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#f0fdf4",
+    backgroundColor: "#f3f4f6",
   },
   header: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 20,
-    paddingTop: 60,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     paddingBottom: 16,
     backgroundColor: "#ffffff",
     borderBottomWidth: 1,
     borderBottomColor: "#e5e7eb",
+  },
+  headerBackWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "#f3f4f6",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  headerCenter: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
   },
   headerTitle: {
     fontSize: 20,
     fontWeight: "700",
     color: "#111827",
   },
+  headerSubtitle: {
+    fontSize: 13,
+    color: "#6b7280",
+    marginTop: 2,
+  },
   headerRight: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
+    gap: 10,
   },
   myOrdersButton: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 4,
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1.5,
   },
   myOrdersText: {
     fontSize: 13,
     fontWeight: "600",
-    color: "#14b8a6",
+  },
+  cartButtonWrap: {
+    padding: 4,
+  },
+  cartIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    position: "relative",
   },
   cartIconContainer: {
     position: "relative",
   },
   cartBadge: {
     position: "absolute",
-    top: -8,
-    right: -8,
-    backgroundColor: "#dc2626",
+    top: -4,
+    right: -4,
     borderRadius: 10,
     minWidth: 20,
     height: 20,
@@ -474,7 +531,14 @@ const styles = StyleSheet.create({
   },
   productsContent: {
     padding: 16,
-    paddingBottom: 100,
+    paddingBottom: 120,
+  },
+  emptyStateIconWrap: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    alignItems: "center",
+    justifyContent: "center",
   },
   productsGrid: {
     flexDirection: "row",
@@ -484,18 +548,17 @@ const styles = StyleSheet.create({
   productCard: {
     width: "47%",
     backgroundColor: "#ffffff",
-    borderRadius: 12,
+    borderRadius: 16,
     overflow: "hidden",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 2,
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    elevation: 3,
   },
   productImageContainer: {
     width: "100%",
-    height: 140,
-    backgroundColor: "#f0fdf4",
+    height: 120,
     justifyContent: "center",
     alignItems: "center",
     position: "relative",
@@ -532,16 +595,14 @@ const styles = StyleSheet.create({
   productPrice: {
     fontSize: 16,
     fontWeight: "700",
-    color: "#14b8a6",
     marginBottom: 8,
   },
   addToCartButton: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#14b8a6",
     paddingVertical: 10,
-    borderRadius: 8,
+    borderRadius: 10,
     gap: 6,
   },
   addToCartButtonDisabled: {
@@ -579,9 +640,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 8,
     marginTop: 24,
-    paddingVertical: 12,
+    paddingVertical: 14,
     paddingHorizontal: 24,
-    backgroundColor: "#14b8a6",
     borderRadius: 12,
   },
   retryButtonText: {
@@ -653,7 +713,6 @@ const styles = StyleSheet.create({
   cartItemPrice: {
     fontSize: 16,
     fontWeight: "700",
-    color: "#14b8a6",
   },
   quantityControls: {
     flexDirection: "row",
@@ -661,11 +720,10 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   quantityButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: "#14b8a6",
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 1.5,
     justifyContent: "center",
     alignItems: "center",
   },
@@ -679,24 +737,35 @@ const styles = StyleSheet.create({
   emptyCart: {
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 64,
+    paddingVertical: 48,
+    paddingBottom: 120,
   },
-  emptyCartText: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#374151",
-    marginTop: 16,
+  emptyCartIconWrap: {
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  emptyCartTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#111827",
+    marginTop: 20,
+    marginBottom: 4,
   },
   emptyCartSubtext: {
     fontSize: 14,
     color: "#6b7280",
-    marginTop: 8,
+    marginBottom: 24,
+    textAlign: "center",
   },
   browseProductsButton: {
-    marginTop: 24,
-    paddingVertical: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingVertical: 14,
     paddingHorizontal: 24,
-    backgroundColor: "#14b8a6",
     borderRadius: 12,
   },
   browseProductsButtonText: {
@@ -706,6 +775,7 @@ const styles = StyleSheet.create({
   },
   cartFooter: {
     padding: 20,
+    paddingBottom: 120,
     borderTopWidth: 1,
     borderTopColor: "#e5e7eb",
   },
@@ -721,12 +791,10 @@ const styles = StyleSheet.create({
     color: "#111827",
   },
   cartTotalAmount: {
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: "700",
-    color: "#14b8a6",
   },
   checkoutButton: {
-    backgroundColor: "#14b8a6",
     paddingVertical: 16,
     borderRadius: 12,
     alignItems: "center",
