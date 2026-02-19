@@ -1,146 +1,41 @@
-import { useState, useEffect } from "react";
-import {
-  View,
-  Text,
-  ScrollView,
-  TouchableOpacity,
-  StyleSheet,
-  Alert,
-} from "react-native";
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert } from "react-native";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useTheme } from "../src/contexts/ThemeContext";
 
-interface PaymentMethod {
-  id: string;
-  type: "card" | "mobile_money" | "bank";
-  name: string;
-  last4?: string;
-  provider?: string;
-  isDefault: boolean;
-  expiryDate?: string;
-}
+const ACCEPTED_METHODS = [
+  {
+    icon: "card-outline" as const,
+    label: "Debit / Credit Card",
+    sub: "Visa, Mastercard, Verve",
+    color: "#3b82f6",
+  },
+  {
+    icon: "phone-portrait-outline" as const,
+    label: "Mobile Money",
+    sub: "MTN MoMo, Vodafone Cash, AirtelTigo",
+    color: "#f59e0b",
+  },
+  {
+    icon: "business-outline" as const,
+    label: "Bank Transfer",
+    sub: "Direct debit from your bank account",
+    color: "#6366f1",
+  },
+  {
+    icon: "qr-code-outline" as const,
+    label: "USSD",
+    sub: "Pay via bank USSD code",
+    color: "#10b981",
+  },
+];
 
 export default function PaymentMethodsScreen() {
-  const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([
-    {
-      id: "1",
-      type: "card",
-      name: "Visa •••• 4242",
-      last4: "4242",
-      isDefault: true,
-      expiryDate: "12/25",
-    },
-    {
-      id: "2",
-      type: "mobile_money",
-      name: "MTN Mobile Money",
-      provider: "MTN",
-      isDefault: false,
-    },
-    {
-      id: "3",
-      type: "bank",
-      name: "Bank Account",
-      provider: "GCB Bank",
-      isDefault: false,
-    },
-  ]);
-
-  const handleAddPaymentMethod = () => {
-    Alert.alert(
-      "Add Payment Method",
-      "Choose a payment method type",
-      [
-        {
-          text: "Credit/Debit Card",
-          onPress: () => {
-            // Navigate to add card screen
-            Alert.alert("Add Card", "Card addition feature coming soon!");
-          },
-        },
-        {
-          text: "Mobile Money",
-          onPress: () => {
-            // Navigate to add mobile money screen
-            Alert.alert("Add Mobile Money", "Mobile money addition feature coming soon!");
-          },
-        },
-        {
-          text: "Bank Account",
-          onPress: () => {
-            // Navigate to add bank account screen
-            Alert.alert("Add Bank Account", "Bank account addition feature coming soon!");
-          },
-        },
-        {
-          text: "Cancel",
-          style: "cancel",
-        },
-      ]
-    );
-  };
-
-  const handleSetDefault = (id: string) => {
-    setPaymentMethods((prev) =>
-      prev.map((method) => ({
-        ...method,
-        isDefault: method.id === id,
-      }))
-    );
-    Alert.alert("Success", "Default payment method updated");
-  };
-
-  const handleDelete = (id: string, name: string) => {
-    Alert.alert(
-      "Delete Payment Method",
-      `Are you sure you want to delete ${name}?`,
-      [
-        {
-          text: "Cancel",
-          style: "cancel",
-        },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: () => {
-            setPaymentMethods((prev) => prev.filter((method) => method.id !== id));
-            Alert.alert("Success", "Payment method deleted");
-          },
-        },
-      ]
-    );
-  };
-
-  const getPaymentIcon = (type: PaymentMethod["type"]) => {
-    switch (type) {
-      case "card":
-        return "card-outline";
-      case "mobile_money":
-        return "phone-portrait-outline";
-      case "bank":
-        return "business-outline";
-      default:
-        return "wallet-outline";
-    }
-  };
-
-  const getPaymentColor = (type: PaymentMethod["type"]) => {
-    switch (type) {
-      case "card":
-        return "#14b8a6";
-      case "mobile_money":
-        return "#f59e0b";
-      case "bank":
-        return "#3b82f6";
-      default:
-        return "#6b7280";
-    }
-  };
+  const { themeColor } = useTheme();
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
-      {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()}>
           <Ionicons name="arrow-back" size={24} color="#111827" />
@@ -149,276 +44,182 @@ export default function PaymentMethodsScreen() {
         <View style={{ width: 24 }} />
       </View>
 
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Add Payment Method Button */}
-        <TouchableOpacity
-          style={styles.addButton}
-          onPress={handleAddPaymentMethod}
-          activeOpacity={0.7}
-        >
-          <Ionicons name="add-circle-outline" size={24} color="#14b8a6" />
-          <Text style={styles.addButtonText}>Add Payment Method</Text>
-        </TouchableOpacity>
+      <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
 
-        {/* Payment Methods List */}
-        {paymentMethods.length > 0 ? (
-          <View style={styles.methodsList}>
-            {paymentMethods.map((method) => (
-              <View key={method.id} style={styles.methodCard}>
-                <View style={styles.methodHeader}>
-                  <View style={styles.methodLeft}>
-                    <View
-                      style={[
-                        styles.methodIconContainer,
-                        { backgroundColor: getPaymentColor(method.type) + "15" },
-                      ]}
-                    >
-                      <Ionicons
-                        name={getPaymentIcon(method.type) as any}
-                        size={24}
-                        color={getPaymentColor(method.type)}
-                      />
-                    </View>
-                    <View style={styles.methodInfo}>
-                      <Text style={styles.methodName}>{method.name}</Text>
-                      {method.provider && (
-                        <Text style={styles.methodProvider}>{method.provider}</Text>
-                      )}
-                      {method.expiryDate && (
-                        <Text style={styles.methodExpiry}>
-                          Expires {method.expiryDate}
-                        </Text>
-                      )}
-                    </View>
-                  </View>
-                  {method.isDefault && (
-                    <View style={styles.defaultBadge}>
-                      <Text style={styles.defaultBadgeText}>Default</Text>
-                    </View>
-                  )}
-                </View>
+        {/* Paystack banner */}
+        <View style={[styles.poweredCard, { borderLeftColor: themeColor }]}>
+          <View style={styles.poweredRow}>
+            <View style={[styles.paystackIcon, { backgroundColor: `${themeColor}18` }]}>
+              <Ionicons name="shield-checkmark" size={28} color={themeColor} />
+            </View>
+            <View style={styles.poweredText}>
+              <Text style={styles.poweredTitle}>Powered by Paystack</Text>
+              <Text style={styles.poweredSub}>
+                All payments are securely processed by Paystack, Africa's leading payment gateway.
+              </Text>
+            </View>
+          </View>
+        </View>
 
-                <View style={styles.methodActions}>
-                  {!method.isDefault && (
-                    <TouchableOpacity
-                      style={styles.actionButton}
-                      onPress={() => handleSetDefault(method.id)}
-                    >
-                      <Ionicons name="star-outline" size={18} color="#14b8a6" />
-                      <Text style={styles.actionButtonText}>Set as Default</Text>
-                    </TouchableOpacity>
-                  )}
-                  <TouchableOpacity
-                    style={[styles.actionButton, styles.deleteButton]}
-                    onPress={() => handleDelete(method.id, method.name)}
-                  >
-                    <Ionicons name="trash-outline" size={18} color="#ef4444" />
-                    <Text style={[styles.actionButtonText, styles.deleteButtonText]}>
-                      Delete
-                    </Text>
-                  </TouchableOpacity>
-                </View>
+        {/* Accepted methods */}
+        <Text style={styles.sectionTitle}>Accepted Payment Methods</Text>
+        {ACCEPTED_METHODS.map((m, i) => (
+          <View key={i} style={styles.methodCard}>
+            <View style={[styles.methodIcon, { backgroundColor: `${m.color}18` }]}>
+              <Ionicons name={m.icon} size={24} color={m.color} />
+            </View>
+            <View style={styles.methodInfo}>
+              <Text style={styles.methodLabel}>{m.label}</Text>
+              <Text style={styles.methodSub}>{m.sub}</Text>
+            </View>
+            <Ionicons name="checkmark-circle" size={20} color="#16a34a" />
+          </View>
+        ))}
+
+        {/* How it works */}
+        <Text style={styles.sectionTitle}>How It Works</Text>
+        <View style={styles.stepsCard}>
+          {[
+            { step: "1", text: "Go to Billing and select an invoice to pay." },
+            { step: "2", text: "Choose your preferred payment method." },
+            { step: "3", text: "Complete payment on Paystack's secure page." },
+            { step: "4", text: "Your invoice is marked paid instantly." },
+          ].map((s) => (
+            <View key={s.step} style={styles.stepRow}>
+              <View style={[styles.stepBubble, { backgroundColor: themeColor }]}>
+                <Text style={styles.stepNum}>{s.step}</Text>
               </View>
-            ))}
-          </View>
-        ) : (
-          <View style={styles.emptyState}>
-            <Ionicons name="wallet-outline" size={64} color="#d1d5db" />
-            <Text style={styles.emptyText}>No payment methods</Text>
-            <Text style={styles.emptySubtext}>
-              Add a payment method to make payments faster
-            </Text>
-          </View>
-        )}
+              <Text style={styles.stepText}>{s.text}</Text>
+            </View>
+          ))}
+        </View>
 
-        {/* Info Section */}
-        <View style={styles.infoCard}>
-          <Ionicons name="information-circle-outline" size={20} color="#14b8a6" />
-          <Text style={styles.infoText}>
-            Your payment methods are securely stored and encrypted. You can set a
-            default method for faster checkout.
+        {/* Security note */}
+        <View style={styles.securityCard}>
+          <Ionicons name="lock-closed-outline" size={20} color="#16a34a" />
+          <Text style={styles.securityText}>
+            Your payment details are never stored on our servers. All transactions are encrypted with 256-bit SSL and PCI-DSS compliant.
           </Text>
         </View>
+
+        {/* CTA */}
+        <TouchableOpacity
+          style={[styles.billingBtn, { backgroundColor: themeColor }]}
+          onPress={() => router.push("/billing")}
+          activeOpacity={0.8}
+        >
+          <Ionicons name="document-text-outline" size={18} color="#fff" />
+          <Text style={styles.billingBtnText}>View Billing & Invoices</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.supportBtn}
+          onPress={() => Alert.alert("Support", "Contact your pool service provider for payment queries.")}
+        >
+          <Text style={[styles.supportBtnText, { color: themeColor }]}>Need help? Contact Support</Text>
+        </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#f9fafb",
-  },
+  container: { flex: 1, backgroundColor: "#f3f4f6" },
   header: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 20,
-    paddingVertical: 16,
-    backgroundColor: "#ffffff",
+    paddingVertical: 14,
+    backgroundColor: "#fff",
     borderBottomWidth: 1,
     borderBottomColor: "#e5e7eb",
   },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: "700",
-    color: "#111827",
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    padding: 20,
-    paddingBottom: 40,
-  },
-  addButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    backgroundColor: "#ffffff",
-    paddingVertical: 16,
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: "#14b8a6",
-    borderStyle: "dashed",
-    marginBottom: 20,
-  },
-  addButtonText: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#14b8a6",
-  },
-  methodsList: {
-    gap: 12,
-    marginBottom: 20,
-  },
-  methodCard: {
-    backgroundColor: "#ffffff",
-    borderRadius: 12,
-    padding: 16,
+  headerTitle: { fontSize: 20, fontWeight: "700", color: "#111827" },
+  scroll: { flex: 1 },
+  scrollContent: { padding: 20, paddingBottom: 60 },
+
+  poweredCard: {
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    padding: 18,
+    marginBottom: 24,
+    borderLeftWidth: 4,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.06,
     shadowRadius: 8,
     elevation: 2,
   },
-  methodHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
+  poweredRow: { flexDirection: "row", alignItems: "flex-start", gap: 14 },
+  paystackIcon: { width: 52, height: 52, borderRadius: 14, justifyContent: "center", alignItems: "center" },
+  poweredText: { flex: 1 },
+  poweredTitle: { fontSize: 16, fontWeight: "700", color: "#111827", marginBottom: 4 },
+  poweredSub: { fontSize: 13, color: "#6b7280", lineHeight: 19 },
+
+  sectionTitle: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#9ca3af",
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
     marginBottom: 12,
   },
-  methodLeft: {
+
+  methodCard: {
     flexDirection: "row",
     alignItems: "center",
-    flex: 1,
+    backgroundColor: "#fff",
+    borderRadius: 14,
+    padding: 16,
+    marginBottom: 10,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 1,
   },
-  methodIconContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    justifyContent: "center",
-    alignItems: "center",
-    marginRight: 12,
+  methodIcon: { width: 48, height: 48, borderRadius: 12, justifyContent: "center", alignItems: "center", marginRight: 14 },
+  methodInfo: { flex: 1 },
+  methodLabel: { fontSize: 15, fontWeight: "600", color: "#111827" },
+  methodSub: { fontSize: 12, color: "#9ca3af", marginTop: 2 },
+
+  stepsCard: {
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 16,
+    gap: 16,
   },
-  methodInfo: {
-    flex: 1,
-  },
-  methodName: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#111827",
-    marginBottom: 4,
-  },
-  methodProvider: {
-    fontSize: 14,
-    color: "#6b7280",
-    marginBottom: 2,
-  },
-  methodExpiry: {
-    fontSize: 12,
-    color: "#9ca3af",
-  },
-  defaultBadge: {
-    backgroundColor: "#14b8a6",
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  defaultBadgeText: {
-    fontSize: 11,
-    fontWeight: "600",
-    color: "#ffffff",
-  },
-  methodActions: {
-    flexDirection: "row",
-    gap: 12,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: "#f3f4f6",
-  },
-  actionButton: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    paddingVertical: 10,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "#14b8a6",
-    backgroundColor: "#ffffff",
-  },
-  deleteButton: {
-    borderColor: "#fee2e2",
-    backgroundColor: "#ffffff",
-  },
-  actionButtonText: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: "#14b8a6",
-  },
-  deleteButtonText: {
-    color: "#ef4444",
-  },
-  emptyState: {
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 64,
-  },
-  emptyText: {
-    fontSize: 18,
-    fontWeight: "600",
-    color: "#111827",
-    marginTop: 16,
-    marginBottom: 8,
-  },
-  emptySubtext: {
-    fontSize: 14,
-    color: "#6b7280",
-    textAlign: "center",
-    paddingHorizontal: 40,
-  },
-  infoCard: {
+  stepRow: { flexDirection: "row", alignItems: "center", gap: 14 },
+  stepBubble: { width: 30, height: 30, borderRadius: 15, justifyContent: "center", alignItems: "center" },
+  stepNum: { fontSize: 14, fontWeight: "700", color: "#fff" },
+  stepText: { flex: 1, fontSize: 14, color: "#374151", lineHeight: 20 },
+
+  securityCard: {
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: 12,
+    gap: 10,
     backgroundColor: "#f0fdf4",
+    borderRadius: 14,
     padding: 16,
-    borderRadius: 12,
+    marginBottom: 24,
     borderWidth: 1,
     borderColor: "#d1fae5",
   },
-  infoText: {
-    flex: 1,
-    fontSize: 13,
-    color: "#374151",
-    lineHeight: 18,
-  },
-});
+  securityText: { flex: 1, fontSize: 13, color: "#374151", lineHeight: 19 },
 
+  billingBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 16,
+    borderRadius: 14,
+    marginBottom: 12,
+  },
+  billingBtnText: { fontSize: 16, fontWeight: "700", color: "#fff" },
+
+  supportBtn: { alignItems: "center", paddingVertical: 8 },
+  supportBtnText: { fontSize: 14, fontWeight: "600" },
+});

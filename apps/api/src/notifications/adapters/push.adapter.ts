@@ -233,6 +233,58 @@ export class PushAdapter {
   }
 
   /**
+   * Broadcast push notification to all devices in an org (clients, carers, or both)
+   */
+  async broadcastToOrg(
+    orgId: string,
+    title: string,
+    body: string,
+    audience: "all" | "clients" | "carers",
+    data?: Record<string, any>
+  ): Promise<{ sent: number; failed: number; total: number }> {
+    // Collect userIds based on audience
+    const userIdSet = new Set<string>();
+
+    if (audience === "clients" || audience === "all") {
+      const clients = await prisma.client.findMany({
+        where: { orgId, userId: { not: null } },
+        select: { userId: true },
+      });
+      clients.forEach((c) => c.userId && userIdSet.add(c.userId));
+    }
+
+    if (audience === "carers" || audience === "all") {
+      const carers = await prisma.carer.findMany({
+        where: { orgId, userId: { not: null } },
+        select: { userId: true },
+      });
+      carers.forEach((c) => c.userId && userIdSet.add(c.userId));
+    }
+
+    if (userIdSet.size === 0) {
+      return { sent: 0, failed: 0, total: 0 };
+    }
+
+    const deviceTokens = await prisma.deviceToken.findMany({
+      where: {
+        orgId,
+        userId: { in: Array.from(userIdSet) },
+        platform: { in: ["ios", "android"] },
+      },
+    });
+
+    if (deviceTokens.length === 0) {
+      return { sent: 0, failed: 0, total: 0 };
+    }
+
+    const messages = deviceTokens.map((dt) => ({ token: dt.token, title, body, data }));
+    const results = await this.sendBulk(messages, orgId);
+
+    const failed = results.filter((r) => r.startsWith("failed_")).length;
+    return { sent: results.length - failed, failed, total: deviceTokens.length };
+  }
+
+  /**
    * Handle invalid device tokens by removing them from the database
    */
   private async handleInvalidToken(token: string): Promise<void> {

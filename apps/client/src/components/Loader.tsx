@@ -1,6 +1,5 @@
-import { View, Image, ActivityIndicator, StyleSheet, Text } from "react-native";
+import { View, Image, ActivityIndicator, StyleSheet } from "react-native";
 import { useState, useEffect } from "react";
-import { Ionicons } from "@expo/vector-icons";
 import { api } from "../lib/api-client";
 import { fixUrlForMobile } from "../lib/network-utils";
 import { useTheme } from "../contexts/ThemeContext";
@@ -49,15 +48,8 @@ export default function Loader() {
           resizeMode="contain"
           onError={() => setLogoUrl(null)}
         />
-      ) : (
-        <View style={styles.logoPlaceholder}>
-          <View style={[styles.iconContainer, { backgroundColor: themeColor }]}>
-            <Ionicons name="water" size={64} color="#ffffff" />
-          </View>
-          <Text style={[styles.appName, { color: themeColor }]}>PoolCare</Text>
-        </View>
-      )}
-      <ActivityIndicator size="large" color={themeColor} style={styles.spinner} />
+      ) : null}
+      <ActivityIndicator size="large" color="#999999" style={styles.spinner} />
     </View>
   );
 }
@@ -73,28 +65,6 @@ const styles = StyleSheet.create({
     width: 120,
     height: 120,
     marginBottom: 40,
-  },
-  logoPlaceholder: {
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: 40,
-  },
-  iconContainer: {
-    width: 100,
-    height: 100,
-    borderRadius: 24,
-    justifyContent: "center",
-    alignItems: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    elevation: 8,
-  },
-  appName: {
-    fontSize: 24,
-    fontWeight: "bold",
-    marginTop: 16,
   },
   spinner: {
     marginTop: 20,

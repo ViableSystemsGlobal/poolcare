@@ -10,7 +10,7 @@
     "splash": {
       "image": "./assets/splash.png",
       "resizeMode": "contain",
-      "backgroundColor": "#14b8a6"
+      "backgroundColor": "#ffffff"
     },
     "assetBundlePatterns": ["**/*"],
     "ios": {
@@ -23,7 +23,7 @@
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#14b8a6"
+        "backgroundColor": "#ffffff"
       },
       "package": "com.poolcare.carer",
       "config": {
@@ -54,6 +54,13 @@
         "expo-camera",
         {
           "cameraPermission": "Allow PoolCare to access your camera to take photos during visits."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow PoolCare to access your photo library to update your profile photo.",
+          "cameraPermission": "Allow PoolCare to access your camera to update your profile photo."
         }
       ]
     ]

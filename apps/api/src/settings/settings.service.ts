@@ -51,10 +51,10 @@ export class SettingsService {
 
     if (!org) {
       return {
-        organizationName: "PoolCare",
+        organizationName: "",
         logoUrl: null,
         themeColor: "teal",
-        primaryColorHex: "#0d9488",
+        primaryColorHex: "#6b7280",
       };
     }
 

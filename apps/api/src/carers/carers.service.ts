@@ -115,23 +115,23 @@ export class CarersService {
           }
           throw err;
         }
-
-        // Add membership if not exists
-        await prisma.orgMember.upsert({
-          where: {
-            orgId_userId: {
-              orgId,
-              userId,
-            },
-          },
-          create: {
-            orgId,
-            userId,
-            role: "CARER",
-          },
-          update: {},
-        });
       }
+
+      // Always ensure the user has a CARER membership (covers both new and existing users)
+      await prisma.orgMember.upsert({
+        where: {
+          orgId_userId: {
+            orgId,
+            userId: userId!,
+          },
+        },
+        create: {
+          orgId,
+          userId: userId!,
+          role: "CARER",
+        },
+        update: { role: "CARER" },
+      });
     }
 
     const carer = await prisma.carer.create({
@@ -203,6 +203,15 @@ export class CarersService {
         user: true,
       },
     });
+
+    // Ensure the carer's user has a CARER membership (auto-heals missing memberships)
+    if (updated.userId) {
+      await prisma.orgMember.upsert({
+        where: { orgId_userId: { orgId, userId: updated.userId } },
+        create: { orgId, userId: updated.userId, role: "CARER" },
+        update: { role: "CARER" },
+      });
+    }
 
     return updated;
   }

@@ -29,23 +29,17 @@ export class SuppliesController {
     @CurrentUser() user: { org_id: string; sub: string; role: string },
     @Body() dto: CreateSupplyRequestDto
   ) {
-    // If carer, use their carer profile ID
+    // Resolve carerId: carers use their own profile; admins/managers must supply a carerId in the body
     let carerId: string;
-    if (user.role === "CARER") {
-      const carer = await prisma.carer.findFirst({
-        where: {
-          userId: user.sub,
-          orgId: user.org_id,
-        },
-      });
-      if (!carer) {
-        throw new BadRequestException("Carer profile not found");
-      }
+    const carer = await prisma.carer.findFirst({
+      where: { userId: user.sub, orgId: user.org_id },
+    });
+    if (carer) {
       carerId = carer.id;
+    } else if ((dto as any).carerId) {
+      carerId = (dto as any).carerId;
     } else {
-      // For admins/managers creating on behalf of a carer, we'd need carerId in DTO
-      // For now, we'll require carerId in a separate field or throw error
-      throw new BadRequestException("Carers must create their own supply requests. Use POST /supplies/requests with your carer profile.");
+      throw new BadRequestException("No carer profile found. Please provide a carerId.");
     }
 
     return this.suppliesService.create(user.org_id, carerId, dto);

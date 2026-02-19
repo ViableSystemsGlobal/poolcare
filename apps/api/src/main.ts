@@ -3,6 +3,7 @@ import { ValidationPipe } from "@nestjs/common";
 import { AppModule } from "./app.module";
 import { HttpExceptionFilter } from "./core/http-exception.filter";
 import * as express from "express";
+import * as os from "os";
 
 async function bootstrap() {
   try {
@@ -78,10 +79,19 @@ async function bootstrap() {
     const port = process.env.PORT || 4000;
     // Listen on all network interfaces (0.0.0.0) to allow mobile app connections
     await app.listen(port, '0.0.0.0');
+    const ifaces = os.networkInterfaces();
+    const lanIps: string[] = [];
+    for (const name of Object.keys(ifaces)) {
+      for (const iface of ifaces[name] || []) {
+        if (iface.family === 'IPv4' && !iface.internal) lanIps.push(iface.address);
+      }
+    }
     console.log(`✅ API running on http://localhost:${port}/api`);
     console.log(`✅ API accessible from network on port ${port}`);
-    console.log(`💡 For mobile apps, use your network IP (e.g., http://172.20.10.3:${port}/api)`);
-    console.log(`💡 Set EXPO_PUBLIC_NETWORK_IP in your mobile app's .env file`);
+    if (lanIps.length) {
+      console.log(`💡 For mobile: set EXPO_PUBLIC_API_URL=http://${lanIps[0]}:${port}/api in apps/client/.env`);
+      console.log(`💡 Or set EXPO_PUBLIC_NETWORK_IP=${lanIps[0]} in apps/client/.env`);
+    }
   } catch (error) {
     console.error('❌ Failed to start API server:', error);
     process.exit(1);

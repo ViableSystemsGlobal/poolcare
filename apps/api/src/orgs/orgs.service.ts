@@ -174,6 +174,16 @@ export class OrgsService {
 
     if (!user) throw new NotFoundException("User not found");
 
+    // Resolve display name: User.name → Client.name → Carer.name fallback
+    let resolvedName = user.name;
+    if (!resolvedName) {
+      const [relatedClient, relatedCarer] = await Promise.all([
+        prisma.client.findFirst({ where: { userId, orgId }, select: { name: true } }).catch(() => null),
+        prisma.carer.findFirst({ where: { userId, orgId }, select: { name: true } }).catch(() => null),
+      ]);
+      resolvedName = relatedClient?.name || relatedCarer?.name || null;
+    }
+
     return {
       org: {
         id: org.id,
@@ -181,6 +191,7 @@ export class OrgsService {
       },
       user: {
         ...user,
+        name: resolvedName,
         role,
       },
     };

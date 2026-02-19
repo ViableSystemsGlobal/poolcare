@@ -14,6 +14,7 @@ import {
   TouchableWithoutFeedback,
   Keyboard,
   ActivityIndicator,
+  Alert,
 } from "react-native";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -32,6 +33,8 @@ interface Visit {
   type: "routine" | "emergency" | "repair";
   canReschedule: boolean;
   canCancel: boolean;
+  windowStartIso?: string;
+  windowEndIso?: string;
 }
 
 export default function VisitsPage() {
@@ -72,6 +75,8 @@ export default function VisitsPage() {
         const windowStart = new Date(job.windowStart);
         const windowEnd = new Date(job.windowEnd);
         
+        const jobType: "routine" | "emergency" | "repair" =
+          job.quoteId && !job.planId ? "repair" : "routine";
         return {
           id: job.id,
           date: windowStart.toISOString().split('T')[0],
@@ -80,9 +85,11 @@ export default function VisitsPage() {
           pool: pool.name || "Unknown Pool",
           address: pool.address || "",
           carer: job.assignedCarer?.name,
-          type: "routine" as const, // TODO: Determine from job type
+          type: jobType,
           canReschedule: true,
           canCancel: true,
+          windowStartIso: job.windowStart,
+          windowEndIso: job.windowEnd,
         };
       });
       
@@ -109,6 +116,8 @@ export default function VisitsPage() {
         const windowStart = job.windowStart ? new Date(job.windowStart) : new Date(visit.createdAt);
         const windowEnd = job.windowEnd ? new Date(job.windowEnd) : new Date(visit.createdAt);
         
+        const pastJobType: "routine" | "emergency" | "repair" =
+          job.quoteId && !job.planId ? "repair" : "routine";
         return {
           id: visit.id,
           date: windowStart.toISOString().split('T')[0],
@@ -117,7 +126,7 @@ export default function VisitsPage() {
           pool: pool.name || "Unknown Pool",
           address: pool.address || "",
           carer: job.assignedCarer?.name,
-          type: "routine" as const, // TODO: Determine from job type
+          type: pastJobType,
           canReschedule: false,
           canCancel: false,
         };
@@ -159,27 +168,55 @@ export default function VisitsPage() {
     setCancelModalVisible(true);
   };
 
-  const confirmReschedule = () => {
-    if (selectedVisit) {
-      // Update visit with new date/time
+  const confirmReschedule = async () => {
+    if (!selectedVisit) return;
+
+    // Parse newDate (YYYY-MM-DD) and newTime (HH:MM–HH:MM or HH:MM - HH:MM)
+    const timeParts = newTime.split(/[–\-]/).map((t) => t.trim());
+    const startTimePart = timeParts[0] || "09:00";
+    const endTimePart = timeParts[1] || "10:00";
+
+    // Build ISO timestamps — use the original window duration if time parsing fails
+    let windowStartIso: string;
+    let windowEndIso: string;
+    try {
+      windowStartIso = new Date(`${newDate}T${startTimePart}:00`).toISOString();
+      windowEndIso = new Date(`${newDate}T${endTimePart}:00`).toISOString();
+      if (isNaN(new Date(windowStartIso).getTime())) throw new Error("invalid");
+    } catch {
+      Alert.alert("Invalid date/time", "Please enter date as YYYY-MM-DD and time as HH:MM–HH:MM");
+      return;
+    }
+
+    try {
+      await api.clientRescheduleJob(selectedVisit.id, { windowStart: windowStartIso, windowEnd: windowEndIso });
       setUpcomingVisits((prev) =>
         prev.map((v) =>
           v.id === selectedVisit.id
-            ? { ...v, date: newDate, time: newTime }
+            ? { ...v, date: newDate, time: newTime, windowStartIso, windowEndIso }
             : v
         )
       );
       setRescheduleModalVisible(false);
       setSelectedVisit(null);
+      Alert.alert("Rescheduled", "Your visit has been rescheduled successfully.");
+    } catch (error: any) {
+      Alert.alert("Error", error.message || "Failed to reschedule visit. Please try again.");
     }
   };
 
-  const confirmCancel = () => {
-    if (selectedVisit) {
-      // Move visit to cancelled
+  const confirmCancel = async () => {
+    if (!selectedVisit) return;
+
+    try {
+      await api.clientCancelJob(selectedVisit.id);
       setUpcomingVisits((prev) => prev.filter((v) => v.id !== selectedVisit.id));
       setCancelModalVisible(false);
       setSelectedVisit(null);
+      Alert.alert("Cancelled", "Your visit has been cancelled.");
+    } catch (error: any) {
+      setCancelModalVisible(false);
+      Alert.alert("Error", error.message || "Failed to cancel visit. Please try again.");
     }
   };
 

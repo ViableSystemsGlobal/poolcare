@@ -22,13 +22,18 @@ export const getNetworkIp = (): string => {
  */
 export const fixUrlForMobile = (url: string | null | undefined): string => {
   if (!url) return "";
-  
-  // Only replace on mobile platforms
+
+  // iOS Simulator (or explicit localhost mode): keep localhost as-is — it works
+  if (process.env.EXPO_PUBLIC_USE_LOCALHOST === "true") {
+    return url;
+  }
+
+  // On native, replace localhost with the Mac's LAN IP
   if (Platform.OS !== "web" && url.includes("localhost")) {
     const networkIp = getNetworkIp();
     return url.replace("localhost", networkIp);
   }
-  
+
   return url;
 };
 

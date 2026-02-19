@@ -56,6 +56,69 @@ export class ClientsController {
     return this.clientsService.create(user.org_id, dto);
   }
 
+  // ========================
+  // SELF-PROFILE (me) – must come before :id routes
+  // ========================
+
+  @Get("me")
+  async getMyProfile(@CurrentUser() user: { org_id: string; sub: string }) {
+    return this.clientsService.getMyProfile(user.org_id, user.sub);
+  }
+
+  @Patch("me")
+  async updateMyProfile(
+    @CurrentUser() user: { org_id: string; sub: string },
+    @Body() dto: { name?: string; phone?: string; email?: string; imageUrl?: string }
+  ) {
+    return this.clientsService.updateMyProfile(user.org_id, user.sub, dto);
+  }
+
+  @Post("me/device-token")
+  async registerMyDeviceToken(
+    @CurrentUser() user: { org_id: string; sub: string },
+    @Body() dto: { token: string; platform: string }
+  ) {
+    return this.clientsService.registerMyDeviceToken(user.org_id, user.sub, dto);
+  }
+
+  @Get("me/notifications")
+  async getMyNotifications(
+    @CurrentUser() user: { org_id: string; sub: string },
+    @Query("page") page?: string,
+    @Query("limit") limit?: string
+  ) {
+    return this.clientsService.getMyNotifications(
+      user.org_id,
+      user.sub,
+      page ? parseInt(page) : 1,
+      limit ? parseInt(limit) : 30
+    );
+  }
+
+  @Post("me/upload-photo")
+  @UseInterceptors(FileInterceptor("photo"))
+  async uploadMyPhoto(
+    @CurrentUser() user: { org_id: string; sub: string },
+    @UploadedFile(
+      new ParseFilePipe({
+        fileIsRequired: true,
+        validators: [
+          new MaxFileSizeValidator({ maxSize: 5 * 1024 * 1024 }),
+          new FileTypeValidator({ fileType: /(jpeg|jpg|png|webp)$/ }),
+        ],
+      })
+    )
+    file: Express.Multer.File
+  ) {
+    const imageUrl = await this.filesService.uploadImage(user.org_id, file, "pool_image", user.org_id);
+    await this.clientsService.updateMyProfile(user.org_id, user.sub, { imageUrl });
+    return { imageUrl };
+  }
+
+  // ========================
+  // BY ID – must come after static routes
+  // ========================
+
   @Get(":id")
   async getOne(
     @CurrentUser() user: { org_id: string; role: string; sub: string },

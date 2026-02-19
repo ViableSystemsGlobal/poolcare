@@ -12,76 +12,107 @@ import { useLocalSearchParams, router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { api } from "../../src/lib/api-client";
+import { useTheme } from "../../src/contexts/ThemeContext";
+
+interface LineItem {
+  label: string;
+  qty: number;
+  unitPriceCents: number;
+  taxPct: number;
+  sku?: string;
+}
 
 interface Quote {
   id: string;
   reference: string;
-  amount: number;
-  currency: string;
   status: "pending" | "approved" | "rejected";
-  description?: string;
-  createdAt: string;
-  pool?: {
-    id: string;
-    name: string;
-  };
-  items?: Array<{
-    label: string;
-    qty: number;
-    unitPrice: number;
-    description?: string;
-  }>;
+  currency: string;
+  subtotalCents: number;
+  taxCents: number;
+  totalCents: number;
+  items: LineItem[];
   notes?: string;
-  validUntil?: string;
+  createdAt: string;
+  approvedAt?: string;
+  rejectedAt?: string;
+  rejectionReason?: string;
+  pool?: { id: string; name: string; address?: string };
+  issue?: { id: string; type: string; severity: string; description?: string };
 }
+
+const fmtCents = (cents: number, currency = "GHS") => {
+  const symbol = currency === "GHS" ? "GH₵" : currency;
+  return `${symbol}${(cents / 100).toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+};
+
+const fmtDate = (d?: string) =>
+  d
+    ? new Date(d).toLocaleDateString("en-GB", {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+      })
+    : null;
+
+const SEVERITY_META: Record<string, { label: string; color: string; bg: string }> = {
+  low:      { label: "Low",      color: "#16a34a", bg: "#f0fdf4" },
+  medium:   { label: "Medium",   color: "#d97706", bg: "#fffbeb" },
+  high:     { label: "High",     color: "#dc2626", bg: "#fef2f2" },
+  critical: { label: "Critical", color: "#7c3aed", bg: "#f5f3ff" },
+};
 
 export default function QuoteDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const { themeColor } = useTheme();
   const [quote, setQuote] = useState<Quote | null>(null);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
 
-  useEffect(() => {
-    loadQuote();
-  }, [id]);
+  useEffect(() => { loadQuote(); }, [id]);
 
   const loadQuote = async () => {
     try {
       setLoading(true);
-      
-      const quoteData = await api.getQuote(id);
-      
-      // Transform quote data
-      const amount = quoteData.totalCents ? quoteData.totalCents / 100 : (quoteData.amount || 0);
-      
-      // Transform line items
-      const items = (quoteData.lineItems || []).map((item: any) => ({
-        label: item.description || item.label || "Item",
-        qty: item.quantity || 1,
-        unitPrice: item.unitPriceCents ? item.unitPriceCents / 100 : (item.unitPrice || 0),
-        description: item.notes || item.description,
-      }));
+      const q: any = await api.getQuote(id);
 
-      const transformedQuote: Quote = {
-        id: quoteData.id,
-        reference: quoteData.reference || `Quote #${quoteData.id.slice(0, 8)}`,
-        amount,
-        currency: quoteData.currency || "GHS",
-        status: quoteData.status || "pending",
-        description: quoteData.description || quoteData.notes,
-        createdAt: quoteData.createdAt || new Date().toISOString().split('T')[0],
-        pool: quoteData.pool ? {
-          id: quoteData.pool.id || "",
-          name: quoteData.pool.name || "Unknown Pool",
-        } : undefined,
-        items: items.length > 0 ? items : undefined,
-        notes: quoteData.notes || quoteData.description,
-        validUntil: quoteData.validUntil || quoteData.expiresAt,
-      };
+      const rawItems: any[] = Array.isArray(q.items) ? q.items : [];
 
-      setQuote(transformedQuote);
-    } catch (error) {
-      console.error("Error loading quote:", error);
+      setQuote({
+        id: q.id,
+        reference: q.reference || `QUO-${q.id.slice(0, 8).toUpperCase()}`,
+        status: q.status || "pending",
+        currency: q.currency || "GHS",
+        subtotalCents: q.subtotalCents ?? 0,
+        taxCents: q.taxCents ?? 0,
+        totalCents: q.totalCents ?? 0,
+        items: rawItems.map((item: any) => ({
+          label: item.label || item.description || "Item",
+          qty: item.qty || 1,
+          unitPriceCents: item.unitPriceCents ?? Math.round((item.unitPrice || 0) * 100),
+          taxPct: item.taxPct ?? 0,
+          sku: item.sku,
+        })),
+        notes: q.notes,
+        createdAt: q.createdAt,
+        approvedAt: q.approvedAt,
+        rejectedAt: q.rejectedAt,
+        rejectionReason: q.rejectionReason,
+        pool: q.pool
+          ? { id: q.pool.id, name: q.pool.name, address: q.pool.address }
+          : undefined,
+        issue: q.issue
+          ? {
+              id: q.issue.id,
+              type: q.issue.type,
+              severity: q.issue.severity?.toLowerCase() || "medium",
+              description: q.issue.description,
+            }
+          : undefined,
+      });
+    } catch (error: any) {
       Alert.alert("Error", "Failed to load quote details. Please try again.");
       setQuote(null);
     } finally {
@@ -92,30 +123,18 @@ export default function QuoteDetailScreen() {
   const handleApprove = () => {
     Alert.alert(
       "Approve Quote",
-      "Are you sure you want to approve this quote? A service will be scheduled upon approval.",
+      `Approve ${quote?.reference} for ${fmtCents(quote?.totalCents ?? 0, quote?.currency)}? A service will be scheduled upon approval.`,
       [
-        {
-          text: "Cancel",
-          style: "cancel",
-        },
+        { text: "Cancel", style: "cancel" },
         {
           text: "Approve",
           onPress: async () => {
             try {
               setProcessing(true);
               await api.approveQuote(quote!.id);
-              Alert.alert(
-                "Quote Approved",
-                "Your quote has been approved. A service will be scheduled soon.",
-                [
-                  {
-                    text: "OK",
-                    onPress: () => router.back(),
-                  },
-                ]
-              );
+              setQuote((q) => q ? { ...q, status: "approved", approvedAt: new Date().toISOString() } : q);
+              Alert.alert("Approved!", "Your quote has been approved. We'll be in touch to schedule the service.");
             } catch (error: any) {
-              console.error("Error approving quote:", error);
               Alert.alert("Error", error.message || "Failed to approve quote. Please try again.");
             } finally {
               setProcessing(false);
@@ -129,12 +148,9 @@ export default function QuoteDetailScreen() {
   const handleReject = () => {
     Alert.alert(
       "Reject Quote",
-      "Are you sure you want to reject this quote? You can request a new quote if needed.",
+      "Are you sure you want to reject this quote? You can request a revised quote from your service provider.",
       [
-        {
-          text: "Cancel",
-          style: "cancel",
-        },
+        { text: "Cancel", style: "cancel" },
         {
           text: "Reject",
           style: "destructive",
@@ -142,18 +158,8 @@ export default function QuoteDetailScreen() {
             try {
               setProcessing(true);
               await api.rejectQuote(quote!.id);
-              Alert.alert(
-                "Quote Rejected",
-                "The quote has been rejected. You can request a new quote anytime.",
-                [
-                  {
-                    text: "OK",
-                    onPress: () => router.back(),
-                  },
-                ]
-              );
+              setQuote((q) => q ? { ...q, status: "rejected", rejectedAt: new Date().toISOString() } : q);
             } catch (error: any) {
-              console.error("Error rejecting quote:", error);
               Alert.alert("Error", error.message || "Failed to reject quote. Please try again.");
             } finally {
               setProcessing(false);
@@ -167,9 +173,16 @@ export default function QuoteDetailScreen() {
   if (loading) {
     return (
       <SafeAreaView style={styles.container} edges={["top"]}>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#14b8a6" />
-          <Text style={styles.loadingText}>Loading quote...</Text>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => router.back()}>
+            <Ionicons name="arrow-back" size={24} color="#111827" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Quote Details</Text>
+          <View style={{ width: 24 }} />
+        </View>
+        <View style={styles.centered}>
+          <ActivityIndicator size="large" color={themeColor} />
+          <Text style={styles.loadingText}>Loading quote…</Text>
         </View>
       </SafeAreaView>
     );
@@ -178,12 +191,33 @@ export default function QuoteDetailScreen() {
   if (!quote) {
     return (
       <SafeAreaView style={styles.container} edges={["top"]}>
-        <View style={styles.loadingContainer}>
-          <Text style={styles.loadingText}>Quote not found</Text>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => router.back()}>
+            <Ionicons name="arrow-back" size={24} color="#111827" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Quote Details</Text>
+          <View style={{ width: 24 }} />
+        </View>
+        <View style={styles.centered}>
+          <Ionicons name="document-outline" size={56} color="#d1d5db" />
+          <Text style={styles.emptyTitle}>Quote not found</Text>
+          <Text style={styles.emptyText}>This quote may have been removed or you don't have access.</Text>
         </View>
       </SafeAreaView>
     );
   }
+
+  const isPending = quote.status === "pending";
+  const isApproved = quote.status === "approved";
+  const isRejected = quote.status === "rejected";
+
+  const statusConfig = {
+    pending:  { label: "Pending Review",  color: "#d97706", bg: "#fffbeb", border: "#fde68a", icon: "time-outline" as const },
+    approved: { label: "Approved",        color: "#16a34a", bg: "#f0fdf4", border: "#bbf7d0", icon: "checkmark-circle-outline" as const },
+    rejected: { label: "Rejected",        color: "#dc2626", bg: "#fef2f2", border: "#fecaca", icon: "close-circle-outline" as const },
+  }[quote.status];
+
+  const hasTax = quote.taxCents > 0;
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
@@ -197,439 +231,474 @@ export default function QuoteDetailScreen() {
       </View>
 
       <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
+        style={styles.scroll}
+        contentContainerStyle={[styles.scrollContent, isPending && { paddingBottom: 110 }]}
         showsVerticalScrollIndicator={false}
       >
-        {/* Quote Header */}
-        <View style={styles.card}>
-          <View style={styles.quoteHeader}>
-            <View>
-              <Text style={styles.quoteReference}>{quote.reference}</Text>
-              <Text style={styles.quoteDate}>
-                {new Date(quote.createdAt).toLocaleDateString("en-US", {
-                  year: "numeric",
-                  month: "long",
-                  day: "numeric",
-                })}
-              </Text>
-            </View>
-            <View
-              style={[
-                styles.statusBadge,
-                {
-                  backgroundColor:
-                    quote.status === "pending"
-                      ? "#14b8a615"
-                      : quote.status === "approved"
-                      ? "#16a34a15"
-                      : "#ef444415",
-                },
-              ]}
-            >
-              <Text
-                style={[
-                  styles.statusText,
-                  {
-                    color:
-                      quote.status === "pending"
-                        ? "#14b8a6"
-                        : quote.status === "approved"
-                        ? "#16a34a"
-                        : "#ef4444",
-                  },
-                ]}
-              >
-                {quote.status.toUpperCase()}
-              </Text>
-            </View>
+        {/* Hero card */}
+        <View style={[styles.heroCard, { backgroundColor: statusConfig.bg, borderColor: statusConfig.border }]}>
+          {/* Status pill */}
+          <View style={[styles.statusPill, { backgroundColor: statusConfig.color + "20" }]}>
+            <Ionicons name={statusConfig.icon} size={14} color={statusConfig.color} />
+            <Text style={[styles.statusPillText, { color: statusConfig.color }]}>
+              {statusConfig.label}
+            </Text>
           </View>
 
-          {quote.pool && (
-            <View style={styles.poolSection}>
-              <Ionicons name="water-outline" size={20} color="#14b8a6" />
-              <Text style={styles.poolName}>{quote.pool.name}</Text>
-            </View>
-          )}
+          {/* Total amount */}
+          <Text style={styles.heroAmount}>
+            {fmtCents(quote.totalCents, quote.currency)}
+          </Text>
+          <Text style={styles.heroRef}>{quote.reference}</Text>
 
-          {quote.description && (
-            <View style={styles.descriptionSection}>
-              <Text style={styles.descriptionText}>{quote.description}</Text>
+          {/* Dates row */}
+          <View style={styles.heroDatesRow}>
+            <View style={styles.heroDateItem}>
+              <Ionicons name="calendar-outline" size={13} color="#6b7280" />
+              <Text style={styles.heroDateLabel}>Issued</Text>
+              <Text style={styles.heroDateValue}>{fmtDate(quote.createdAt)}</Text>
             </View>
-          )}
+            {isApproved && quote.approvedAt && (
+              <View style={styles.heroDateItem}>
+                <Ionicons name="checkmark-circle-outline" size={13} color="#16a34a" />
+                <Text style={styles.heroDateLabel}>Approved</Text>
+                <Text style={[styles.heroDateValue, { color: "#16a34a" }]}>{fmtDate(quote.approvedAt)}</Text>
+              </View>
+            )}
+            {isRejected && quote.rejectedAt && (
+              <View style={styles.heroDateItem}>
+                <Ionicons name="close-circle-outline" size={13} color="#dc2626" />
+                <Text style={styles.heroDateLabel}>Rejected</Text>
+                <Text style={[styles.heroDateValue, { color: "#dc2626" }]}>{fmtDate(quote.rejectedAt)}</Text>
+              </View>
+            )}
+          </View>
         </View>
 
-        {/* Quote Items */}
-        {quote.items && quote.items.length > 0 && (
-          <View style={styles.card}>
-            <Text style={styles.sectionTitle}>Items</Text>
-            {quote.items.map((item, index) => (
-              <View key={index} style={styles.itemRow}>
-                <View style={styles.itemInfo}>
-                  <Text style={styles.itemLabel}>{item.label}</Text>
-                  {item.description && (
-                    <Text style={styles.itemDescription}>{item.description}</Text>
-                  )}
-                  <Text style={styles.itemQuantity}>
-                    {item.qty} × {quote.currency} {item.unitPrice.toFixed(2)}
-                  </Text>
-                </View>
-                <Text style={styles.itemTotal}>
-                  {quote.currency} {(item.qty * item.unitPrice).toFixed(2)}
-                </Text>
-              </View>
-            ))}
+        {/* Rejection reason */}
+        {isRejected && quote.rejectionReason && (
+          <View style={styles.rejectionCard}>
+            <Ionicons name="information-circle-outline" size={18} color="#dc2626" />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.rejectionLabel}>Rejection Reason</Text>
+              <Text style={styles.rejectionText}>{quote.rejectionReason}</Text>
+            </View>
           </View>
         )}
 
-        {/* Quote Summary */}
+        {/* Pool */}
+        {quote.pool && (
+          <View style={styles.card}>
+            <Text style={styles.cardLabel}>Pool</Text>
+            <View style={styles.poolRow}>
+              <View style={[styles.poolIcon, { backgroundColor: themeColor + "18" }]}>
+                <Ionicons name="water" size={20} color={themeColor} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.poolName}>{quote.pool.name}</Text>
+                {quote.pool.address ? (
+                  <Text style={styles.poolAddress} numberOfLines={1}>{quote.pool.address}</Text>
+                ) : null}
+              </View>
+              <TouchableOpacity onPress={() => router.push(`/pools/${quote.pool!.id}`)}>
+                <Ionicons name="chevron-forward" size={18} color="#9ca3af" />
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+
+        {/* Issue context */}
+        {quote.issue && (
+          <View style={styles.card}>
+            <Text style={styles.cardLabel}>Related Issue</Text>
+            <View style={styles.issueRow}>
+              <Ionicons name="warning-outline" size={18} color="#d97706" />
+              <View style={{ flex: 1, gap: 4 }}>
+                <View style={styles.issueTopRow}>
+                  <Text style={styles.issueType}>{quote.issue.type.replace(/_/g, " ")}</Text>
+                  {(() => {
+                    const sev = SEVERITY_META[quote.issue!.severity] || SEVERITY_META.medium;
+                    return (
+                      <View style={[styles.severityBadge, { backgroundColor: sev.bg }]}>
+                        <Text style={[styles.severityText, { color: sev.color }]}>{sev.label}</Text>
+                      </View>
+                    );
+                  })()}
+                </View>
+                {quote.issue.description ? (
+                  <Text style={styles.issueDesc} numberOfLines={2}>{quote.issue.description}</Text>
+                ) : null}
+              </View>
+            </View>
+          </View>
+        )}
+
+        {/* Line Items */}
         <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Summary</Text>
-          <View style={styles.summaryRow}>
-            <Text style={styles.summaryLabel}>Subtotal</Text>
-            <Text style={styles.summaryValue}>
-              GH₵{quote.amount.toFixed(2)}
-            </Text>
-          </View>
-          <View style={styles.summaryRow}>
-            <Text style={styles.summaryLabel}>Tax</Text>
-            <Text style={styles.summaryValue}>GH₵0.00</Text>
-          </View>
-          <View style={[styles.summaryRow, styles.summaryTotal]}>
-            <Text style={styles.summaryTotalLabel}>Total</Text>
-            <Text style={styles.summaryTotalValue}>
-              GH₵{quote.amount.toFixed(2)}
-            </Text>
-          </View>
-          {quote.validUntil && (
-            <View style={styles.validUntilSection}>
-              <Ionicons name="time-outline" size={16} color="#6b7280" />
-              <Text style={styles.validUntilText}>
-                Valid until: {new Date(quote.validUntil).toLocaleDateString("en-US", {
-                  year: "numeric",
-                  month: "long",
-                  day: "numeric",
-                })}
-              </Text>
+          <Text style={styles.cardLabel}>Line Items</Text>
+
+          {quote.items.length === 0 ? (
+            <View style={styles.noItemsState}>
+              <Ionicons name="list-outline" size={36} color="#d1d5db" />
+              <Text style={styles.noItemsText}>No itemised breakdown provided.</Text>
+            </View>
+          ) : (
+            <View style={styles.itemsTable}>
+              {/* Table header */}
+              <View style={styles.tableHeader}>
+                <Text style={[styles.tableHeaderCell, { flex: 1 }]}>Item</Text>
+                <Text style={[styles.tableHeaderCell, styles.tableHeaderRight, { width: 48 }]}>Qty</Text>
+                <Text style={[styles.tableHeaderCell, styles.tableHeaderRight, { width: 90 }]}>Unit</Text>
+                <Text style={[styles.tableHeaderCell, styles.tableHeaderRight, { width: 90 }]}>Total</Text>
+              </View>
+
+              {quote.items.map((item, i) => {
+                const lineTotal = item.qty * item.unitPriceCents;
+                return (
+                  <View
+                    key={i}
+                    style={[styles.tableRow, i === quote.items.length - 1 && styles.tableRowLast]}
+                  >
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.itemName}>{item.label}</Text>
+                      {item.sku ? <Text style={styles.itemSku}>SKU: {item.sku}</Text> : null}
+                      {item.taxPct > 0 ? (
+                        <Text style={styles.itemTax}>+{item.taxPct}% tax</Text>
+                      ) : null}
+                    </View>
+                    <Text style={[styles.tableCell, { width: 48 }]}>{item.qty}</Text>
+                    <Text style={[styles.tableCell, { width: 90 }]}>
+                      {fmtCents(item.unitPriceCents, quote.currency)}
+                    </Text>
+                    <Text style={[styles.tableCell, styles.tableCellBold, { width: 90 }]}>
+                      {fmtCents(lineTotal, quote.currency)}
+                    </Text>
+                  </View>
+                );
+              })}
             </View>
           )}
+
+          {/* Totals */}
+          <View style={styles.totalsBlock}>
+            <View style={styles.totalsRow}>
+              <Text style={styles.totalsLabel}>Subtotal</Text>
+              <Text style={styles.totalsValue}>{fmtCents(quote.subtotalCents, quote.currency)}</Text>
+            </View>
+            {hasTax && (
+              <View style={styles.totalsRow}>
+                <Text style={styles.totalsLabel}>Tax</Text>
+                <Text style={styles.totalsValue}>{fmtCents(quote.taxCents, quote.currency)}</Text>
+              </View>
+            )}
+            <View style={[styles.totalsRow, styles.totalsFinalRow]}>
+              <Text style={styles.totalsFinalLabel}>Total Due</Text>
+              <Text style={[styles.totalsFinalValue, { color: themeColor }]}>
+                {fmtCents(quote.totalCents, quote.currency)}
+              </Text>
+            </View>
+          </View>
         </View>
 
         {/* Notes */}
-        {quote.notes && (
+        {quote.notes ? (
           <View style={styles.card}>
-            <Text style={styles.sectionTitle}>Notes</Text>
+            <Text style={styles.cardLabel}>Notes from Provider</Text>
             <Text style={styles.notesText}>{quote.notes}</Text>
           </View>
-        )}
+        ) : null}
 
-        {/* Actions */}
-        {quote.status === "pending" && (
-          <View style={styles.actions}>
-            <TouchableOpacity
-              style={[styles.actionButton, styles.rejectButton]}
-              onPress={handleReject}
-              disabled={processing}
-              activeOpacity={0.7}
-            >
-              {processing ? (
-                <ActivityIndicator color="#ef4444" />
-              ) : (
-                <>
-                  <Ionicons name="close-circle-outline" size={20} color="#ef4444" />
-                  <Text style={styles.rejectButtonText}>Reject</Text>
-                </>
-              )}
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.actionButton, styles.approveButton]}
-              onPress={handleApprove}
-              disabled={processing}
-              activeOpacity={0.7}
-            >
-              {processing ? (
-                <ActivityIndicator color="#ffffff" />
-              ) : (
-                <>
-                  <Ionicons name="checkmark-circle-outline" size={20} color="#ffffff" />
-                  <Text style={styles.approveButtonText}>Approve</Text>
-                </>
-              )}
-            </TouchableOpacity>
-          </View>
-        )}
-
-        {quote.status === "approved" && (
-          <View style={styles.infoCard}>
-            <Ionicons name="checkmark-circle" size={24} color="#16a34a" />
-            <View style={styles.infoContent}>
-              <Text style={styles.infoTitle}>Quote Approved</Text>
-              <Text style={styles.infoText}>
-                This quote has been approved. A service will be scheduled soon.
+        {/* Approved banner */}
+        {isApproved && (
+          <View style={[styles.bannerCard, { backgroundColor: "#f0fdf4", borderColor: "#bbf7d0" }]}>
+            <Ionicons name="checkmark-circle" size={28} color="#16a34a" />
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.bannerTitle, { color: "#15803d" }]}>Quote Approved</Text>
+              <Text style={styles.bannerText}>
+                Your service provider will be in touch to schedule the work.
               </Text>
             </View>
           </View>
         )}
 
-        {quote.status === "rejected" && (
-          <View style={styles.infoCard}>
-            <Ionicons name="close-circle" size={24} color="#ef4444" />
-            <View style={styles.infoContent}>
-              <Text style={styles.infoTitle}>Quote Rejected</Text>
-              <Text style={styles.infoText}>
-                This quote has been rejected. You can request a new quote if needed.
+        {/* Rejected banner */}
+        {isRejected && (
+          <View style={[styles.bannerCard, { backgroundColor: "#fef2f2", borderColor: "#fecaca" }]}>
+            <Ionicons name="close-circle" size={28} color="#dc2626" />
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.bannerTitle, { color: "#dc2626" }]}>Quote Rejected</Text>
+              <Text style={styles.bannerText}>
+                Contact your service provider if you'd like a revised quote.
               </Text>
             </View>
           </View>
         )}
       </ScrollView>
+
+      {/* Sticky approve/reject footer — only when pending */}
+      {isPending && (
+        <View style={styles.actionBar}>
+          <TouchableOpacity
+            style={styles.rejectBtn}
+            onPress={handleReject}
+            disabled={processing}
+            activeOpacity={0.7}
+          >
+            {processing ? (
+              <ActivityIndicator color="#dc2626" size="small" />
+            ) : (
+              <>
+                <Ionicons name="close-circle-outline" size={18} color="#dc2626" />
+                <Text style={styles.rejectBtnText}>Reject</Text>
+              </>
+            )}
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.approveBtn, { backgroundColor: themeColor }]}
+            onPress={handleApprove}
+            disabled={processing}
+            activeOpacity={0.85}
+          >
+            {processing ? (
+              <ActivityIndicator color="#fff" size="small" />
+            ) : (
+              <>
+                <Ionicons name="checkmark-circle-outline" size={18} color="#fff" />
+                <Text style={styles.approveBtnText}>
+                  Approve · {fmtCents(quote.totalCents, quote.currency)}
+                </Text>
+              </>
+            )}
+          </TouchableOpacity>
+        </View>
+      )}
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#f9fafb",
-  },
+  container: { flex: 1, backgroundColor: "#f3f4f6" },
+
   header: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 20,
-    paddingVertical: 16,
-    backgroundColor: "#ffffff",
+    paddingVertical: 14,
+    backgroundColor: "#fff",
     borderBottomWidth: 1,
     borderBottomColor: "#e5e7eb",
   },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: "700",
-    color: "#111827",
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    padding: 20,
-    paddingBottom: 40,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: "center",
+  headerTitle: { fontSize: 18, fontWeight: "700", color: "#111827" },
+
+  scroll: { flex: 1 },
+  scrollContent: { padding: 16, paddingBottom: 32 },
+
+  centered: { flex: 1, justifyContent: "center", alignItems: "center", gap: 12, padding: 32 },
+  loadingText: { fontSize: 15, color: "#6b7280" },
+  emptyTitle: { fontSize: 18, fontWeight: "700", color: "#111827", marginTop: 8 },
+  emptyText: { fontSize: 14, color: "#6b7280", textAlign: "center", lineHeight: 20 },
+
+  // Hero card
+  heroCard: {
+    borderRadius: 20,
+    borderWidth: 1,
+    padding: 24,
+    marginBottom: 12,
     alignItems: "center",
-    gap: 16,
   },
-  loadingText: {
-    fontSize: 16,
-    color: "#6b7280",
-  },
-  card: {
-    backgroundColor: "#ffffff",
-    borderRadius: 12,
-    padding: 20,
+  statusPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 20,
     marginBottom: 16,
+  },
+  statusPillText: { fontSize: 12, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.5 },
+  heroAmount: {
+    fontSize: 40,
+    fontWeight: "800",
+    color: "#111827",
+    letterSpacing: -1,
+    marginBottom: 4,
+  },
+  heroRef: { fontSize: 14, color: "#6b7280", fontWeight: "600", marginBottom: 20 },
+  heroDatesRow: { flexDirection: "row", gap: 24 },
+  heroDateItem: { alignItems: "center", gap: 3 },
+  heroDateLabel: { fontSize: 11, color: "#9ca3af", textTransform: "uppercase", letterSpacing: 0.4 },
+  heroDateValue: { fontSize: 13, fontWeight: "600", color: "#374151" },
+
+  // Rejection reason
+  rejectionCard: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+    backgroundColor: "#fef2f2",
+    borderWidth: 1,
+    borderColor: "#fecaca",
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 12,
+  },
+  rejectionLabel: { fontSize: 12, fontWeight: "700", color: "#dc2626", marginBottom: 2 },
+  rejectionText: { fontSize: 14, color: "#374151", lineHeight: 20 },
+
+  // Generic card
+  card: {
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    padding: 18,
+    marginBottom: 12,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
     elevation: 2,
   },
-  quoteHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    marginBottom: 16,
-  },
-  quoteReference: {
-    fontSize: 24,
+  cardLabel: {
+    fontSize: 11,
     fontWeight: "700",
-    color: "#111827",
-    marginBottom: 4,
-  },
-  quoteDate: {
-    fontSize: 14,
-    color: "#6b7280",
-  },
-  statusBadge: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 12,
-  },
-  statusText: {
-    fontSize: 12,
-    fontWeight: "600",
-  },
-  poolSection: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    paddingTop: 16,
-    borderTopWidth: 1,
-    borderTopColor: "#f3f4f6",
-  },
-  poolName: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#111827",
-  },
-  descriptionSection: {
-    paddingTop: 16,
-    borderTopWidth: 1,
-    borderTopColor: "#f3f4f6",
-    marginTop: 16,
-  },
-  descriptionText: {
-    fontSize: 15,
-    color: "#374151",
-    lineHeight: 22,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#111827",
-    marginBottom: 16,
-  },
-  itemRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: "#f3f4f6",
-  },
-  itemInfo: {
-    flex: 1,
-    marginRight: 12,
-  },
-  itemLabel: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: "#111827",
-    marginBottom: 4,
-  },
-  itemDescription: {
-    fontSize: 13,
-    color: "#6b7280",
-    marginBottom: 4,
-    lineHeight: 18,
-  },
-  itemQuantity: {
-    fontSize: 13,
     color: "#9ca3af",
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+    marginBottom: 14,
   },
-  itemTotal: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#111827",
-  },
-  summaryRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
+
+  // Pool
+  poolRow: { flexDirection: "row", alignItems: "center", gap: 12 },
+  poolIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
+    justifyContent: "center",
     alignItems: "center",
+  },
+  poolName: { fontSize: 16, fontWeight: "700", color: "#111827", marginBottom: 2 },
+  poolAddress: { fontSize: 13, color: "#6b7280" },
+
+  // Issue
+  issueRow: { flexDirection: "row", gap: 10, alignItems: "flex-start" },
+  issueTopRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  issueType: { fontSize: 15, fontWeight: "700", color: "#111827", textTransform: "capitalize" },
+  severityBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
+  severityText: { fontSize: 11, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.3 },
+  issueDesc: { fontSize: 13, color: "#6b7280", lineHeight: 18 },
+
+  // Items table
+  itemsTable: { marginBottom: 0 },
+  tableHeader: {
+    flexDirection: "row",
+    paddingBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: "#e5e7eb",
+    marginBottom: 4,
+  },
+  tableHeaderCell: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#9ca3af",
+    textTransform: "uppercase",
+    letterSpacing: 0.4,
+  },
+  tableHeaderRight: { textAlign: "right" },
+  tableRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
     paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: "#f3f4f6",
   },
-  summaryTotal: {
-    borderBottomWidth: 2,
-    borderBottomColor: "#e5e7eb",
-    marginTop: 8,
-  },
-  summaryLabel: {
-    fontSize: 15,
-    color: "#6b7280",
-  },
-  summaryValue: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: "#111827",
-  },
-  summaryTotalLabel: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#111827",
-  },
-  summaryTotalValue: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#111827",
-  },
-  validUntilSection: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    marginTop: 16,
-    paddingTop: 16,
+  tableRowLast: { borderBottomWidth: 0 },
+  itemName: { fontSize: 14, fontWeight: "600", color: "#111827", marginBottom: 2 },
+  itemSku: { fontSize: 11, color: "#9ca3af" },
+  itemTax: { fontSize: 11, color: "#d97706", marginTop: 1 },
+  tableCell: { fontSize: 14, color: "#374151", textAlign: "right", paddingTop: 1 },
+  tableCellBold: { fontWeight: "700", color: "#111827" },
+
+  // Totals block
+  totalsBlock: {
+    marginTop: 12,
     borderTopWidth: 1,
-    borderTopColor: "#f3f4f6",
+    borderTopColor: "#e5e7eb",
+    paddingTop: 12,
+    gap: 8,
   },
-  validUntilText: {
-    fontSize: 13,
-    color: "#6b7280",
+  totalsRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  totalsLabel: { fontSize: 14, color: "#6b7280" },
+  totalsValue: { fontSize: 14, fontWeight: "600", color: "#374151" },
+  totalsFinalRow: {
+    marginTop: 4,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: "#e5e7eb",
   },
-  notesText: {
-    fontSize: 15,
-    color: "#374151",
-    lineHeight: 22,
+  totalsFinalLabel: { fontSize: 17, fontWeight: "800", color: "#111827" },
+  totalsFinalValue: { fontSize: 22, fontWeight: "800", letterSpacing: -0.5 },
+
+  // Empty items
+  noItemsState: { alignItems: "center", paddingVertical: 24, gap: 8 },
+  noItemsText: { fontSize: 14, color: "#9ca3af" },
+
+  // Notes
+  notesText: { fontSize: 14, color: "#374151", lineHeight: 22 },
+
+  // Status banners
+  bannerCard: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 12,
+    borderWidth: 1,
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 12,
   },
-  actions: {
+  bannerTitle: { fontSize: 15, fontWeight: "700", marginBottom: 3 },
+  bannerText: { fontSize: 13, color: "#374151", lineHeight: 18 },
+
+  // Action bar
+  actionBar: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
     flexDirection: "row",
     gap: 12,
-    marginTop: 8,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 28,
+    backgroundColor: "#fff",
+    borderTopWidth: 1,
+    borderTopColor: "#e5e7eb",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: -3 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 8,
   },
-  actionButton: {
+  rejectBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: "#fecaca",
+    backgroundColor: "#fef2f2",
+  },
+  rejectBtnText: { fontSize: 15, fontWeight: "700", color: "#dc2626" },
+  approveBtn: {
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
-    paddingVertical: 16,
-    borderRadius: 12,
+    paddingVertical: 14,
+    borderRadius: 14,
   },
-  rejectButton: {
-    backgroundColor: "#fee2e2",
-    borderWidth: 1,
-    borderColor: "#ef4444",
-  },
-  approveButton: {
-    backgroundColor: "#14b8a6",
-  },
-  rejectButtonText: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#ef4444",
-  },
-  approveButtonText: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#ffffff",
-  },
-  infoCard: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 12,
-    backgroundColor: "#f0fdf4",
-    padding: 16,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#d1fae5",
-    marginTop: 8,
-  },
-  infoContent: {
-    flex: 1,
-  },
-  infoTitle: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#111827",
-    marginBottom: 4,
-  },
-  infoText: {
-    fontSize: 14,
-    color: "#374151",
-    lineHeight: 20,
-  },
+  approveBtnText: { fontSize: 15, fontWeight: "700", color: "#fff" },
 });
-

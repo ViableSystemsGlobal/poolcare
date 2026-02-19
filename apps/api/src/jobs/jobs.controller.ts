@@ -38,6 +38,8 @@ export class JobsController {
   async list(
     @CurrentUser() user: { org_id: string; role: string; sub: string },
     @Query("date") date?: string,
+    @Query("dateFrom") dateFrom?: string,
+    @Query("dateTo") dateTo?: string,
     @Query("status") status?: string,
     @Query("carerId") carerId?: string,
     @Query("clientId") clientId?: string,
@@ -49,6 +51,8 @@ export class JobsController {
   ) {
     return this.jobsService.list(user.org_id, user.role, (user as any).sub, {
       date,
+      dateFrom,
+      dateTo,
       status,
       carerId,
       clientId,
@@ -116,6 +120,24 @@ export class JobsController {
     @Body() dto: CancelJobDto
   ) {
     return this.jobsService.cancel(user.org_id, id, dto);
+  }
+
+  @Post(":id/client-cancel")
+  async clientCancel(
+    @CurrentUser() user: { org_id: string; sub: string },
+    @Param("id") id: string,
+    @Body() dto: { reason?: string }
+  ) {
+    return this.jobsService.clientCancel(user.org_id, (user as any).sub, id, dto);
+  }
+
+  @Post(":id/client-reschedule")
+  async clientReschedule(
+    @CurrentUser() user: { org_id: string; sub: string },
+    @Param("id") id: string,
+    @Body() dto: { windowStart: string; windowEnd: string; reason?: string }
+  ) {
+    return this.jobsService.clientReschedule(user.org_id, (user as any).sub, id, dto);
   }
 
   @Post(":id/start")

@@ -60,6 +60,10 @@ const navigationGroups = [
         href: "/carers",
         icon: UserCheck,
         module: "carers",
+        children: [
+          { name: "Team", href: "/carers", icon: UserCheck },
+          { name: "Schedule", href: "/carers/schedule", icon: Calendar },
+        ],
       },
       {
         name: "Supplies",

@@ -8,7 +8,6 @@ import { Input } from "@/components/ui/input";
 import {
   Bell,
   Search,
-  Filter,
   Download,
   RefreshCw,
   XCircle,
@@ -16,7 +15,12 @@ import {
   Clock,
   Send,
   AlertCircle,
+  Megaphone,
+  Users,
+  Loader2,
 } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { DashboardAICard } from "@/components/dashboard-ai-card";
 import {
@@ -76,6 +80,13 @@ export default function NotificationsPage() {
     sent: 0,
     failed: 0,
   });
+
+  const [showBroadcast, setShowBroadcast] = useState(false);
+  const [broadcastTitle, setBroadcastTitle] = useState("");
+  const [broadcastBody, setBroadcastBody] = useState("");
+  const [broadcastAudience, setBroadcastAudience] = useState<"all" | "clients" | "carers">("all");
+  const [broadcasting, setBroadcasting] = useState(false);
+  const [broadcastResult, setBroadcastResult] = useState<{ sent: number; failed: number; total: number } | null>(null);
 
   const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
 
@@ -243,6 +254,38 @@ export default function NotificationsPage() {
     }
   };
 
+  const handleBroadcast = async () => {
+    if (!broadcastTitle.trim() || !broadcastBody.trim()) {
+      alert("Please enter a title and message.");
+      return;
+    }
+    try {
+      setBroadcasting(true);
+      setBroadcastResult(null);
+      const response = await fetch(`${API_URL}/notifications/broadcast`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
+        },
+        body: JSON.stringify({ title: broadcastTitle.trim(), body: broadcastBody.trim(), audience: broadcastAudience }),
+      });
+      const data = await response.json();
+      if (response.ok) {
+        setBroadcastResult(data);
+        setBroadcastTitle("");
+        setBroadcastBody("");
+        fetchNotifications();
+      } else {
+        alert(`Failed to send: ${data.message || "Unknown error"}`);
+      }
+    } catch (error) {
+      alert("Failed to send broadcast.");
+    } finally {
+      setBroadcasting(false);
+    }
+  };
+
   const handleRecommendationComplete = (id: string) => {
     if (id === "resend-failed") {
       handleBulkResend();
@@ -299,8 +342,110 @@ export default function NotificationsPage() {
             <Send className="h-4 w-4 mr-2" />
             Templates
           </Button>
+          <Button
+            onClick={() => { setShowBroadcast(!showBroadcast); setBroadcastResult(null); }}
+            style={{ backgroundColor: theme.primary }}
+            className="text-white"
+          >
+            <Megaphone className="h-4 w-4 mr-2" />
+            Send Push
+          </Button>
         </div>
       </div>
+
+      {/* Broadcast Compose Panel */}
+      {showBroadcast && (
+        <Card className="border-2" style={{ borderColor: theme.primary }}>
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Megaphone className="h-5 w-5" style={{ color: theme.primary }} />
+              Broadcast Push Notification
+            </CardTitle>
+            <CardDescription>Send a push notification to app users</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {broadcastResult ? (
+              <div className="rounded-lg bg-green-50 border border-green-200 p-4 flex items-start gap-3">
+                <CheckCircle className="h-5 w-5 text-green-600 mt-0.5 shrink-0" />
+                <div>
+                  <p className="font-semibold text-green-800">Broadcast sent!</p>
+                  <p className="text-sm text-green-700 mt-1">
+                    Delivered to {broadcastResult.sent} device{broadcastResult.sent !== 1 ? "s" : ""}.
+                    {broadcastResult.failed > 0 && ` ${broadcastResult.failed} failed.`}
+                    {broadcastResult.total === 0 && " No devices found for the selected audience."}
+                  </p>
+                  <Button variant="outline" size="sm" className="mt-3" onClick={() => setBroadcastResult(null)}>
+                    Send another
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="col-span-2 space-y-4">
+                    <div>
+                      <Label className="mb-1.5 block">Title</Label>
+                      <input
+                        className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2"
+                        style={{ "--tw-ring-color": theme.primary } as any}
+                        placeholder="e.g. Service update"
+                        value={broadcastTitle}
+                        onChange={(e) => setBroadcastTitle(e.target.value)}
+                        maxLength={80}
+                      />
+                    </div>
+                    <div>
+                      <Label className="mb-1.5 block">Message</Label>
+                      <Textarea
+                        placeholder="e.g. Pool services resume Monday. Thank you for your patience."
+                        value={broadcastBody}
+                        onChange={(e) => setBroadcastBody(e.target.value)}
+                        rows={3}
+                        maxLength={300}
+                        className="resize-none"
+                      />
+                      <p className="text-xs text-gray-400 mt-1 text-right">{broadcastBody.length}/300</p>
+                    </div>
+                  </div>
+                  <div className="space-y-3">
+                    <Label className="block">Send to</Label>
+                    {(["all", "clients", "carers"] as const).map((opt) => (
+                      <button
+                        key={opt}
+                        onClick={() => setBroadcastAudience(opt)}
+                        className={`w-full flex items-center gap-2 px-3 py-2.5 rounded-lg border text-sm font-medium transition-colors ${
+                          broadcastAudience === opt
+                            ? "border-transparent text-white"
+                            : "border-gray-200 text-gray-700 hover:bg-gray-50"
+                        }`}
+                        style={broadcastAudience === opt ? { backgroundColor: theme.primary } : {}}
+                      >
+                        <Users className="h-4 w-4" />
+                        {opt === "all" ? "Everyone" : opt === "clients" ? "Clients only" : "Carers only"}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="flex justify-end gap-2 pt-2">
+                  <Button variant="outline" onClick={() => setShowBroadcast(false)}>Cancel</Button>
+                  <Button
+                    onClick={handleBroadcast}
+                    disabled={broadcasting || !broadcastTitle.trim() || !broadcastBody.trim()}
+                    style={{ backgroundColor: theme.primary }}
+                    className="text-white min-w-[120px]"
+                  >
+                    {broadcasting ? (
+                      <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Sending…</>
+                    ) : (
+                      <><Send className="h-4 w-4 mr-2" />Send Now</>
+                    )}
+                  </Button>
+                </div>
+              </>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* AI Recommendations */}
       <div className="grid grid-cols-3 gap-4">

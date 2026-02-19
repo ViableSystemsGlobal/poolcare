@@ -23,6 +23,9 @@
     "db:studio": "pnpm --filter @poolcare/db studio",
     "db:seed": "pnpm --filter @poolcare/db seed",
     "deploy:client:build": "cd apps/client && npx eas-cli build --platform all --profile production",
+    "deploy:client:preview": "cd apps/client && npx eas-cli build --platform all --profile preview",
+    "client:update:preview": "cd apps/client && npx eas-cli update --channel preview --message",
+    "client:update:production": "cd apps/client && npx eas-cli update --channel production --message",
     "deploy:api": "echo 'Push a version tag to deploy API: git tag v1.0.0 && git push origin v1.0.0'"
   },
   "devDependencies": {

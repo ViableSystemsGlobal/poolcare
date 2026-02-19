@@ -96,6 +96,7 @@ model Organization {
   stocktakeItems        StocktakeItem[]
   households            Household[]
   businessPartnerChats  BusinessPartnerChat[]
+  clientChats           ClientChat[]
   shopOrders            ShopOrder[]
 }
 
@@ -888,6 +889,22 @@ model OrgSetting {
 }
 
 // AI Business Partner chat history (per org, per user)
+model ClientChat {
+  id        String   @id @default(uuid()) @db.Uuid
+  orgId     String   @db.Uuid
+  userId    String   @db.Uuid
+  title     String   @default("New chat")
+  messages  Json     // [{ role: "user"|"assistant", content: string }]
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId])
+  @@index([orgId, userId])
+  @@index([orgId, userId, updatedAt(sort: Desc)])
+}
+
 model BusinessPartnerChat {
   id        String   @id @default(uuid()) @db.Uuid
   orgId     String   @db.Uuid

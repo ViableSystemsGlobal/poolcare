@@ -60,6 +60,25 @@ else
 fi
 cd ../..
 
+# Detect current LAN IP and sync into apps/client/.env so mobile always connects
+echo "📱 Syncing mobile client network IP..."
+LAN_IP=$(ipconfig getifaddr en0 2>/dev/null || ip route get 1.1.1.1 2>/dev/null | awk '{print $7; exit}' || echo "")
+if [ -n "$LAN_IP" ]; then
+    CLIENT_ENV="apps/client/.env"
+    if [ ! -f "$CLIENT_ENV" ]; then
+        echo "EXPO_PUBLIC_API_URL=http://localhost:4000/api" > "$CLIENT_ENV"
+    fi
+    # Update or add EXPO_PUBLIC_NETWORK_IP
+    if grep -q "EXPO_PUBLIC_NETWORK_IP" "$CLIENT_ENV"; then
+        sed -i.bak "s/EXPO_PUBLIC_NETWORK_IP=.*/EXPO_PUBLIC_NETWORK_IP=$LAN_IP/" "$CLIENT_ENV" && rm -f "$CLIENT_ENV.bak"
+    else
+        echo "EXPO_PUBLIC_NETWORK_IP=$LAN_IP" >> "$CLIENT_ENV"
+    fi
+    echo -e "${GREEN}✅ Mobile client IP set to $LAN_IP${NC}"
+else
+    echo -e "${YELLOW}⚠️  Could not detect LAN IP — update EXPO_PUBLIC_NETWORK_IP in apps/client/.env manually${NC}"
+fi
+
 echo ""
 echo -e "${GREEN}✅ Setup complete!${NC}"
 echo ""

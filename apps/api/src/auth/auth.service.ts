@@ -269,6 +269,14 @@ export class AuthService {
           console.log('[AuthService] Invite-only: no membership for user', user.id);
           throw new UnauthorizedException(INVITE_ONLY_MESSAGE);
         }
+
+        // Resolve display name: User.name → Client.name → Carer.name
+        const [relatedClientA, relatedCarerA] = await Promise.all([
+          prisma.client.findFirst({ where: { userId: user.id, orgId: membership.orgId }, select: { name: true } }).catch(() => null),
+          prisma.carer.findFirst({ where: { userId: user.id, orgId: membership.orgId }, select: { name: true } }).catch(() => null),
+        ]);
+        const displayNameA = user.name || relatedClientA?.name || relatedCarerA?.name || null;
+
         // Issue JWT (same as below; we'll reuse the token block)
         const jwtSecret = this.configService.get<string>("JWT_SECRET") || "dev-secret-change-in-prod";
         const token = this.jwtService.sign(
@@ -288,7 +296,7 @@ export class AuthService {
             id: user.id,
             phone: user.phone,
             email: user.email,
-            name: user.name,
+            name: displayNameA,
           },
           org: {
             id: membership.org.id,
@@ -359,13 +367,20 @@ export class AuthService {
 
       console.log('[AuthService] JWT issued successfully');
 
+      // Resolve display name: User.name → Client.name fallback
+      const relatedClient = await prisma.client.findFirst({
+        where: { userId: user.id, orgId: membership.orgId },
+        select: { name: true },
+      }).catch(() => null);
+      const displayName = user.name || relatedClient?.name || null;
+
       return {
         token,
         user: {
           id: user.id,
           phone: user.phone,
           email: user.email,
-          name: user.name,
+          name: displayName,
         },
         org: {
           id: membership.org.id,

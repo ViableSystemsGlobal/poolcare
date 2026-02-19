@@ -160,6 +160,35 @@ export class NotificationsService {
     };
   }
 
+  async broadcast(
+    orgId: string,
+    dto: { title: string; body: string; audience: "all" | "clients" | "carers" }
+  ) {
+    const result = await this.pushAdapter.broadcastToOrg(
+      orgId,
+      dto.title,
+      dto.body,
+      dto.audience
+    );
+
+    // Log a single notification record for the broadcast
+    await prisma.notification.create({
+      data: {
+        orgId,
+        recipientType: dto.audience,
+        channel: "push",
+        subject: dto.title,
+        body: dto.body,
+        template: "broadcast",
+        status: result.total === 0 ? "failed" : "sent",
+        sentAt: new Date(),
+        metadata: { audience: dto.audience, sent: result.sent, failed: result.failed, total: result.total },
+      },
+    });
+
+    return result;
+  }
+
   // Helper methods for common notification scenarios
   async notifyJobReminder(carerId: string, jobId: string, orgId: string) {
     const carer = await prisma.carer.findFirst({

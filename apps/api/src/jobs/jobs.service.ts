@@ -200,6 +200,8 @@ export class JobsService {
     userId: string,
     filters: {
       date?: string;
+      dateFrom?: string;
+      dateTo?: string;
       status?: string;
       carerId?: string;
       clientId?: string;
@@ -215,7 +217,7 @@ export class JobsService {
     if (filters.date) {
       const dateStart = new Date(filters.date);
       dateStart.setHours(0, 0, 0, 0);
-      
+
       if (filters.upcoming) {
         // If upcoming flag is set, show from this date onwards (no end date)
         where.windowStart = {
@@ -230,6 +232,12 @@ export class JobsService {
           lt: dateEnd,
         };
       }
+    } else if (filters.dateFrom && filters.dateTo) {
+      // Date range filter — used by the carer schedule calendar
+      where.windowStart = {
+        gte: new Date(filters.dateFrom),
+        lt: new Date(filters.dateTo),
+      };
     } else if (filters.upcoming === false) {
       // If upcoming is explicitly false, don't filter by date (show all jobs)
       // This allows fetching all jobs for "past" view
@@ -707,6 +715,86 @@ export class JobsService {
     });
 
     return updated;
+  }
+
+  async clientCancel(orgId: string, userId: string, jobId: string, dto: { reason?: string }) {
+    const job = await prisma.job.findFirst({
+      where: { id: jobId, orgId },
+      include: {
+        pool: {
+          include: {
+            client: { select: { userId: true } },
+          },
+        },
+      },
+    });
+
+    if (!job) {
+      throw new NotFoundException("Job not found");
+    }
+
+    if (job.pool.client?.userId !== userId) {
+      throw new ForbiddenException("Access denied");
+    }
+
+    if (job.status === "completed" || job.status === "cancelled") {
+      throw new BadRequestException(`Cannot cancel a ${job.status} job`);
+    }
+
+    return prisma.job.update({
+      where: { id: jobId },
+      data: {
+        status: "cancelled",
+        cancelCode: "CLIENT_REQUEST",
+        notes: dto.reason ? `${job.notes || ""}\nClient cancelled: ${dto.reason}`.trim() : job.notes,
+      },
+    });
+  }
+
+  async clientReschedule(
+    orgId: string,
+    userId: string,
+    jobId: string,
+    dto: { windowStart: string; windowEnd: string; reason?: string }
+  ) {
+    const job = await prisma.job.findFirst({
+      where: { id: jobId, orgId },
+      include: {
+        pool: {
+          include: {
+            client: { select: { userId: true } },
+          },
+        },
+      },
+    });
+
+    if (!job) {
+      throw new NotFoundException("Job not found");
+    }
+
+    if (job.pool.client?.userId !== userId) {
+      throw new ForbiddenException("Access denied");
+    }
+
+    if (job.status !== "scheduled") {
+      throw new BadRequestException("Only scheduled jobs can be rescheduled");
+    }
+
+    const windowStart = new Date(dto.windowStart);
+    const windowEnd = new Date(dto.windowEnd);
+
+    if (windowEnd <= windowStart) {
+      throw new BadRequestException("windowEnd must be after windowStart");
+    }
+
+    return prisma.job.update({
+      where: { id: jobId },
+      data: {
+        windowStart,
+        windowEnd,
+        notes: dto.reason ? `${job.notes || ""}\nClient reschedule request: ${dto.reason}`.trim() : job.notes,
+      },
+    });
   }
 
   /**

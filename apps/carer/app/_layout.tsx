@@ -1,70 +1,106 @@
 import { useEffect, useState } from "react";
-import { View, StyleSheet } from "react-native";
-import { Stack } from "expo-router";
+import { View, StyleSheet, BackHandler, ActivityIndicator } from "react-native";
+import { Stack, usePathname, router } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import * as SplashScreen from "expo-splash-screen";
+import * as Font from "expo-font";
+import { Ionicons } from "@expo/vector-icons";
 import { ToastProvider } from "../src/components/Toast";
+import { ThemeProvider } from "../src/contexts/ThemeContext";
 import Loader from "../src/components/Loader";
-import { COLORS } from "../src/theme";
+import BottomNav from "../src/components/BottomNav";
 
-// Keep the splash screen visible while we fetch resources
+// Keep the splash screen visible while we load resources
 SplashScreen.preventAutoHideAsync();
 
+// Screens where the floating bottom nav is visible
+const TAB_ROUTES = ["/", "/index", "index", "/schedule", "/supplies", "/earnings", "/profile"];
+
 export default function RootLayout() {
+  // Load the Ionicons font — without this every icon renders as [?]
+  const [fontsLoaded] = Font.useFonts(Ionicons.font);
   const [appIsReady, setAppIsReady] = useState(false);
 
   useEffect(() => {
     async function prepare() {
       try {
-        // Hide native splash screen immediately to show our custom Loader
         await SplashScreen.hideAsync();
-        // Give time for auth check and logo fetch
-        await new Promise(resolve => setTimeout(resolve, 1500));
+        // Brief delay so the Loader is visible while auth/data primes
+        await new Promise((resolve) => setTimeout(resolve, 1200));
       } catch (e) {
         console.warn(e);
       } finally {
         setAppIsReady(true);
       }
     }
-
     prepare();
   }, []);
 
+  // While fonts are loading show a blank white screen — avoids the [?] flash
+  if (!fontsLoaded) {
+    return (
+      <View style={styles.fontLoading}>
+        <ActivityIndicator size="large" color="#14b8a6" />
+      </View>
+    );
+  }
+
+  // Fonts ready but app still "warming up" — safe to show Loader icons now
   if (!appIsReady) {
-    return <Loader />;
+    return (
+      <ThemeProvider>
+        <Loader />
+      </ThemeProvider>
+    );
   }
 
   return (
-    <ToastProvider>
-      <View style={styles.container}>
-        <StatusBar style="auto" />
-        <Stack
-          screenOptions={{
-            headerStyle: {
-              backgroundColor: COLORS.primary[500],
-            },
-            headerTintColor: COLORS.text.inverse,
-            headerTitleStyle: {
-              fontWeight: "bold",
-            },
-          }}
-        >
-          <Stack.Screen name="index" options={{ headerShown: false }} />
-          <Stack.Screen name="(auth)" options={{ headerShown: false }} />
-          <Stack.Screen name="jobs/[id]" options={{ title: "Job Details", headerBackTitle: "Jobs" }} />
-          <Stack.Screen name="schedule" options={{ title: "Schedule", headerShown: false }} />
-          <Stack.Screen name="earnings" options={{ title: "Earnings", headerShown: false }} />
-          <Stack.Screen name="supplies" options={{ title: "Supplies", headerShown: false }} />
-          <Stack.Screen name="profile" options={{ title: "Profile", headerShown: false }} />
-        </Stack>
-      </View>
-    </ToastProvider>
+    <ThemeProvider>
+      <ToastProvider>
+        <LayoutInner />
+      </ToastProvider>
+    </ThemeProvider>
+  );
+}
+
+function LayoutInner() {
+  const pathname = usePathname();
+  const showNav = TAB_ROUTES.includes(pathname);
+
+  // Consume Android back-press on tab screens so navigator doesn't crash
+  useEffect(() => {
+    const onBack = () => {
+      if (showNav) return true;
+      return false;
+    };
+    const sub = BackHandler.addEventListener("hardwareBackPress", onBack);
+    return () => sub.remove();
+  }, [showNav]);
+
+  return (
+    <View style={styles.container}>
+      <StatusBar style="auto" />
+      <Stack screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="index" />
+        <Stack.Screen name="(auth)" />
+        <Stack.Screen name="schedule" />
+        <Stack.Screen name="supplies" />
+        <Stack.Screen name="profile" />
+        <Stack.Screen name="earnings" />
+        <Stack.Screen name="notifications" />
+        <Stack.Screen name="jobs/[id]" options={{ headerShown: false }} />
+      </Stack>
+      {showNav && <BottomNav />}
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  container: { flex: 1 },
+  fontLoading: {
     flex: 1,
+    backgroundColor: "#ffffff",
+    justifyContent: "center",
+    alignItems: "center",
   },
 });
-

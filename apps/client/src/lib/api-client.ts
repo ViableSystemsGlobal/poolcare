@@ -33,6 +33,44 @@ console.log(`[API Client] Initialized with URL: ${API_URL}`);
 const TOKEN_KEY = "auth_token";
 const USER_KEY = "auth_user";
 const ORG_KEY = "auth_org";
+const DEV_API_URL_KEY = "dev_api_base_url";
+const REQUEST_TIMEOUT_MS = 45000;
+const MAX_RETRIES = 3;
+const RETRY_BASE_MS = 2000;
+
+// In dev, allow overriding API base URL from the app (no rebuild needed)
+let _cachedOverride: string | null | undefined = undefined;
+async function getApiBaseUrl(): Promise<string> {
+  if (typeof __DEV__ !== "boolean" || !__DEV__) return API_URL;
+  if (_cachedOverride !== undefined) return _cachedOverride ?? API_URL;
+  try {
+    _cachedOverride = await SecureStore.getItemAsync(DEV_API_URL_KEY);
+  } catch {
+    _cachedOverride = null;
+  }
+  return _cachedOverride ?? API_URL;
+}
+export async function setApiBaseUrlOverride(url: string | null): Promise<void> {
+  try {
+    if (url) {
+      await SecureStore.setItemAsync(DEV_API_URL_KEY, url);
+      _cachedOverride = url;
+    } else {
+      await SecureStore.deleteItemAsync(DEV_API_URL_KEY);
+      _cachedOverride = null;
+    }
+  } catch (e) {
+    console.error("Failed to save API URL override:", e);
+  }
+}
+export async function getApiBaseUrlOverride(): Promise<string | null> {
+  if (!__DEV__) return null;
+  try {
+    return await SecureStore.getItemAsync(DEV_API_URL_KEY);
+  } catch {
+    return null;
+  }
+}
 
 interface RequestOptions extends RequestInit {
   requireAuth?: boolean;
@@ -55,14 +93,24 @@ class ApiClient {
     }
   }
 
-  async getStoredUser(): Promise<{ name?: string; email?: string } | null> {
+  async getStoredUser(): Promise<{ name?: string; email?: string; phone?: string } | null> {
     try {
       const raw = await SecureStore.getItemAsync(USER_KEY);
       if (!raw) return null;
-      return JSON.parse(raw) as { name?: string; email?: string };
+      return JSON.parse(raw) as { name?: string; email?: string; phone?: string };
     } catch (error) {
       console.error("Error getting stored user:", error);
       return null;
+    }
+  }
+
+  async updateStoredUser(updates: { name?: string; email?: string; phone?: string }): Promise<void> {
+    try {
+      const existing = await this.getStoredUser();
+      const merged = { ...(existing || {}), ...updates };
+      await SecureStore.setItemAsync(USER_KEY, JSON.stringify(merged));
+    } catch (error) {
+      console.error("Error updating stored user:", error);
     }
   }
 
@@ -86,11 +134,13 @@ class ApiClient {
 
   private async request<T>(
     endpoint: string,
-    options: RequestOptions = {}
+    options: RequestOptions = {},
+    attempt = 0
   ): Promise<T> {
     const { requireAuth = true, headers = {}, ...restOptions } = options;
-
-    const url = endpoint.startsWith("http") ? endpoint : `${API_URL}${endpoint}`;
+    const method = (restOptions.method || "GET") as string;
+    const baseUrl = await getApiBaseUrl();
+    const url = endpoint.startsWith("http") ? endpoint : `${baseUrl}${endpoint}`;
 
     const requestHeaders: Record<string, string> = {
       "Content-Type": "application/json",
@@ -104,20 +154,27 @@ class ApiClient {
       }
     }
 
-    try {
-      console.log("API Request:", url, { method: restOptions.method || "GET" });
-
-      // Add timeout to prevent hanging
+    const doFetch = async (): Promise<Response> => {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout for mobile
+      const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+      try {
+        const response = await fetch(url, {
+          ...restOptions,
+          headers: requestHeaders,
+          signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
+        return response;
+      } catch (e) {
+        clearTimeout(timeoutId);
+        throw e;
+      }
+    };
 
-      const response = await fetch(url, {
-        ...restOptions,
-        headers: requestHeaders,
-        signal: controller.signal,
-      });
+    try {
+      if (attempt === 0) console.log("API Request:", url, { method });
 
-      clearTimeout(timeoutId);
+      const response = await doFetch();
       console.log("API Response:", response.status, response.statusText);
 
       if (!response.ok) {
@@ -128,16 +185,11 @@ class ApiClient {
           errorData = { message: response.statusText };
         }
 
-        // Handle 401 Unauthorized
         if (response.status === 401 && !url.includes("/auth/otp")) {
           await this.clearAuthToken();
-          // In a real app, you might want to navigate to login screen here
-          // For now, we'll just throw the error
         }
 
-        // Extract the actual error message
         const errorMessage = errorData?.message || errorData?.error || response.statusText;
-        // Only log detailed error info in development, and skip logging 404s (handled gracefully in UI)
         if (__DEV__ && response.status !== 404) {
           console.error("API Error Response:", { status: response.status, url, errorData });
         }
@@ -146,18 +198,31 @@ class ApiClient {
 
       return response.json();
     } catch (error: any) {
+      const isTimeoutOrNetwork =
+        error.name === "AbortError" ||
+        error.message?.includes("Network request failed") ||
+        error.message?.includes("Failed to fetch");
+
+      if (isTimeoutOrNetwork && method === "GET" && attempt < MAX_RETRIES) {
+        // Exponential backoff with jitter: 2s, 4s, 8s (±20%)
+        const base = RETRY_BASE_MS * Math.pow(2, attempt);
+        const jitter = base * 0.2 * (Math.random() * 2 - 1);
+        const delay = Math.round(base + jitter);
+        if (__DEV__) console.warn(`API request failed, retrying in ${(delay / 1000).toFixed(1)}s (attempt ${attempt + 1}/${MAX_RETRIES}):`, url);
+        await new Promise((r) => setTimeout(r, delay));
+        return this.request<T>(endpoint, options, attempt + 1);
+      }
+
       if (error.name === "AbortError" || error.message?.includes("Network request failed")) {
-        if (__DEV__) {
-          console.warn("API request timed out or aborted:", url);
-        }
+        if (__DEV__) console.warn("API request timed out or aborted:", url);
         const isLocalNetwork = /^https?:\/\/(localhost|192\.168\.|10\.|172\.(1[6-9]|2[0-9]|3[0-1])\.)/.test(url);
         const hint = isLocalNetwork
-          ? " Ensure the API is running (e.g. in apps/api: pnpm run start:dev), this device is on the same Wi‑Fi as your computer, and your Mac firewall allows port 4000."
-          : " Please check your connection and try again.";
+          ? " Set your Mac's IP on the login screen (Dev: API URL) or in apps/client/.env as EXPO_PUBLIC_API_URL=http://YOUR_MAC_IP:4000/api. Same Wi‑Fi; allow port 4000 in firewall."
+          : " Check your connection and try again.";
         throw new Error("Request timed out." + hint);
       }
       if (error.message?.includes("fetch") || error.message?.includes("Failed to fetch")) {
-        throw new Error("Cannot connect to server. Please check your internet connection.");
+        throw new Error("Cannot connect to server. Check API URL and network.");
       }
       throw error;
     }
@@ -217,6 +282,65 @@ class ApiClient {
     return this.request("/orgs/me");
   }
 
+  // Client self-profile
+  async getMyClientProfile() {
+    return this.request<any>("/clients/me");
+  }
+
+  async updateMyClientProfile(dto: { name?: string; phone?: string; email?: string; imageUrl?: string }) {
+    return this.request<any>("/clients/me", {
+      method: "PATCH",
+      body: JSON.stringify(dto),
+    });
+  }
+
+  async uploadMyClientPhoto(imageUri: string, fileName: string, mimeType: string) {
+    const formData = new FormData();
+    formData.append("photo", { uri: imageUri, name: fileName, type: mimeType } as any);
+    const baseUrl = await getApiBaseUrl();
+    const token = await this.getAuthToken();
+    const response = await fetch(`${baseUrl}/clients/me/upload-photo`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: formData,
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error((err as any).message || "Photo upload failed");
+    }
+    return response.json() as Promise<{ imageUrl: string }>;
+  }
+
+  // Household / Family
+  async getMyHousehold(clientId: string) {
+    return this.request<any>(`/clients/${clientId}/household`);
+  }
+
+  async createHousehold(clientId: string, name: string) {
+    return this.request<any>(`/clients/${clientId}/household`, {
+      method: "POST",
+      body: JSON.stringify({ name }),
+    });
+  }
+
+  async inviteToHousehold(clientId: string, dto: { phone?: string; email?: string; name?: string }) {
+    return this.request<any>(`/clients/${clientId}/household/invite`, {
+      method: "POST",
+      body: JSON.stringify(dto),
+    });
+  }
+
+  async registerDeviceToken(token: string, platform: "ios" | "android") {
+    return this.request<any>("/clients/me/device-token", {
+      method: "POST",
+      body: JSON.stringify({ token, platform }),
+    });
+  }
+
+  async getMyNotifications(page = 1, limit = 30) {
+    return this.request<any>(`/clients/me/notifications?page=${page}&limit=${limit}`);
+  }
+
   // Pools
   async getPools(clientId?: string) {
     const query = clientId ? `?clientId=${clientId}` : "";
@@ -251,6 +375,20 @@ class ApiClient {
     return this.request(`/jobs/${id}`);
   }
 
+  async clientCancelJob(id: string, reason?: string) {
+    return this.request(`/jobs/${id}/client-cancel`, {
+      method: "POST",
+      body: JSON.stringify({ reason }),
+    });
+  }
+
+  async clientRescheduleJob(id: string, dto: { windowStart: string; windowEnd: string; reason?: string }) {
+    return this.request(`/jobs/${id}/client-reschedule`, {
+      method: "POST",
+      body: JSON.stringify(dto),
+    });
+  }
+
   // Visits
   async getVisits(params?: { poolId?: string; date?: string; status?: string }) {
     const query = new URLSearchParams(params as any).toString();
@@ -259,6 +397,13 @@ class ApiClient {
 
   async getVisit(id: string) {
     return this.request(`/visits/${id}`);
+  }
+
+  async reviewVisit(visitId: string, dto: { rating?: number; comments?: string }) {
+    return this.request(`/visits/${visitId}/review`, {
+      method: "POST",
+      body: JSON.stringify(dto),
+    });
   }
 
   // Quotes
@@ -317,7 +462,8 @@ class ApiClient {
 
   async uploadIssuePhoto(formData: FormData) {
     // For FormData, we don't set Content-Type header manually, fetch does it
-    const url = `${API_URL}/issues/upload-photo`;
+    const baseUrl = await getApiBaseUrl();
+    const url = `${baseUrl}/issues/upload-photo`;
     const token = await this.getAuthToken();
     
     const response = await fetch(url, {
@@ -374,6 +520,38 @@ class ApiClient {
     if (since) params.append("since", since.toString());
     if (shapes && shapes.length > 0) params.append("shapes", shapes.join(","));
     return this.request(`/mobile/sync${params.toString() ? `?${params.toString()}` : ""}`);
+  }
+
+  // Kwame AI – pool coach chat
+  async chatWithKwame(
+    messages: Array<{ role: "user" | "assistant"; content: string }>,
+    conversationId?: string
+  ) {
+    return this.request<{ message: string; conversationId: string; title: string }>(
+      "/ai/pool-coach/chat",
+      {
+        method: "POST",
+        body: JSON.stringify({ messages, conversationId }),
+      }
+    );
+  }
+
+  async getPoolCoachChats() {
+    return this.request<Array<{ id: string; title: string; createdAt: string; updatedAt: string }>>(
+      "/ai/pool-coach/chats"
+    );
+  }
+
+  async getPoolCoachChat(id: string) {
+    return this.request<{ id: string; title: string; messages: any[]; createdAt: string }>(
+      `/ai/pool-coach/chats/${id}`
+    );
+  }
+
+  async deletePoolCoachChat(id: string) {
+    return this.request<{ success: boolean }>(`/ai/pool-coach/chats/${id}`, {
+      method: "DELETE",
+    });
   }
 
   // Settings

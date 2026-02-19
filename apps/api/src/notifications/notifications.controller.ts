@@ -2,7 +2,6 @@ import {
   Controller,
   Get,
   Post,
-  Param,
   Query,
   Body,
   UseGuards,
@@ -57,6 +56,16 @@ export class NotificationsController {
     @Body() dto: SendNotificationDto & { scheduledFor: string }
   ) {
     return this.notificationsService.schedule(user.org_id, dto);
+  }
+
+  @Post("broadcast")
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "MANAGER")
+  async broadcast(
+    @CurrentUser() user: { org_id: string },
+    @Body() dto: { title: string; body: string; audience: "all" | "clients" | "carers" }
+  ) {
+    return this.notificationsService.broadcast(user.org_id, dto);
   }
 }
 

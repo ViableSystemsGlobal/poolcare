@@ -1,14 +1,21 @@
 import { useState, useEffect } from "react";
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, ActivityIndicator, Alert, Modal, TextInput } from "react-native";
+import {
+  View,
+  Text,
+  ScrollView,
+  TouchableOpacity,
+  StyleSheet,
+  ActivityIndicator,
+  Alert,
+  Modal,
+  TextInput,
+  RefreshControl,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { api } from "../src/lib/api-client";
-
-const PRIMARY_COLOR = "#14b8a6";
-const SUCCESS_COLOR = "#16a34a";
-const WARNING_COLOR = "#f59e0b";
-const DANGER_COLOR = "#ef4444";
+import { useTheme } from "../src/contexts/ThemeContext";
 
 interface ServicePlan {
   id: string;
@@ -21,133 +28,89 @@ interface ServicePlan {
   nextBillingDate?: string;
   autoRenew: boolean;
   cancelledAt?: string;
-  cancellationReason?: string;
-  pool: {
-    id: string;
-    name: string;
-    address?: string;
-  };
-  template?: {
-    id: string;
-    name: string;
-    description?: string;
-  };
+  pool: { id: string; name: string; address?: string };
+  template?: { id: string; name: string; description?: string };
 }
 
+const FREQ_LABEL: Record<string, string> = {
+  weekly: "Weekly",
+  biweekly: "Every 2 weeks",
+  monthly: "Monthly",
+  once_week: "Once / week",
+  twice_week: "Twice / week",
+  once_month: "Once / month",
+  twice_month: "Twice / month",
+};
+
+const BILLING_LABEL: Record<string, string> = {
+  monthly: "/ month",
+  quarterly: "/ quarter",
+  annually: "/ year",
+  per_visit: "/ visit",
+};
+
 export default function MySubscriptionsScreen() {
+  const { themeColor } = useTheme();
   const [plans, setPlans] = useState<ServicePlan[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [cancelling, setCancelling] = useState<string | null>(null);
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<ServicePlan | null>(null);
   const [cancelReason, setCancelReason] = useState("");
 
-  useEffect(() => {
-    fetchPlans();
-  }, []);
+  useEffect(() => { fetchPlans(); }, []);
 
   const fetchPlans = async () => {
     try {
       setLoading(true);
-      const response = await api.getServicePlans({ active: true });
-      const plansData = response.items || response || [];
-      setPlans(plansData);
-    } catch (error) {
-      console.error("Error fetching plans:", error);
-      Alert.alert("Error", "Failed to load subscriptions");
+      const res = await api.getServicePlans({ active: true }) as any;
+      setPlans(res.items || res || []);
+    } catch {
+      Alert.alert("Error", "Failed to load subscriptions.");
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   };
 
+  const onRefresh = () => { setRefreshing(true); fetchPlans(); };
+
   const handleCancel = async () => {
     if (!selectedPlan) return;
-
     try {
       setCancelling(selectedPlan.id);
       await api.cancelServicePlan(selectedPlan.id, cancelReason || undefined);
-
-      Alert.alert(
-        "Subscription Cancelled",
-        "Your subscription has been cancelled successfully.",
-        [
-          {
-            text: "OK",
-            onPress: () => {
-              setShowCancelModal(false);
-              setSelectedPlan(null);
-              setCancelReason("");
-              fetchPlans();
-            },
-          },
-        ]
-      );
+      setShowCancelModal(false);
+      setCancelReason("");
+      setSelectedPlan(null);
+      Alert.alert("Cancelled", "Your subscription has been cancelled.");
+      fetchPlans();
     } catch (error: any) {
-      Alert.alert("Error", error.message || "Failed to cancel subscription");
+      Alert.alert("Error", error.message || "Failed to cancel.");
     } finally {
       setCancelling(null);
     }
   };
 
-  const formatCurrency = (cents: number, currency: string) => {
-    const amount = (cents / 100).toFixed(2);
-    return currency === "GHS" ? `GH₵${amount}` : `$${amount}`;
+  const fmt = (cents: number, currency: string) => {
+    const sym = currency === "GHS" ? "GH₵" : "$";
+    return `${sym}${(cents / 100).toFixed(2)}`;
   };
 
-  const formatDate = (dateString?: string) => {
-    if (!dateString) return "N/A";
-    const date = new Date(dateString);
-    return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-  };
+  const fmtDate = (d?: string) => d ? new Date(d).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : null;
 
-  const getFrequencyLabel = (frequency: string) => {
-    const labels: { [key: string]: string } = {
-      weekly: "Weekly",
-      biweekly: "Biweekly",
-      monthly: "Monthly",
-      once_week: "Once per Week",
-      twice_week: "Twice per Week",
-      once_month: "Once per Month",
-      twice_month: "Twice per Month",
-    };
-    return labels[frequency] || frequency;
-  };
-
-  const getBillingLabel = (billingType: string) => {
-    const labels: { [key: string]: string } = {
-      monthly: "Monthly",
-      quarterly: "Quarterly",
-      annually: "Annually",
-      per_visit: "Per Visit",
-    };
-    return labels[billingType] || billingType;
-  };
-
-  const getStatusColor = (status: string) => {
+  const statusMeta = (status: string) => {
     switch (status) {
-      case "active":
-        return SUCCESS_COLOR;
-      case "paused":
-        return WARNING_COLOR;
-      case "cancelled":
-        return DANGER_COLOR;
-      default:
-        return "#6b7280";
+      case "active": return { color: "#16a34a", bg: "#f0fdf4", label: "Active" };
+      case "paused": return { color: "#d97706", bg: "#fef3c7", label: "Paused" };
+      case "cancelled": return { color: "#ef4444", bg: "#fee2e2", label: "Cancelled" };
+      default: return { color: "#6b7280", bg: "#f3f4f6", label: status };
     }
   };
 
-  const getStatusLabel = (status: string) => {
-    switch (status) {
-      case "active":
-        return "Active";
-      case "paused":
-        return "Paused";
-      case "cancelled":
-        return "Cancelled";
-      default:
-        return status;
-    }
-  };
+  const activePlans = plans.filter((p) => p.status === "active");
+  const otherPlans = plans.filter((p) => p.status !== "active");
 
   if (loading) {
     return (
@@ -159,8 +122,8 @@ export default function MySubscriptionsScreen() {
           <Text style={styles.headerTitle}>My Subscriptions</Text>
           <View style={{ width: 24 }} />
         </View>
-        <View style={styles.centerContent}>
-          <ActivityIndicator size="large" color={PRIMARY_COLOR} />
+        <View style={styles.center}>
+          <ActivityIndicator size="large" color={themeColor} />
           <Text style={styles.loadingText}>Loading subscriptions...</Text>
         </View>
       </SafeAreaView>
@@ -175,184 +138,121 @@ export default function MySubscriptionsScreen() {
         </TouchableOpacity>
         <Text style={styles.headerTitle}>My Subscriptions</Text>
         <TouchableOpacity onPress={() => router.push("/subscriptions")}>
-          <Ionicons name="add-circle-outline" size={24} color={PRIMARY_COLOR} />
+          <Ionicons name="add-circle-outline" size={26} color={themeColor} />
         </TouchableOpacity>
       </View>
 
-      <ScrollView style={styles.content} contentContainerStyle={styles.contentContainer}>
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={themeColor} />}
+      >
         {plans.length === 0 ? (
           <View style={styles.emptyState}>
-            <Ionicons name="card-outline" size={64} color="#d1d5db" />
-            <Text style={styles.emptyText}>No active subscriptions</Text>
-            <Text style={styles.emptySubtext}>
-              Browse available plans and subscribe to get started
+            <View style={[styles.emptyIcon, { backgroundColor: `${themeColor}15` }]}>
+              <Ionicons name="layers-outline" size={48} color={themeColor} />
+            </View>
+            <Text style={styles.emptyTitle}>No Active Subscriptions</Text>
+            <Text style={styles.emptyText}>
+              Subscribe to a pool maintenance plan to keep your pool in perfect condition all year round.
             </Text>
             <TouchableOpacity
-              style={styles.browseButton}
+              style={[styles.browsePlansBtn, { backgroundColor: themeColor }]}
               onPress={() => router.push("/subscriptions")}
             >
-              <Text style={styles.browseButtonText}>Browse Plans</Text>
+              <Ionicons name="search-outline" size={18} color="#fff" />
+              <Text style={styles.browsePlansBtnText}>Browse Plans</Text>
             </TouchableOpacity>
           </View>
         ) : (
-          plans.map((plan) => (
-            <View key={plan.id} style={styles.planCard}>
-              <View style={styles.planHeader}>
-                <View style={styles.planTitleSection}>
-                  <View style={styles.planTitleRow}>
-                    <Text style={styles.planName}>
-                      {plan.template?.name || "Service Plan"}
-                    </Text>
-                    <View
-                      style={[
-                        styles.statusBadge,
-                        { backgroundColor: getStatusColor(plan.status) + "15" },
-                      ]}
-                    >
-                      <View
-                        style={[
-                          styles.statusDot,
-                          { backgroundColor: getStatusColor(plan.status) },
-                        ]}
-                      />
-                      <Text
-                        style={[
-                          styles.statusText,
-                          { color: getStatusColor(plan.status) },
-                        ]}
-                      >
-                        {getStatusLabel(plan.status)}
-                      </Text>
-                    </View>
-                  </View>
-                  <Text style={styles.poolName}>{plan.pool.name}</Text>
-                  {plan.pool.address && (
-                    <Text style={styles.poolAddress}>{plan.pool.address}</Text>
-                  )}
-                </View>
-                <View style={styles.priceBadge}>
-                  <Text style={styles.priceAmount}>
-                    {formatCurrency(plan.priceCents, plan.currency)}
-                  </Text>
-                  <Text style={styles.pricePeriod}>/{getBillingLabel(plan.billingType)}</Text>
-                </View>
+          <>
+            {/* Summary strip */}
+            <View style={styles.summaryRow}>
+              <View style={styles.summaryItem}>
+                <Text style={[styles.summaryNum, { color: themeColor }]}>{activePlans.length}</Text>
+                <Text style={styles.summaryLabel}>Active</Text>
               </View>
-
-              <View style={styles.planDetails}>
-                <View style={styles.detailRow}>
-                  <Ionicons name="calendar-outline" size={18} color="#6b7280" />
-                  <Text style={styles.detailText}>
-                    Service: {getFrequencyLabel(plan.frequency)}
-                  </Text>
-                </View>
-                {plan.nextVisitAt && (
-                  <View style={styles.detailRow}>
-                    <Ionicons name="time-outline" size={18} color="#6b7280" />
-                    <Text style={styles.detailText}>
-                      Next Visit: {formatDate(plan.nextVisitAt)}
-                    </Text>
-                  </View>
-                )}
-                {plan.nextBillingDate && plan.billingType !== "per_visit" && (
-                  <View style={styles.detailRow}>
-                    <Ionicons name="card-outline" size={18} color="#6b7280" />
-                    <Text style={styles.detailText}>
-                      Next Billing: {formatDate(plan.nextBillingDate)}
-                    </Text>
-                  </View>
-                )}
-                {plan.autoRenew && plan.status === "active" && (
-                  <View style={styles.detailRow}>
-                    <Ionicons name="refresh-outline" size={18} color={SUCCESS_COLOR} />
-                    <Text style={[styles.detailText, { color: SUCCESS_COLOR }]}>
-                      Auto-renew enabled
-                    </Text>
-                  </View>
-                )}
-                {plan.cancelledAt && (
-                  <View style={styles.detailRow}>
-                    <Ionicons name="close-circle-outline" size={18} color={DANGER_COLOR} />
-                    <Text style={[styles.detailText, { color: DANGER_COLOR }]}>
-                      Cancelled on {formatDate(plan.cancelledAt)}
-                    </Text>
-                  </View>
-                )}
+              <View style={styles.summaryDivider} />
+              <View style={styles.summaryItem}>
+                <Text style={styles.summaryNum}>
+                  {fmt(activePlans.reduce((s, p) => s + p.priceCents, 0), "GHS")}
+                </Text>
+                <Text style={styles.summaryLabel}>Total / period</Text>
               </View>
-
-              {plan.status === "active" && (
-                <TouchableOpacity
-                  style={styles.cancelButton}
-                  onPress={() => {
-                    setSelectedPlan(plan);
-                    setShowCancelModal(true);
-                  }}
-                >
-                  <Text style={styles.cancelButtonText}>Cancel Subscription</Text>
-                </TouchableOpacity>
-              )}
+              <View style={styles.summaryDivider} />
+              <View style={styles.summaryItem}>
+                <Text style={styles.summaryNum}>{plans.reduce((s, p) => s + (p.pool ? 1 : 0), 0)}</Text>
+                <Text style={styles.summaryLabel}>Pools covered</Text>
+              </View>
             </View>
-          ))
+
+            {/* Active plans */}
+            {activePlans.length > 0 && (
+              <>
+                <Text style={styles.groupTitle}>Active</Text>
+                {activePlans.map((plan) => <PlanCard key={plan.id} plan={plan} themeColor={themeColor} fmt={fmt} fmtDate={fmtDate} statusMeta={statusMeta} onCancel={() => { setSelectedPlan(plan); setShowCancelModal(true); }} />)}
+              </>
+            )}
+
+            {/* Other plans */}
+            {otherPlans.length > 0 && (
+              <>
+                <Text style={[styles.groupTitle, { marginTop: 8 }]}>Inactive</Text>
+                {otherPlans.map((plan) => <PlanCard key={plan.id} plan={plan} themeColor={themeColor} fmt={fmt} fmtDate={fmtDate} statusMeta={statusMeta} />)}
+              </>
+            )}
+
+            {/* Browse more */}
+            <TouchableOpacity
+              style={[styles.morePlansBtn, { borderColor: themeColor }]}
+              onPress={() => router.push("/subscriptions")}
+            >
+              <Ionicons name="add" size={18} color={themeColor} />
+              <Text style={[styles.morePlansBtnText, { color: themeColor }]}>Add Another Plan</Text>
+            </TouchableOpacity>
+          </>
         )}
       </ScrollView>
 
-      {/* Cancel Modal */}
-      <Modal
-        visible={showCancelModal}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setShowCancelModal(false)}
-      >
+      {/* Cancel modal */}
+      <Modal visible={showCancelModal} transparent animationType="slide" onRequestClose={() => setShowCancelModal(false)}>
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
+          <View style={styles.modalSheet}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Cancel Subscription</Text>
-              <TouchableOpacity onPress={() => setShowCancelModal(false)}>
+              <TouchableOpacity onPress={() => { setShowCancelModal(false); setCancelReason(""); }}>
                 <Ionicons name="close" size={24} color="#6b7280" />
               </TouchableOpacity>
             </View>
-
             <ScrollView style={styles.modalBody}>
-              <Text style={styles.modalText}>
-                Are you sure you want to cancel your subscription to{" "}
-                <Text style={styles.modalBold}>{selectedPlan?.template?.name || "this plan"}</Text>?
-              </Text>
-              <Text style={styles.modalSubtext}>
-                Your subscription will remain active until the end of the current billing period.
-              </Text>
-
-              <View style={styles.formGroup}>
-                <Text style={styles.label}>Reason (Optional)</Text>
-                <TextInput
-                  style={styles.textInput}
-                  placeholder="Tell us why you're cancelling..."
-                  value={cancelReason}
-                  onChangeText={setCancelReason}
-                  multiline
-                  numberOfLines={4}
-                />
+              <View style={styles.cancelWarning}>
+                <Ionicons name="warning-outline" size={20} color="#d97706" />
+                <Text style={styles.cancelWarningText}>
+                  Cancelling <Text style={{ fontWeight: "700" }}>{selectedPlan?.template?.name || "this plan"}</Text> for pool <Text style={{ fontWeight: "700" }}>{selectedPlan?.pool?.name}</Text>.
+                  {"\n"}Your service will continue until the end of the current billing period.
+                </Text>
               </View>
+              <Text style={styles.modalLabel}>Reason for cancelling (optional)</Text>
+              <TextInput
+                style={styles.textInput}
+                placeholder="Tell us why you're cancelling..."
+                value={cancelReason}
+                onChangeText={setCancelReason}
+                multiline
+                numberOfLines={3}
+              />
             </ScrollView>
-
             <View style={styles.modalFooter}>
-              <TouchableOpacity
-                style={styles.modalCancelButton}
-                onPress={() => {
-                  setShowCancelModal(false);
-                  setCancelReason("");
-                }}
-              >
-                <Text style={styles.modalCancelButtonText}>Keep Subscription</Text>
+              <TouchableOpacity style={styles.keepBtn} onPress={() => { setShowCancelModal(false); setCancelReason(""); }}>
+                <Text style={styles.keepBtnText}>Keep Plan</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.modalConfirmButton, cancelling && styles.modalConfirmButtonDisabled]}
+                style={[styles.confirmCancelBtn, cancelling && { opacity: 0.6 }]}
                 onPress={handleCancel}
                 disabled={!!cancelling}
               >
-                {cancelling ? (
-                  <ActivityIndicator size="small" color="#ffffff" />
-                ) : (
-                  <Text style={styles.modalConfirmButtonText}>Cancel Subscription</Text>
-                )}
+                {cancelling ? <ActivityIndicator size="small" color="#fff" /> : <Text style={styles.confirmCancelBtnText}>Cancel Plan</Text>}
               </TouchableOpacity>
             </View>
           </View>
@@ -362,262 +262,241 @@ export default function MySubscriptionsScreen() {
   );
 }
 
+function PlanCard({ plan, themeColor, fmt, fmtDate, statusMeta, onCancel }: {
+  plan: ServicePlan;
+  themeColor: string;
+  fmt: (c: number, cur: string) => string;
+  fmtDate: (d?: string) => string | null;
+  statusMeta: (s: string) => { color: string; bg: string; label: string };
+  onCancel?: () => void;
+}) {
+  const meta = statusMeta(plan.status);
+  const nextVisit = fmtDate(plan.nextVisitAt);
+  const nextBilling = fmtDate(plan.nextBillingDate);
+
+  return (
+    <View style={styles.planCard}>
+      {/* Top row */}
+      <View style={styles.planTop}>
+        <View style={styles.planTopLeft}>
+          <Text style={styles.planName}>{plan.template?.name || "Service Plan"}</Text>
+          <View style={styles.planPoolRow}>
+            <Ionicons name="water-outline" size={13} color="#6b7280" />
+            <Text style={styles.planPool}>{plan.pool?.name}</Text>
+            {plan.pool?.address && <Text style={styles.planPool} numberOfLines={1}> · {plan.pool.address}</Text>}
+          </View>
+        </View>
+        <View>
+          <Text style={[styles.planPrice, { color: themeColor }]}>
+            {fmt(plan.priceCents, plan.currency)}
+          </Text>
+          <Text style={styles.planPricePer}>{BILLING_LABEL[plan.billingType] || `/ ${plan.billingType}`}</Text>
+        </View>
+      </View>
+
+      {/* Details */}
+      <View style={styles.planDetails}>
+        <View style={styles.planDetailRow}>
+          <Ionicons name="calendar-outline" size={15} color="#9ca3af" />
+          <Text style={styles.planDetailText}>{FREQ_LABEL[plan.frequency] || plan.frequency} service</Text>
+        </View>
+        {nextVisit && (
+          <View style={styles.planDetailRow}>
+            <Ionicons name="time-outline" size={15} color="#9ca3af" />
+            <Text style={styles.planDetailText}>Next visit: <Text style={{ fontWeight: "600", color: "#111827" }}>{nextVisit}</Text></Text>
+          </View>
+        )}
+        {nextBilling && plan.billingType !== "per_visit" && (
+          <View style={styles.planDetailRow}>
+            <Ionicons name="card-outline" size={15} color="#9ca3af" />
+            <Text style={styles.planDetailText}>Next billing: <Text style={{ fontWeight: "600", color: "#111827" }}>{nextBilling}</Text></Text>
+          </View>
+        )}
+        {plan.autoRenew && plan.status === "active" && (
+          <View style={styles.planDetailRow}>
+            <Ionicons name="refresh-outline" size={15} color="#16a34a" />
+            <Text style={[styles.planDetailText, { color: "#16a34a" }]}>Auto-renew on</Text>
+          </View>
+        )}
+      </View>
+
+      {/* Footer */}
+      <View style={styles.planFooter}>
+        <View style={[styles.statusBadge, { backgroundColor: meta.bg }]}>
+          <View style={[styles.statusDot, { backgroundColor: meta.color }]} />
+          <Text style={[styles.statusText, { color: meta.color }]}>{meta.label}</Text>
+        </View>
+        {plan.status === "active" && onCancel && (
+          <TouchableOpacity onPress={onCancel} style={styles.cancelPlanBtn}>
+            <Text style={styles.cancelPlanBtnText}>Cancel</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#f9fafb",
-  },
+  container: { flex: 1, backgroundColor: "#f3f4f6" },
   header: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    padding: 16,
-    backgroundColor: "#ffffff",
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    backgroundColor: "#fff",
     borderBottomWidth: 1,
     borderBottomColor: "#e5e7eb",
   },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: "bold",
-    color: "#111827",
-  },
-  content: {
-    flex: 1,
-  },
-  contentContainer: {
+  headerTitle: { fontSize: 20, fontWeight: "700", color: "#111827" },
+  center: { flex: 1, justifyContent: "center", alignItems: "center", gap: 12 },
+  loadingText: { fontSize: 15, color: "#6b7280" },
+  scroll: { flex: 1 },
+  scrollContent: { padding: 20, paddingBottom: 60 },
+
+  // Empty
+  emptyState: { alignItems: "center", paddingVertical: 60 },
+  emptyIcon: { width: 96, height: 96, borderRadius: 48, justifyContent: "center", alignItems: "center", marginBottom: 24 },
+  emptyTitle: { fontSize: 22, fontWeight: "700", color: "#111827", marginBottom: 10 },
+  emptyText: { fontSize: 15, color: "#6b7280", textAlign: "center", lineHeight: 22, marginBottom: 28 },
+  browsePlansBtn: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 28, paddingVertical: 16, borderRadius: 14 },
+  browsePlansBtnText: { fontSize: 16, fontWeight: "700", color: "#fff" },
+
+  // Summary
+  summaryRow: {
+    flexDirection: "row",
+    backgroundColor: "#fff",
+    borderRadius: 16,
     padding: 16,
+    marginBottom: 20,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    elevation: 1,
   },
-  centerContent: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
+  summaryItem: { flex: 1, alignItems: "center" },
+  summaryNum: { fontSize: 20, fontWeight: "800", color: "#111827" },
+  summaryLabel: { fontSize: 11, color: "#9ca3af", marginTop: 2 },
+  summaryDivider: { width: 1, backgroundColor: "#f3f4f6" },
+
+  groupTitle: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#9ca3af",
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
+    marginBottom: 10,
   },
-  loadingText: {
-    marginTop: 12,
-    fontSize: 16,
-    color: "#6b7280",
-  },
-  emptyState: {
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 64,
-  },
-  emptyText: {
-    fontSize: 18,
-    fontWeight: "600",
-    color: "#111827",
-    marginTop: 16,
-  },
-  emptySubtext: {
-    fontSize: 14,
-    color: "#6b7280",
-    marginTop: 8,
-    textAlign: "center",
-    marginBottom: 24,
-  },
-  browseButton: {
-    backgroundColor: PRIMARY_COLOR,
-    borderRadius: 8,
-    padding: 14,
-    paddingHorizontal: 24,
-  },
-  browseButtonText: {
-    color: "#ffffff",
-    fontSize: 16,
-    fontWeight: "600",
-  },
+
+  // Plan card
   planCard: {
-    backgroundColor: "#ffffff",
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    padding: 18,
+    marginBottom: 14,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
   },
-  planHeader: {
+  planTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 },
+  planTopLeft: { flex: 1, marginRight: 12 },
+  planName: { fontSize: 17, fontWeight: "700", color: "#111827", marginBottom: 4 },
+  planPoolRow: { flexDirection: "row", alignItems: "center", gap: 4, flex: 1 },
+  planPool: { fontSize: 13, color: "#6b7280", flexShrink: 1 },
+  planPrice: { fontSize: 22, fontWeight: "800", textAlign: "right" },
+  planPricePer: { fontSize: 12, color: "#9ca3af", textAlign: "right" },
+  planDetails: { gap: 8, marginBottom: 14 },
+  planDetailRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  planDetailText: { fontSize: 13, color: "#6b7280" },
+  planFooter: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "flex-start",
-    marginBottom: 16,
+    alignItems: "center",
+    paddingTop: 14,
+    borderTopWidth: 1,
+    borderTopColor: "#f3f4f6",
   },
-  planTitleSection: {
-    flex: 1,
-    marginRight: 12,
-  },
-  planTitleRow: {
+  statusBadge: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20 },
+  statusDot: { width: 7, height: 7, borderRadius: 4 },
+  statusText: { fontSize: 12, fontWeight: "700" },
+  cancelPlanBtn: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 10, borderWidth: 1, borderColor: "#fee2e2" },
+  cancelPlanBtnText: { fontSize: 13, fontWeight: "600", color: "#ef4444" },
+
+  morePlansBtn: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 4,
-    flexWrap: "wrap",
-  },
-  planName: {
-    fontSize: 18,
-    fontWeight: "bold",
-    color: "#111827",
-    marginRight: 8,
-  },
-  statusBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  statusDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    marginRight: 6,
-  },
-  statusText: {
-    fontSize: 12,
-    fontWeight: "600",
-  },
-  poolName: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#374151",
+    justifyContent: "center",
+    gap: 8,
+    borderWidth: 2,
+    borderStyle: "dashed",
+    borderRadius: 14,
+    paddingVertical: 16,
     marginTop: 4,
   },
-  poolAddress: {
-    fontSize: 14,
-    color: "#6b7280",
-    marginTop: 2,
-  },
-  priceBadge: {
-    alignItems: "flex-end",
-  },
-  priceAmount: {
-    fontSize: 20,
-    fontWeight: "bold",
-    color: PRIMARY_COLOR,
-  },
-  pricePeriod: {
-    fontSize: 12,
-    color: "#6b7280",
-    marginTop: 2,
-  },
-  planDetails: {
-    marginBottom: 16,
-  },
-  detailRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 8,
-  },
-  detailText: {
-    fontSize: 14,
-    color: "#374151",
-    marginLeft: 8,
-  },
-  cancelButton: {
-    borderWidth: 1,
-    borderColor: DANGER_COLOR,
-    borderRadius: 8,
-    padding: 12,
-    alignItems: "center",
-  },
-  cancelButtonText: {
-    color: DANGER_COLOR,
-    fontSize: 14,
-    fontWeight: "600",
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
-    justifyContent: "flex-end",
-  },
-  modalContent: {
-    backgroundColor: "#ffffff",
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    maxHeight: "90%",
-  },
+  morePlansBtnText: { fontSize: 15, fontWeight: "600" },
+
+  // Modal
+  modalOverlay: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.4)" },
+  modalSheet: { backgroundColor: "#fff", borderTopLeftRadius: 24, borderTopRightRadius: 24 },
   modalHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     padding: 20,
     borderBottomWidth: 1,
-    borderBottomColor: "#e5e7eb",
+    borderBottomColor: "#f3f4f6",
   },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: "bold",
-    color: "#111827",
+  modalTitle: { fontSize: 18, fontWeight: "700", color: "#111827" },
+  modalBody: { paddingHorizontal: 20, paddingVertical: 16, maxHeight: 320 },
+  cancelWarning: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+    backgroundColor: "#fffbeb",
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: "#fde68a",
   },
-  modalBody: {
-    padding: 20,
-  },
-  modalText: {
-    fontSize: 16,
-    color: "#374151",
-    marginBottom: 8,
-  },
-  modalBold: {
-    fontWeight: "600",
-  },
-  modalSubtext: {
-    fontSize: 14,
-    color: "#6b7280",
-    marginBottom: 24,
-  },
-  formGroup: {
-    marginTop: 16,
-  },
-  label: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#111827",
-    marginBottom: 8,
-  },
+  cancelWarningText: { flex: 1, fontSize: 14, color: "#374151", lineHeight: 20 },
+  modalLabel: { fontSize: 13, fontWeight: "600", color: "#374151", marginBottom: 8 },
   textInput: {
     borderWidth: 1,
     borderColor: "#e5e7eb",
-    borderRadius: 8,
+    borderRadius: 10,
     padding: 12,
     fontSize: 14,
     color: "#111827",
-    minHeight: 100,
+    minHeight: 80,
     textAlignVertical: "top",
+    backgroundColor: "#fafafa",
   },
   modalFooter: {
     flexDirection: "row",
+    gap: 12,
     padding: 20,
     borderTopWidth: 1,
-    borderTopColor: "#e5e7eb",
-    gap: 12,
+    borderTopColor: "#f3f4f6",
   },
-  modalCancelButton: {
+  keepBtn: {
     flex: 1,
-    padding: 14,
-    borderRadius: 8,
+    paddingVertical: 14,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: "#e5e7eb",
     alignItems: "center",
   },
-  modalCancelButtonText: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#374151",
-  },
-  modalConfirmButton: {
+  keepBtnText: { fontSize: 15, fontWeight: "600", color: "#374151" },
+  confirmCancelBtn: {
     flex: 1,
-    backgroundColor: DANGER_COLOR,
-    padding: 14,
-    borderRadius: 8,
+    backgroundColor: "#ef4444",
+    paddingVertical: 14,
+    borderRadius: 12,
     alignItems: "center",
   },
-  modalConfirmButtonDisabled: {
-    opacity: 0.5,
-  },
-  modalConfirmButtonText: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#ffffff",
-  },
+  confirmCancelBtnText: { fontSize: 15, fontWeight: "600", color: "#fff" },
 });
-

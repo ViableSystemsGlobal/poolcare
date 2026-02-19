@@ -140,9 +140,22 @@ export default function ClientDashboard() {
       setHomeCardImageUrl(profile.homeCardImageUrl && profile.homeCardImageUrl.trim() ? profile.homeCardImageUrl.trim() : null);
       setLogoUrl(profile.logoUrl && profile.logoUrl.trim() ? profile.logoUrl.trim() : null);
 
-      const user = await api.getStoredUser();
-      const first = user?.name?.trim().split(/\s+/)[0] || "";
-      setUserFirstName(first);
+      // Resolve user name: start with cached value, then fetch live from API
+      const storedUser = await api.getStoredUser();
+      const cachedFirst = storedUser?.name?.trim().split(/\s+/)[0] || "";
+      if (cachedFirst) setUserFirstName(cachedFirst);
+      try {
+        const me = await api.getMe() as any;
+        const liveName = me?.user?.name || me?.name || null;
+        if (liveName) {
+          const liveFirst = liveName.trim().split(/\s+/)[0];
+          setUserFirstName(liveFirst);
+          // Cache the resolved name so it's available immediately on next launch
+          await api.updateStoredUser({ name: liveName });
+        }
+      } catch {
+        // Fallback: keep cached name, don't crash dashboard load
+      }
 
       // Transform pools data
       const poolsData: Pool[] = ((poolsResponse as any).items || poolsResponse || []).map((pool: any) => {
@@ -288,14 +301,17 @@ export default function ClientDashboard() {
     }
   };
 
-  // Total balance owed across all outstanding invoices (always show card, even when 0)
+  // Total balance owed = unpaid invoice balances + pending quote totals
   const balanceOwed = useMemo(() => {
-    const cents = invoices.reduce(
+    const invoiceCents = invoices.reduce(
       (sum, inv) => sum + Math.max(0, (inv.totalCents ?? Math.round(inv.amount * 100)) - (inv.paidCents ?? 0)),
       0
     );
-    return cents / 100;
-  }, [invoices]);
+    const quoteCents = quotes
+      .filter((q) => q.pending)
+      .reduce((sum, q) => sum + Math.round(q.amount * 100), 0);
+    return (invoiceCents + quoteCents) / 100;
+  }, [invoices, quotes]);
 
   const getChemistryStatus = (reading: Pool["lastReading"]) => {
     if (!reading) return { status: "unknown", color: "#9ca3af", label: "No Data" };
@@ -437,7 +453,7 @@ export default function ClientDashboard() {
           )}
         </View>
         <View style={styles.headerRight}>
-          <TouchableOpacity style={styles.notificationButton}>
+          <TouchableOpacity style={styles.notificationButton} onPress={() => router.push("/notifications")}>
             <Ionicons name="notifications-outline" size={24} color="#111827" />
           </TouchableOpacity>
         </View>
@@ -460,13 +476,13 @@ export default function ClientDashboard() {
           {getTimeBasedGreeting()}{userFirstName ? ` ${userFirstName}` : ""}
         </Text>
 
-        {/* Permanent Balance Owed card (balance left, image right inside same card) */}
+        {/* Balance Owed card — total includes invoice balances + pending quotes */}
         <TouchableOpacity
           style={styles.balanceCard}
           onPress={() => router.push("/billing")}
           activeOpacity={0.7}
         >
-          <View style={styles.balanceCardContent}>
+          <View style={[styles.balanceCardContent, homeCardImageUrl ? styles.balanceCardContentWithImage : {}]}>
             <View style={styles.financialCardHeader}>
               <View style={styles.financialCardTitleRow}>
                 <Ionicons name="wallet-outline" size={16} color="#6b7280" />
@@ -476,36 +492,15 @@ export default function ClientDashboard() {
             <Text style={styles.financialCardAmount}>GH₵{formatAmount(balanceOwed)}</Text>
             <Text style={styles.financialCardRef}>Tap to view billing</Text>
           </View>
+
           {homeCardImageUrl ? (
-            <View style={styles.homeCardImageWrap}>
-              <Image
-                source={{ uri: fixUrlForMobile(homeCardImageUrl) }}
-                style={styles.homeCardImage}
-                resizeMode="cover"
-              />
-            </View>
+            <Image
+              source={{ uri: fixUrlForMobile(homeCardImageUrl) }}
+              style={styles.homeCardImage}
+              resizeMode="cover"
+            />
           ) : null}
         </TouchableOpacity>
-
-        {/* Pending quote card when present */}
-        {quotes.length > 0 && quotes[0].pending && (
-          <TouchableOpacity
-            style={[styles.financialCard, { marginBottom: 16 }]}
-            onPress={() => router.push(`/quotes/${quotes[0].id}`)}
-            activeOpacity={0.7}
-          >
-            <View style={styles.financialCardContent}>
-              <View style={styles.financialCardHeader}>
-                <View style={styles.financialCardTitleRow}>
-                  <Ionicons name="document-text-outline" size={16} color="#6b7280" />
-                  <Text style={styles.financialCardTitle}>Pending Quote</Text>
-                </View>
-              </View>
-              <Text style={styles.financialCardAmount}>GH₵{formatAmount(quotes[0].amount)}</Text>
-              <Text style={styles.financialCardRef}>Review & approve</Text>
-            </View>
-          </TouchableOpacity>
-        )}
 
         {/* Request or report (one screen: book a visit / report an issue) + Chat */}
         <View style={styles.requestButtonsRow}>
@@ -830,13 +825,11 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   balanceCard: {
-    flexDirection: "row",
-    alignItems: "stretch",
     backgroundColor: "#ffffff",
     borderRadius: 16,
     overflow: "hidden",
     marginBottom: 16,
-    height: 120,
+    minHeight: 120,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.08,
@@ -844,17 +837,17 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   balanceCardContent: {
-    flex: 1,
-    justifyContent: "center",
     padding: 20,
   },
-  homeCardImageWrap: {
-    width: 120,
-    height: 120,
+  balanceCardContentWithImage: {
+    paddingRight: 132,
   },
   homeCardImage: {
+    position: "absolute",
+    right: 0,
+    top: 0,
+    bottom: 0,
     width: 120,
-    height: 120,
   },
   financialCards: {
     flexDirection: "row",

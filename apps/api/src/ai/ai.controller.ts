@@ -7,12 +7,14 @@ import {
   Param,
   Query,
   UseGuards,
+  HttpCode,
 } from "@nestjs/common";
 import { AiService } from "./ai.service";
 import { DosingCoachService } from "./services/dosing-coach.service";
 import { SmartRepliesService } from "./services/smart-replies.service";
 import { RecommendationsService } from "./services/recommendations.service";
 import { BusinessPartnerService } from "./services/business-partner.service";
+import { PoolCoachService } from "./services/pool-coach.service";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { RolesGuard } from "../auth/guards/roles.guard";
 import { Roles } from "../auth/decorators/roles.decorator";
@@ -32,7 +34,8 @@ export class AiController {
     private readonly dosingCoachService: DosingCoachService,
     private readonly smartRepliesService: SmartRepliesService,
     private readonly recommendationsService: RecommendationsService,
-    private readonly businessPartnerService: BusinessPartnerService
+    private readonly businessPartnerService: BusinessPartnerService,
+    private readonly poolCoachService: PoolCoachService
   ) {}
 
   @Get("recommendations")
@@ -113,6 +116,40 @@ export class AiController {
     @Param("id") id: string
   ) {
     return this.businessPartnerService.deleteChat(user.org_id, user.sub, id);
+  }
+
+  /** Client-facing pool care assistant — available to all authenticated roles */
+  @Post("pool-coach/chat")
+  async poolCoachChat(
+    @CurrentUser() user: { org_id: string; sub: string },
+    @Body() dto: BusinessPartnerChatDto
+  ) {
+    return this.poolCoachService.chat(user.org_id, user.sub, {
+      conversationId: dto.conversationId,
+      messages: dto.messages as any,
+    });
+  }
+
+  @Get("pool-coach/chats")
+  async listPoolCoachChats(@CurrentUser() user: { org_id: string; sub: string }) {
+    return this.poolCoachService.listChats(user.org_id, user.sub);
+  }
+
+  @Get("pool-coach/chats/:id")
+  async getPoolCoachChat(
+    @CurrentUser() user: { org_id: string; sub: string },
+    @Param("id") id: string
+  ) {
+    return this.poolCoachService.getChat(user.org_id, user.sub, id);
+  }
+
+  @Delete("pool-coach/chats/:id")
+  @HttpCode(200)
+  async deletePoolCoachChat(
+    @CurrentUser() user: { org_id: string; sub: string },
+    @Param("id") id: string
+  ) {
+    return this.poolCoachService.deleteChat(user.org_id, user.sub, id);
   }
 }
 

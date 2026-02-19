@@ -286,7 +286,16 @@ export class PoolsService {
       throw new NotFoundException("Pool not found");
     }
 
-    // TODO: Check for active service plans before allowing delete
+    const activePlan = await prisma.servicePlan.findFirst({
+      where: { poolId, status: "active" },
+      select: { id: true },
+    });
+    if (activePlan) {
+      throw new BadRequestException(
+        "This pool has an active service plan. Cancel the plan first."
+      );
+    }
+
     await prisma.pool.delete({
       where: { id: poolId },
     });

@@ -10,6 +10,9 @@ import {
   UseInterceptors,
   UploadedFile,
   BadRequestException,
+  ParseFilePipe,
+  MaxFileSizeValidator,
+  FileTypeValidator,
 } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
 import { CarersService } from "./carers.service";
@@ -120,6 +123,26 @@ export class CarersController {
     @Body() dto: UpdateCarerDto
   ) {
     return this.carersService.updateMyCarer(user.org_id, user.sub, dto);
+  }
+
+  @Post("me/upload-photo")
+  @UseInterceptors(FileInterceptor("photo"))
+  async uploadMyPhoto(
+    @CurrentUser() user: { org_id: string; sub: string },
+    @UploadedFile(
+      new ParseFilePipe({
+        fileIsRequired: true,
+        validators: [
+          new MaxFileSizeValidator({ maxSize: 5 * 1024 * 1024 }),
+          new FileTypeValidator({ fileType: /(jpeg|jpg|png|webp)$/ }),
+        ],
+      })
+    )
+    file: Express.Multer.File
+  ) {
+    const imageUrl = await this.filesService.uploadImage(user.org_id, file, "carer", user.sub);
+    await this.carersService.updateMyCarer(user.org_id, user.sub, { imageUrl });
+    return { imageUrl };
   }
 
   @Post(":id/current-location")

@@ -51,3 +51,10 @@ secrets/
 *.pem
 *.key
 
+# Uploaded files (stored on server, not in git)
+apps/api/uploads/
+
+# Accidental env copies
+"apps/web/.env copy"
+apps/web/.env\ copy
+

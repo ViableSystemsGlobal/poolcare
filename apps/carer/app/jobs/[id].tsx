@@ -3,11 +3,13 @@ import { View, Text, ScrollView, TouchableOpacity, StyleSheet, TextInput, Alert,
 import { WebView } from "react-native-webview";
 import { useLocalSearchParams, router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as ImagePicker from "expo-image-picker";
 import * as FileSystem from "expo-file-system/legacy";
 import * as Sharing from "expo-sharing";
 import * as Location from "expo-location";
 import SwipeButton from "../../src/components/SwipeButton";
+import { useTheme } from "../../src/contexts/ThemeContext";
 // Conditionally import react-native-maps (requires development build, not Expo Go)
 let MapView: any = null;
 let Marker: any = null;
@@ -26,7 +28,7 @@ try {
 import { api, getApiUrl } from "../../src/lib/api-client";
 import { fixUrlForMobile } from "../../src/lib/network-utils";
 import { ChecklistWizard, ChecklistItem as WizardChecklistItem, useToast } from "../../src/components";
-import { COLORS } from "../../src/theme";
+// COLORS removed — replaced with literals below
 
 interface ChecklistItem {
   id: string;
@@ -49,6 +51,8 @@ interface Reading {
 
 export default function JobDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const insets = useSafeAreaInsets();
+  const { themeColor } = useTheme();
   const [job, setJob] = useState<any>(null);
   const [visitStarted, setVisitStarted] = useState(false);
   const [arrived, setArrived] = useState(false);
@@ -472,6 +476,8 @@ export default function JobDetailScreen() {
         scheduledDate: jobDate,
         isScheduledForToday,
         poolImageUrl,
+        clientName: client?.name || null,
+        clientPhone: client?.phone || null,
       });
       
       // If job is already en_route, on_site, or completed, mark as started
@@ -1233,6 +1239,24 @@ export default function JobDetailScreen() {
     }
   };
 
+  const openInMaps = () => {
+    if (!poolLocation) return;
+    const url = Platform.select({
+      ios: `maps://maps.apple.com/?daddr=${poolLocation.lat},${poolLocation.lng}`,
+      android: `geo:${poolLocation.lat},${poolLocation.lng}?q=${poolLocation.lat},${poolLocation.lng}`,
+    });
+    if (url) Linking.openURL(url);
+  };
+
+  const STATUS_CONFIG: Record<string, { label: string; color: string; bgColor: string; dotColor: string }> = {
+    scheduled:  { label: "Scheduled",  color: "#2563eb", bgColor: "#eff6ff", dotColor: "#2563eb" },
+    en_route:   { label: "En Route",   color: "#d97706", bgColor: "#fffbeb", dotColor: "#f59e0b" },
+    on_site:    { label: "On Site",    color: "#16a34a", bgColor: "#f0fdf4", dotColor: "#22c55e" },
+    completed:  { label: "Completed",  color: "#0d9488", bgColor: "#f0fdfa", dotColor: "#14b8a6" },
+    failed:     { label: "Failed",     color: "#dc2626", bgColor: "#fef2f2", dotColor: "#ef4444" },
+    cancelled:  { label: "Cancelled",  color: "#6b7280", bgColor: "#f9fafb", dotColor: "#9ca3af" },
+  };
+
   if (loading) {
     return (
       <View style={styles.container}>
@@ -1271,7 +1295,7 @@ export default function JobDetailScreen() {
       <View style={styles.transitionContainer}>
         <View style={styles.transitionContent}>
           <View style={styles.transitionIconContainer}>
-            <ActivityIndicator size="large" color={COLORS.text.inverse} />
+            <ActivityIndicator size="large" color={"#ffffff"} />
           </View>
           <Text style={styles.transitionTitle}>{transitionMessage}</Text>
           <Text style={styles.transitionSubtitle}>{job?.poolName}</Text>
@@ -1286,7 +1310,7 @@ export default function JobDetailScreen() {
       <View style={styles.completionContainer}>
         <View style={styles.completionContent}>
           <View style={styles.completionIconContainer}>
-            <Ionicons name="checkmark-circle" size={80} color={COLORS.success[500]} />
+            <Ionicons name="checkmark-circle" size={80} color={"#22c55e"} />
           </View>
           <Text style={styles.completionTitle}>Job Completed!</Text>
           <Text style={styles.completionPoolName}>{job?.poolName}</Text>
@@ -1314,10 +1338,10 @@ export default function JobDetailScreen() {
             disabled={loadingReport}
           >
             {loadingReport ? (
-              <ActivityIndicator size="small" color={COLORS.primary[500]} />
+              <ActivityIndicator size="small" color={"#14b8a6"} />
             ) : (
               <>
-                <Ionicons name="document-text-outline" size={20} color={COLORS.primary[500]} />
+                <Ionicons name="document-text-outline" size={20} color={"#14b8a6"} />
                 <Text style={styles.completionReportButtonText}>View Report</Text>
               </>
             )}
@@ -1343,7 +1367,7 @@ export default function JobDetailScreen() {
             <View style={styles.reportPreviewHeader}>
               <Text style={styles.reportPreviewTitle}>Service Report</Text>
               <TouchableOpacity onPress={() => setShowReportPreview(false)}>
-                <Ionicons name="close" size={24} color={COLORS.text.primary} />
+                <Ionicons name="close" size={24} color={"#111827"} />
               </TouchableOpacity>
             </View>
             <ScrollView style={styles.reportPreviewContent}>
@@ -1375,7 +1399,7 @@ export default function JobDetailScreen() {
                       <Text style={styles.reportSectionTitle}>Completed Tasks</Text>
                       {reportData.checklist.filter((item: any) => item.completed).map((item: any, idx: number) => (
                         <View key={idx} style={styles.reportChecklistItem}>
-                          <Ionicons name="checkmark-circle" size={16} color={COLORS.success[500]} />
+                          <Ionicons name="checkmark-circle" size={16} color={"#22c55e"} />
                           <Text style={styles.reportText}>{item.task || item.label}</Text>
                         </View>
                       ))}
@@ -1403,11 +1427,11 @@ export default function JobDetailScreen() {
         {/* Simplified header for wizard mode */}
         <View style={styles.wizardHeader}>
           <View style={styles.wizardHeaderLeft}>
-            <Ionicons name="water" size={20} color={COLORS.primary[500]} />
+            <Ionicons name="water" size={20} color={"#14b8a6"} />
             <Text style={styles.wizardPoolName}>{job?.poolName}</Text>
           </View>
           <View style={styles.wizardStatusBadge}>
-            <Ionicons name="location" size={14} color={COLORS.success[600]} />
+            <Ionicons name="location" size={14} color={"#16a34a"} />
             <Text style={styles.wizardStatusText}>On Site</Text>
           </View>
         </View>
@@ -1425,63 +1449,173 @@ export default function JobDetailScreen() {
     );
   }
 
+  const sc = STATUS_CONFIG[job?.status] || STATUS_CONFIG.scheduled;
+  const TIMELINE_STEPS = [
+    { key: "scheduled", label: "Scheduled", icon: "calendar-outline" },
+    { key: "en_route",  label: "En Route",  icon: "navigate-outline" },
+    { key: "on_site",   label: "On Site",   icon: "location-outline" },
+    { key: "completed", label: "Done",      icon: "checkmark-circle-outline" },
+  ] as const;
+  const currentStepIdx = TIMELINE_STEPS.findIndex(s => s.key === job?.status);
+
   return (
-    <ScrollView 
-      style={styles.container} 
-      contentContainerStyle={styles.content}
-      showsVerticalScrollIndicator={false}
-    >
-      {/* Job Info Card - Prominent with Pool Image */}
-      <View style={styles.jobInfoCard}>
-        {/* Pool Image - show placeholder if no URL or image failed to load */}
+    <View style={styles.container}>
+      {/* ── Hero image header ── */}
+      <View style={[styles.hero, { height: 220 + insets.top }]}>
         {job?.poolImageUrl && !poolImageLoadError ? (
           <Image
             source={{ uri: job.poolImageUrl }}
-            style={styles.poolImage}
+            style={StyleSheet.absoluteFill}
             resizeMode="cover"
             onError={() => setPoolImageLoadError(true)}
           />
         ) : (
-          <View style={styles.poolImagePlaceholder}>
-            <Ionicons name="water" size={48} color="#d1d5db" />
+          <View style={[StyleSheet.absoluteFill, styles.heroPlaceholder]}>
+            <Ionicons name="water" size={72} color="rgba(255,255,255,0.2)" />
           </View>
         )}
-        
-        <View style={styles.jobInfoContent}>
-        <View style={styles.jobInfoHeader}>
-          <View style={styles.jobInfoHeaderLeft}>
-              <View style={[styles.jobStatusIndicator, { 
-                backgroundColor: job?.status === "on_site" ? "#10b981" : 
-                                 job?.status === "en_route" ? "#f59e0b" : "#14b8a6" 
-              }]} />
-            <View style={styles.jobInfoText}>
-              <Text style={styles.jobInfoTitle}>{job?.poolName}</Text>
-              <Text style={styles.jobInfoSubtitle}>{job?.address}</Text>
-            </View>
+        <View style={[StyleSheet.absoluteFill, styles.heroOverlay]} />
+
+        {/* Back + status badge */}
+        <View style={[styles.heroTop, { paddingTop: insets.top + 12 }]}>
+          <TouchableOpacity style={styles.heroBackBtn} onPress={() => router.back()}>
+            <Ionicons name="arrow-back" size={20} color="#ffffff" />
+          </TouchableOpacity>
+          <View style={[styles.heroStatusBadge, { backgroundColor: sc.bgColor }]}>
+            <View style={[styles.heroStatusDot, { backgroundColor: sc.dotColor }]} />
+            <Text style={[styles.heroStatusLabel, { color: sc.color }]}>{sc.label}</Text>
           </View>
         </View>
-        <View style={styles.jobInfoDetails}>
-          <View style={styles.jobInfoDetailItem}>
-          <Ionicons name="time-outline" size={18} color="#6b7280" />
-            <Text style={styles.jobInfoDetailText}>
-            {job?.windowStart} - {job?.windowEnd}
-          </Text>
-          </View>
-          <View style={styles.jobInfoDetailItem}>
-            <Ionicons name="flag-outline" size={18} color="#6b7280" />
-              <Text style={[styles.jobInfoDetailText, {
-                color: job?.status === "on_site" ? "#10b981" : 
-                       job?.status === "en_route" ? "#f59e0b" : "#6b7280"
-              }]}>
-              {job?.status?.replace("_", " ").toUpperCase()}
-            </Text>
-            </View>
-          </View>
+
+        {/* Pool name + address */}
+        <View style={styles.heroBottom}>
+          <Text style={styles.heroPoolName} numberOfLines={2}>{job?.poolName}</Text>
+          {job?.address ? (
+            <TouchableOpacity style={styles.heroAddressRow} onPress={openInMaps} activeOpacity={0.8}>
+              <Ionicons name="location-outline" size={13} color="rgba(255,255,255,0.75)" />
+              <Text style={styles.heroAddressText} numberOfLines={1}>{job.address}</Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
       </View>
 
-      {/* Map View with Geofence - Show when pool location is available and not arrived */}
-      {poolLocation && !arrived && job.status !== "completed" && (
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* ── Status timeline ── */}
+        <View style={styles.timelineRow}>
+          {TIMELINE_STEPS.map((step, i) => {
+            const isActive = i <= currentStepIdx;
+            const isCurrent = i === currentStepIdx;
+            return (
+              <View key={step.key} style={styles.timelineStep}>
+                <View style={styles.timelineStepInner}>
+                  <View style={[
+                    styles.timelineDot,
+                    isActive && { backgroundColor: themeColor },
+                    isCurrent && styles.timelineDotCurrent,
+                  ]}>
+                    <Ionicons name={step.icon as any} size={13} color={isActive ? "#ffffff" : "#d1d5db"} />
+                  </View>
+                  {i < TIMELINE_STEPS.length - 1 && (
+                    <View style={[styles.timelineLine, isActive && i < currentStepIdx && { backgroundColor: themeColor }]} />
+                  )}
+                </View>
+                <Text style={[styles.timelineLabel, isCurrent && { color: themeColor, fontWeight: "600" }]}>{step.label}</Text>
+              </View>
+            );
+          })}
+        </View>
+
+        {/* ── Schedule card ── */}
+        <View style={styles.card}>
+          <View style={styles.cardRow}>
+            <View style={[styles.cardIconWrap, { backgroundColor: themeColor + "18" }]}>
+              <Ionicons name="calendar-outline" size={18} color={themeColor} />
+            </View>
+            <View style={styles.cardBody}>
+              <Text style={styles.cardLabel}>Date</Text>
+              <Text style={styles.cardValue}>
+                {job?.scheduledDate?.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
+              </Text>
+            </View>
+            {job?.isScheduledForToday && (
+              <View style={[styles.todayBadge, { backgroundColor: themeColor }]}>
+                <Text style={styles.todayBadgeText}>Today</Text>
+              </View>
+            )}
+          </View>
+          <View style={styles.cardDivider} />
+          <View style={styles.cardRow}>
+            <View style={[styles.cardIconWrap, { backgroundColor: themeColor + "18" }]}>
+              <Ionicons name="time-outline" size={18} color={themeColor} />
+            </View>
+            <View style={styles.cardBody}>
+              <Text style={styles.cardLabel}>Time window</Text>
+              <Text style={styles.cardValue}>{job?.windowStart} – {job?.windowEnd}</Text>
+            </View>
+          </View>
+        </View>
+
+        {/* ── Client card ── */}
+        {(job?.clientName || job?.clientPhone) && (
+          <View style={styles.card}>
+            <View style={styles.cardRow}>
+              <View style={[styles.cardIconWrap, { backgroundColor: "#f0fdf4" }]}>
+                <Ionicons name="person-outline" size={18} color="#16a34a" />
+              </View>
+              <View style={styles.cardBody}>
+                <Text style={styles.cardLabel}>Client</Text>
+                <Text style={styles.cardValue}>{job?.clientName || "Client"}</Text>
+                {job?.clientPhone && <Text style={styles.cardSub}>{job.clientPhone}</Text>}
+              </View>
+              {job?.clientPhone && (
+                <View style={styles.contactBtns}>
+                  <TouchableOpacity
+                    style={styles.contactBtn}
+                    onPress={() => Linking.openURL(`tel:${job.clientPhone}`)}
+                  >
+                    <Ionicons name="call-outline" size={17} color="#2563eb" />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.contactBtn, { marginLeft: 8 }]}
+                    onPress={() => Linking.openURL(`https://wa.me/${job.clientPhone?.replace(/\D/g, "")}`)}
+                  >
+                    <Ionicons name="logo-whatsapp" size={17} color="#22c55e" />
+                  </TouchableOpacity>
+                </View>
+              )}
+            </View>
+          </View>
+        )}
+
+        {/* ── Navigate card ── */}
+        {poolLocation && (
+          <TouchableOpacity style={styles.navigateCard} onPress={openInMaps} activeOpacity={0.85}>
+            <View style={[styles.cardIconWrap, { backgroundColor: "#eff6ff" }]}>
+              <Ionicons name="navigate-outline" size={18} color="#2563eb" />
+            </View>
+            <View style={styles.cardBody}>
+              <Text style={styles.cardValue}>Get directions</Text>
+              {distanceMeters !== null ? (
+                <Text style={[styles.cardSub, isWithinGeofence && { color: "#16a34a" }]}>
+                  {distanceMeters < 1000
+                    ? `${Math.round(distanceMeters)}m away`
+                    : `${(distanceMeters / 1000).toFixed(1)}km away`}
+                  {isWithinGeofence ? " · You're close!" : ""}
+                </Text>
+              ) : (
+                <Text style={styles.cardSub}>Tap to open in Maps</Text>
+              )}
+            </View>
+            <Ionicons name="chevron-forward" size={18} color="#9ca3af" />
+          </TouchableOpacity>
+        )}
+
+        {/* ── Map View with Geofence ── */}
+        {poolLocation && !arrived && job.status !== "completed" && (
         <View style={styles.mapCard}>
           <View style={styles.mapHeader}>
             <Ionicons name="map-outline" size={20} color="#374151" />
@@ -1772,38 +1906,30 @@ export default function JobDetailScreen() {
           </View>
           
           {/* Open in Maps button */}
-            <TouchableOpacity
-            style={styles.openMapsButton}
-            onPress={() => {
-              const url = Platform.select({
-                ios: `maps://maps.apple.com/?daddr=${poolLocation.lat},${poolLocation.lng}`,
-                android: `geo:${poolLocation.lat},${poolLocation.lng}?q=${poolLocation.lat},${poolLocation.lng}`,
-              });
-              if (url) {
-                Linking.openURL(url);
-              }
-            }}
+          <TouchableOpacity
+            style={[styles.openMapsButton, { borderColor: themeColor }]}
+            onPress={openInMaps}
           >
-            <Ionicons name="navigate-outline" size={18} color="#14b8a6" />
-            <Text style={styles.openMapsText}>Open in Maps</Text>
-        </TouchableOpacity>
+            <Ionicons name="navigate-outline" size={18} color={themeColor} />
+            <Text style={[styles.openMapsText, { color: themeColor }]}>Open in Maps</Text>
+          </TouchableOpacity>
               </View>
             )}
 
-      {/* Swipe Action Buttons */}
-      {!arrived && job.status !== "completed" && job.isScheduledForToday && (
-        <View style={styles.swipeActionContainer}>
+        {/* Swipe Action Buttons */}
+        {!arrived && job.status !== "completed" && job.isScheduledForToday && (
+          <View style={styles.swipeActionContainer}>
           {/* Wait for location to be determined before showing actions */}
           {!carerLocation ? (
             <View style={styles.locationLoadingContainer}>
-              <ActivityIndicator size="small" color={COLORS.primary[500]} />
+              <ActivityIndicator size="small" color={"#14b8a6"} />
               <Text style={styles.locationLoadingText}>Getting your location...</Text>
             </View>
           ) : isWithinGeofence ? (
             /* Show "I am here" if within geofence - ONE swipe does everything */
             <>
               <View style={styles.swipeHintContainer}>
-                <Ionicons name="checkmark-circle" size={20} color={COLORS.success[500]} />
+                <Ionicons name="checkmark-circle" size={20} color={"#22c55e"} />
                 <Text style={styles.swipeHintText}>
                   You're at the location! Swipe to start and begin work.
                     </Text>
@@ -1821,7 +1947,7 @@ export default function JobDetailScreen() {
               {/* Show distance indicator */}
               {distanceMeters !== null && (
                 <View style={styles.swipeHintContainer}>
-                  <Ionicons name="navigate" size={20} color={COLORS.neutral[500]} />
+                  <Ionicons name="navigate" size={20} color={"#6b7280"} />
                   <Text style={styles.swipeHintText}>
                     {distanceMeters < 1000 
                       ? `${Math.round(distanceMeters)}m to destination`
@@ -1842,7 +1968,7 @@ export default function JobDetailScreen() {
               {job.status === "en_route" && (
                 <View style={styles.enRouteCard}>
                   <View style={styles.enRouteIconContainer}>
-                    <Ionicons name="car" size={24} color={COLORS.warning[500]} />
+                    <Ionicons name="car" size={24} color={"#f59e0b"} />
             </View>
                   <View style={styles.enRouteTextContainer}>
                     <Text style={styles.enRouteTitle}>On your way!</Text>
@@ -1857,28 +1983,251 @@ export default function JobDetailScreen() {
                   </View>
       )}
       
-      {/* Date warning for jobs not scheduled today */}
-      {!arrived && job.status !== "completed" && !job.isScheduledForToday && (
-        <View style={styles.dateWarningCard}>
-          <Ionicons name="calendar-outline" size={20} color="#f59e0b" />
-          <Text style={styles.dateWarningText}>
-            This job is scheduled for {job.scheduledDate?.toLocaleDateString() || "another day"}. 
-            You can only start this job on the scheduled date.
-          </Text>
-                  </View>
-      )}
+        {/* Date warning for jobs not scheduled today */}
+        {!arrived && job.status !== "completed" && !job.isScheduledForToday && (
+          <View style={styles.dateWarningCard}>
+            <Ionicons name="calendar-outline" size={20} color="#f59e0b" />
+            <Text style={styles.dateWarningText}>
+              This job is scheduled for {job.scheduledDate?.toLocaleDateString() || "another day"}.
+              You can only start this job on the scheduled date.
+            </Text>
+          </View>
+        )}
 
 
-      {/* All old checklist/readings/chemicals/photos sections removed - now handled by wizard */}
-    </ScrollView>
+        {/* All old checklist/readings/chemicals/photos sections removed - now handled by wizard */}
+      </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#fafafa",
+    backgroundColor: "#f8fafc",
   },
+
+  // ── Hero ──
+  hero: {
+    backgroundColor: "#1e293b",
+    justifyContent: "flex-end",
+    overflow: "hidden",
+  },
+  heroPlaceholder: {
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#1e293b",
+  },
+  heroOverlay: {
+    backgroundColor: "rgba(0,0,0,0.52)",
+  },
+  heroTop: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+  },
+  heroBackBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: "rgba(0,0,0,0.35)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  heroStatusBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+  },
+  heroStatusDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+  },
+  heroStatusLabel: {
+    fontSize: 12,
+    fontWeight: "700",
+    letterSpacing: 0.3,
+  },
+  heroBottom: {
+    paddingHorizontal: 20,
+    paddingBottom: 20,
+  },
+  heroPoolName: {
+    fontSize: 22,
+    fontWeight: "800",
+    color: "#ffffff",
+    marginBottom: 4,
+  },
+  heroAddressRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  heroAddressText: {
+    fontSize: 13,
+    color: "rgba(255,255,255,0.75)",
+    flex: 1,
+  },
+
+  // ── Scroll body ──
+  scroll: { flex: 1 },
+  scrollContent: {
+    padding: 16,
+    paddingBottom: 120,
+    gap: 12,
+  },
+
+  // ── Status timeline ──
+  timelineRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    backgroundColor: "#ffffff",
+    borderRadius: 16,
+    padding: 16,
+    paddingBottom: 12,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  timelineStep: {
+    flex: 1,
+    alignItems: "center",
+  },
+  timelineStepInner: {
+    flexDirection: "row",
+    alignItems: "center",
+    width: "100%",
+    justifyContent: "center",
+    marginBottom: 6,
+  },
+  timelineDot: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: "#e5e7eb",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 1,
+  },
+  timelineDotCurrent: {
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  timelineLine: {
+    flex: 1,
+    height: 2,
+    backgroundColor: "#e5e7eb",
+    marginLeft: -4,
+  },
+  timelineLabel: {
+    fontSize: 10,
+    color: "#9ca3af",
+    textAlign: "center",
+    fontWeight: "500",
+  },
+
+  // ── Cards ──
+  card: {
+    backgroundColor: "#ffffff",
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 4,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  cardRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 12,
+    gap: 12,
+  },
+  cardIconWrap: {
+    width: 38,
+    height: 38,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  cardBody: {
+    flex: 1,
+  },
+  cardLabel: {
+    fontSize: 11,
+    color: "#9ca3af",
+    fontWeight: "500",
+    marginBottom: 2,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  cardValue: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#111827",
+  },
+  cardSub: {
+    fontSize: 12,
+    color: "#6b7280",
+    marginTop: 1,
+  },
+  cardDivider: {
+    height: 1,
+    backgroundColor: "#f3f4f6",
+    marginLeft: 50,
+  },
+  todayBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 20,
+  },
+  todayBadgeText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#ffffff",
+  },
+  contactBtns: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  contactBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "#f3f4f6",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  navigateCard: {
+    backgroundColor: "#ffffff",
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+
   content: {
     padding: 20,
     paddingBottom: 40,

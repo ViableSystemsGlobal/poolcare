@@ -213,6 +213,71 @@ export class ClientsService {
     return client;
   }
 
+  async getMyProfile(orgId: string, userId: string) {
+    const client = await prisma.client.findFirst({
+      where: { orgId, userId },
+      include: { pools: { select: { id: true, name: true } }, household: true },
+    });
+    if (!client) throw new NotFoundException("Client profile not found");
+    return client;
+  }
+
+  async updateMyProfile(orgId: string, userId: string, dto: { name?: string; phone?: string; email?: string; imageUrl?: string }) {
+    const client = await prisma.client.findFirst({ where: { orgId, userId } });
+    if (!client) throw new NotFoundException("Client profile not found");
+    return prisma.client.update({
+      where: { id: client.id },
+      data: {
+        ...(dto.name !== undefined && { name: dto.name }),
+        ...(dto.phone !== undefined && { phone: dto.phone }),
+        ...(dto.email !== undefined && { email: dto.email }),
+        ...(dto.imageUrl !== undefined && { imageUrl: dto.imageUrl }),
+      },
+    });
+  }
+
+  async registerMyDeviceToken(orgId: string, userId: string, dto: { token: string; platform: string }) {
+    const client = await prisma.client.findFirst({ where: { orgId, userId } });
+    if (!client) throw new NotFoundException("Client profile not found");
+
+    const existing = await prisma.deviceToken.findFirst({ where: { userId, platform: dto.platform } });
+    if (existing) {
+      return prisma.deviceToken.update({
+        where: { id: existing.id },
+        data: { token: dto.token, clientId: client.id },
+      });
+    }
+    return prisma.deviceToken.create({
+      data: { orgId, userId, clientId: client.id, token: dto.token, platform: dto.platform },
+    });
+  }
+
+  async getMyNotifications(orgId: string, userId: string, page: number, limit: number) {
+    const client = await prisma.client.findFirst({ where: { orgId, userId }, select: { id: true } });
+    if (!client) throw new NotFoundException("Client profile not found");
+
+    const where: any = {
+      orgId,
+      OR: [
+        { recipientId: userId },
+        { recipientId: client.id },
+        { recipientId: null, recipientType: "org" },
+      ],
+    };
+
+    const [items, total] = await Promise.all([
+      prisma.notification.findMany({
+        where,
+        skip: (page - 1) * limit,
+        take: limit,
+        orderBy: { createdAt: "desc" },
+      }),
+      prisma.notification.count({ where }),
+    ]);
+
+    return { items, total, page, limit };
+  }
+
   async getOne(orgId: string, role: string, currentUserId: string, clientId: string) {
     const client = await prisma.client.findFirst({
       where: {

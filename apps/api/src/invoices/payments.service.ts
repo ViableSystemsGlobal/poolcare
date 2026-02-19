@@ -161,20 +161,23 @@ export class PaymentsService {
 
   async handleWebhook(body: any, signature?: string) {
     const paystackSecret = this.configService.get<string>("PAYSTACK_SECRET_KEY");
-    
-    // Verify webhook signature if provided
-    if (signature && paystackSecret) {
-      const hash = crypto
-        .createHmac("sha512", paystackSecret)
-        .update(JSON.stringify(body))
-        .digest("hex");
-      
-      if (hash !== signature) {
-        this.logger.warn("Invalid webhook signature");
-        throw new BadRequestException("Invalid webhook signature");
-      }
-    } else if (signature) {
-      this.logger.warn("Webhook signature provided but PAYSTACK_SECRET_KEY not configured");
+
+    // Always require a valid signature — reject unsigned or unverifiable requests
+    if (!paystackSecret) {
+      this.logger.error("PAYSTACK_SECRET_KEY not configured — cannot verify webhook");
+      throw new BadRequestException("Payment provider not configured");
+    }
+    if (!signature) {
+      this.logger.warn("Webhook received without x-paystack-signature header");
+      throw new BadRequestException("Missing webhook signature");
+    }
+    const hash = crypto
+      .createHmac("sha512", paystackSecret)
+      .update(JSON.stringify(body))
+      .digest("hex");
+    if (hash !== signature) {
+      this.logger.warn("Invalid webhook signature — possible spoofed request");
+      throw new BadRequestException("Invalid webhook signature");
     }
 
     const event = body.event;
@@ -213,29 +216,29 @@ export class PaymentsService {
         return { success: false, message: "Payment not found" };
       }
 
-      // Update payment
-      await prisma.payment.update({
-        where: { id: payment.id },
-        data: {
-          status: "completed",
-          providerRef,
-          processedAt: new Date(),
-          metadata: data,
-        },
-      });
-
-      // Update invoice paid amount
+      // Update payment and invoice atomically
       const newPaidCents = payment.invoice.paidCents + payment.amountCents;
       const newStatus = newPaidCents >= payment.invoice.totalCents ? "paid" : "sent";
 
-      await prisma.invoice.update({
-        where: { id: payment.invoiceId },
-        data: {
-          paidCents: newPaidCents,
-          status: newStatus,
-          paidAt: newStatus === "paid" ? new Date() : payment.invoice.paidAt,
-        },
-      });
+      await prisma.$transaction([
+        prisma.payment.update({
+          where: { id: payment.id },
+          data: {
+            status: "completed",
+            providerRef,
+            processedAt: new Date(),
+            metadata: data,
+          },
+        }),
+        prisma.invoice.update({
+          where: { id: payment.invoiceId },
+          data: {
+            paidCents: newPaidCents,
+            status: newStatus,
+            paidAt: newStatus === "paid" ? new Date() : payment.invoice.paidAt,
+          },
+        }),
+      ]);
 
       // Generate receipt if fully paid
       if (newStatus === "paid") {
@@ -495,35 +498,34 @@ export class PaymentsService {
       throw new BadRequestException("Amount must be greater than zero");
     }
 
-    // Create payment record
-    const payment = await prisma.payment.create({
-      data: {
-        orgId,
-        invoiceId: dto.invoiceId,
-        method: dto.method,
-        provider: "manual",
-        amountCents: dto.amountCents,
-        currency: invoice.currency,
-        status: "completed",
-        providerRef: dto.reference || undefined,
-        processedAt: new Date(),
-      },
-    });
-
-    // Update invoice paid amount
     const newPaidCents = invoice.paidCents + dto.amountCents;
     const newStatus = newPaidCents >= invoice.totalCents ? "paid" : "sent";
 
-    await prisma.invoice.update({
-      where: { id: dto.invoiceId },
-      data: {
-        paidCents: newPaidCents,
-        status: newStatus,
-        paidAt: newStatus === "paid" ? new Date() : invoice.paidAt,
-      },
-    });
+    // Create payment and update invoice atomically
+    const [payment] = await prisma.$transaction([
+      prisma.payment.create({
+        data: {
+          orgId,
+          invoiceId: dto.invoiceId,
+          method: dto.method,
+          provider: "manual",
+          amountCents: dto.amountCents,
+          currency: invoice.currency,
+          status: "completed",
+          providerRef: dto.reference || undefined,
+          processedAt: new Date(),
+        },
+      }),
+      prisma.invoice.update({
+        where: { id: dto.invoiceId },
+        data: {
+          paidCents: newPaidCents,
+          status: newStatus,
+          paidAt: newStatus === "paid" ? new Date() : invoice.paidAt,
+        },
+      }),
+    ]);
 
-    // Generate receipt if fully paid
     if (newStatus === "paid") {
       await this.generateReceipt(orgId, dto.invoiceId, payment.id);
     }

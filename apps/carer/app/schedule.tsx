@@ -1,24 +1,42 @@
 import { useState, useEffect } from "react";
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, RefreshControl, ActivityIndicator } from "react-native";
+import {
+  View,
+  Text,
+  ScrollView,
+  TouchableOpacity,
+  StyleSheet,
+  RefreshControl,
+  ActivityIndicator,
+} from "react-native";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { api } from "../src/lib/api-client";
+import { useTheme } from "../src/contexts/ThemeContext";
 
 interface Job {
   id: string;
-  pool?: {
-    name?: string;
-    address?: string;
-  };
-  client?: {
-    name?: string;
-  };
+  pool?: { name?: string; address?: string };
+  client?: { name?: string };
   windowStart: string;
   windowEnd: string;
   status: string;
 }
 
+function getStatusColor(status: string, themeColor: string) {
+  switch (status) {
+    case "completed": return "#16a34a";
+    case "on_site":   return "#22c55e";
+    case "en_route":  return themeColor;
+    case "failed":    return "#dc2626";
+    default:          return "#6b7280";
+  }
+}
+
 export default function ScheduleScreen() {
+  const { themeColor } = useTheme();
+  const insets = useSafeAreaInsets();
+
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -28,34 +46,19 @@ export default function ScheduleScreen() {
     try {
       setLoading(true);
       const dateStr = selectedDate.toISOString().split("T")[0];
-      const jobsResponse: any = await api.getJobs({ date: dateStr });
-      
-      const jobsData = Array.isArray(jobsResponse) 
-        ? jobsResponse 
-        : (jobsResponse.items || []);
-      
-      const transformedJobs: Job[] = jobsData.map((job: any) => {
-        const windowStart = new Date(job.windowStart);
-        const windowEnd = new Date(job.windowEnd);
-        
-        return {
+      const res: any = await api.getJobs({ date: dateStr });
+      const data: any[] = Array.isArray(res) ? res : (res.items || []);
+      setJobs(
+        data.map((job: any) => ({
           id: job.id,
-          pool: job.pool ? {
-            name: job.pool.name,
-            address: job.pool.address,
-          } : undefined,
-          client: job.pool?.client ? {
-            name: job.pool.client.name,
-          } : undefined,
-          windowStart: windowStart.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
-          windowEnd: windowEnd.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+          pool:   job.pool   ? { name: job.pool.name, address: job.pool.address } : undefined,
+          client: job.pool?.client ? { name: job.pool.client.name } : undefined,
+          windowStart: new Date(job.windowStart).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }),
+          windowEnd:   new Date(job.windowEnd).toLocaleTimeString("en-US",   { hour: "2-digit", minute: "2-digit" }),
           status: job.status || "scheduled",
-        };
-      });
-
-      setJobs(transformedJobs);
-    } catch (error) {
-      console.error("Error fetching jobs:", error);
+        }))
+      );
+    } catch {
       setJobs([]);
     } finally {
       setLoading(false);
@@ -63,277 +66,171 @@ export default function ScheduleScreen() {
     }
   };
 
-  useEffect(() => {
-    fetchJobs();
-  }, [selectedDate]);
-
-  const onRefresh = () => {
-    setRefreshing(true);
-    fetchJobs();
-  };
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "completed":
-        return "#16a34a";
-      case "on_site":
-        return "#14b8a6";
-      case "en_route":
-        return "#3b82f6";
-      case "scheduled":
-        return "#6b7280";
-      case "failed":
-        return "#dc2626";
-      default:
-        return "#6b7280";
-    }
-  };
+  useEffect(() => { fetchJobs(); }, [selectedDate]);
 
   const changeDate = (days: number) => {
-    const newDate = new Date(selectedDate);
-    newDate.setDate(newDate.getDate() + days);
-    setSelectedDate(newDate);
+    const d = new Date(selectedDate);
+    d.setDate(d.getDate() + days);
+    setSelectedDate(d);
   };
 
   const formatDate = (date: Date) => {
-    const today = new Date();
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    
-    if (date.toDateString() === today.toDateString()) {
-      return "Today";
-    } else if (date.toDateString() === tomorrow.toDateString()) {
-      return "Tomorrow";
-    } else {
-      return date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
-    }
+    const today    = new Date();
+    const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1);
+    const yesterday = new Date(today); yesterday.setDate(yesterday.getDate() - 1);
+    if (date.toDateString() === today.toDateString())     return "Today";
+    if (date.toDateString() === tomorrow.toDateString())  return "Tomorrow";
+    if (date.toDateString() === yesterday.toDateString()) return "Yesterday";
+    return date.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
   };
+
+  const isToday = new Date().toDateString() === selectedDate.toDateString();
 
   return (
     <View style={styles.container}>
       {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-          <Ionicons name="arrow-back" size={24} color="#111827" />
-        </TouchableOpacity>
+      <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
         <Text style={styles.headerTitle}>Schedule</Text>
-        <View style={styles.placeholder} />
+        {!isToday && (
+          <TouchableOpacity onPress={() => setSelectedDate(new Date())} style={styles.todayBtn}>
+            <Text style={[styles.todayBtnText, { color: themeColor }]}>Today</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
-      {/* Date Selector */}
-      <View style={styles.dateSelector}>
-        <TouchableOpacity onPress={() => changeDate(-1)} style={styles.dateButton}>
-          <Ionicons name="chevron-back" size={20} color="#6b7280" />
+      {/* Date navigator */}
+      <View style={styles.dateNav}>
+        <TouchableOpacity onPress={() => changeDate(-1)} style={styles.dateArrow}>
+          <Ionicons name="chevron-back" size={22} color="#374151" />
         </TouchableOpacity>
-        <View style={styles.dateDisplay}>
-          <Text style={styles.dateText}>{formatDate(selectedDate)}</Text>
-          <Text style={styles.dateSubtext}>
-            {selectedDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+        <View style={styles.dateCenter}>
+          <Text style={[styles.datePrimary, isToday && { color: themeColor }]}>
+            {formatDate(selectedDate)}
+          </Text>
+          <Text style={styles.dateSecondary}>
+            {selectedDate.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
           </Text>
         </View>
-        <TouchableOpacity onPress={() => changeDate(1)} style={styles.dateButton}>
-          <Ionicons name="chevron-forward" size={20} color="#6b7280" />
+        <TouchableOpacity onPress={() => changeDate(1)} style={styles.dateArrow}>
+          <Ionicons name="chevron-forward" size={22} color="#374151" />
         </TouchableOpacity>
       </View>
 
-      {/* Jobs List */}
+      {/* Jobs */}
       <ScrollView
-        style={styles.scrollView}
+        style={styles.scroll}
         contentContainerStyle={styles.content}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchJobs(); }} tintColor={themeColor} />}
         showsVerticalScrollIndicator={false}
       >
         {loading ? (
-          <View style={styles.centerContent}>
-            <ActivityIndicator size="large" color="#14b8a6" />
-            <Text style={styles.loadingText}>Loading schedule...</Text>
+          <View style={styles.center}>
+            <ActivityIndicator size="large" color={themeColor} />
           </View>
         ) : jobs.length === 0 ? (
-          <View style={styles.centerContent}>
-            <Ionicons name="calendar-outline" size={64} color="#d1d5db" />
-            <Text style={styles.emptyText}>No jobs scheduled</Text>
-            <Text style={styles.emptySubtext}>You have no jobs for this date</Text>
+          <View style={styles.empty}>
+            <Ionicons name="calendar-outline" size={56} color="#d1d5db" />
+            <Text style={styles.emptyTitle}>No jobs scheduled</Text>
+            <Text style={styles.emptySubtitle}>Nothing on the books for this day</Text>
           </View>
         ) : (
-          jobs.map((job) => (
-            <TouchableOpacity
-              key={job.id}
-              style={styles.jobCard}
-              onPress={() => router.push(`/jobs/${job.id}`)}
-              activeOpacity={0.7}
-            >
-              <View style={styles.jobCardHeader}>
-                <View style={styles.jobCardHeaderLeft}>
-                  <View style={[styles.jobStatusDot, { backgroundColor: getStatusColor(job.status) }]} />
-                  <View style={styles.jobTitleContainer}>
-                    <Text style={styles.jobTitle}>{job.pool?.name || "Unnamed Pool"}</Text>
-                    {job.client?.name && (
-                      <Text style={styles.jobClientName}>{job.client.name}</Text>
-                    )}
+          jobs.map((job) => {
+            const statusColor = getStatusColor(job.status, themeColor);
+            return (
+              <TouchableOpacity
+                key={job.id}
+                style={styles.jobCard}
+                onPress={() => router.push(`/jobs/${job.id}`)}
+                activeOpacity={0.7}
+              >
+                <View style={styles.jobTop}>
+                  <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
+                  <View style={styles.jobInfo}>
+                    <Text style={styles.poolName}>{job.pool?.name || "Unnamed Pool"}</Text>
+                    {job.client?.name && <Text style={styles.clientName}>{job.client.name}</Text>}
+                  </View>
+                  <Ionicons name="chevron-forward" size={18} color="#d1d5db" />
+                </View>
+                <View style={styles.jobMeta}>
+                  <View style={styles.metaItem}>
+                    <Ionicons name="location-outline" size={14} color="#9ca3af" />
+                    <Text style={styles.metaText} numberOfLines={1}>{job.pool?.address || "No address"}</Text>
+                  </View>
+                  <View style={styles.metaItem}>
+                    <Ionicons name="time-outline" size={14} color="#9ca3af" />
+                    <Text style={styles.metaText}>{job.windowStart} – {job.windowEnd}</Text>
                   </View>
                 </View>
-                <Ionicons name="chevron-forward" size={20} color="#9ca3af" />
-              </View>
-
-              <View style={styles.jobCardDetails}>
-                <View style={styles.jobDetailItem}>
-                  <Ionicons name="location-outline" size={18} color="#6b7280" />
-                  <Text style={styles.jobDetailText} numberOfLines={1}>
-                    {job.pool?.address || "No address"}
-                  </Text>
-                </View>
-                <View style={styles.jobDetailItem}>
-                  <Ionicons name="time-outline" size={18} color="#6b7280" />
-                  <Text style={styles.jobDetailText}>
-                    {job.windowStart} - {job.windowEnd}
-                  </Text>
-                </View>
-              </View>
-            </TouchableOpacity>
-          ))
+              </TouchableOpacity>
+            );
+          })
         )}
+        <View style={{ height: 100 }} />
       </ScrollView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#ffffff",
-  },
+  container: { flex: 1, backgroundColor: "#f8fafc" },
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     paddingHorizontal: 20,
-    paddingTop: 60,
-    paddingBottom: 20,
+    paddingBottom: 16,
     backgroundColor: "#ffffff",
-    borderBottomWidth: 1,
-    borderBottomColor: "#e5e7eb",
   },
-  backButton: {
-    padding: 4,
+  headerTitle: { fontSize: 22, fontWeight: "700", color: "#111827" },
+  todayBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 20,
+    backgroundColor: "#f0fdfa",
   },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: "700",
-    color: "#111827",
-  },
-  placeholder: {
-    width: 32,
-  },
-  dateSelector: {
+  todayBtnText: { fontSize: 13, fontWeight: "600" },
+  dateNav: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 20,
-    paddingVertical: 16,
     backgroundColor: "#ffffff",
-    borderBottomWidth: 1,
-    borderBottomColor: "#e5e7eb",
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderColor: "#e5e7eb",
+    paddingVertical: 14,
+    paddingHorizontal: 8,
   },
-  dateButton: {
-    padding: 8,
-  },
-  dateDisplay: {
-    alignItems: "center",
-  },
-  dateText: {
-    fontSize: 18,
-    fontWeight: "600",
-    color: "#111827",
-  },
-  dateSubtext: {
-    fontSize: 14,
-    color: "#6b7280",
-    marginTop: 2,
-  },
-  scrollView: {
-    flex: 1,
-  },
-  content: {
-    padding: 20,
-    paddingBottom: 40,
-  },
-  centerContent: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    paddingVertical: 64,
-  },
-  loadingText: {
-    fontSize: 16,
-    color: "#6b7280",
-    marginTop: 12,
-  },
-  emptyText: {
-    fontSize: 18,
-    fontWeight: "600",
-    color: "#111827",
-    marginTop: 16,
-  },
-  emptySubtext: {
-    fontSize: 14,
-    color: "#6b7280",
-    marginTop: 8,
-  },
+  dateArrow: { padding: 8 },
+  dateCenter: { flex: 1, alignItems: "center" },
+  datePrimary: { fontSize: 17, fontWeight: "600", color: "#111827" },
+  dateSecondary: { fontSize: 12, color: "#9ca3af", marginTop: 2 },
+  scroll: { flex: 1 },
+  content: { padding: 16 },
+  center: { paddingVertical: 60, alignItems: "center" },
+  empty: { alignItems: "center", paddingVertical: 64, gap: 8 },
+  emptyTitle: { fontSize: 16, fontWeight: "600", color: "#374151" },
+  emptySubtitle: { fontSize: 13, color: "#9ca3af" },
   jobCard: {
     backgroundColor: "#ffffff",
     borderRadius: 16,
-    padding: 20,
-    marginBottom: 12,
+    padding: 16,
+    marginBottom: 10,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 3,
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    elevation: 2,
   },
-  jobCardHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 12,
-  },
-  jobCardHeaderLeft: {
+  jobTop: {
     flexDirection: "row",
     alignItems: "center",
-    flex: 1,
+    marginBottom: 10,
+    gap: 10,
   },
-  jobStatusDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    marginRight: 12,
-  },
-  jobTitleContainer: {
-    flex: 1,
-  },
-  jobTitle: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#111827",
-    marginBottom: 2,
-  },
-  jobClientName: {
-    fontSize: 14,
-    color: "#6b7280",
-  },
-  jobCardDetails: {
-    gap: 8,
-  },
-  jobDetailItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  jobDetailText: {
-    fontSize: 14,
-    color: "#6b7280",
-    flex: 1,
-  },
+  statusDot: { width: 10, height: 10, borderRadius: 5, flexShrink: 0 },
+  jobInfo: { flex: 1 },
+  poolName: { fontSize: 15, fontWeight: "600", color: "#111827", marginBottom: 2 },
+  clientName: { fontSize: 13, color: "#6b7280" },
+  jobMeta: { gap: 6 },
+  metaItem: { flexDirection: "row", alignItems: "center", gap: 6 },
+  metaText: { fontSize: 13, color: "#6b7280", flex: 1 },
 });
-

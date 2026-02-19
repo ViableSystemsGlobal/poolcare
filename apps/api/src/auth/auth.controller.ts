@@ -1,4 +1,4 @@
-import { Body, Controller, Post, HttpCode, HttpStatus } from "@nestjs/common";
+import { Body, Controller, Post, HttpCode, HttpStatus, NotFoundException } from "@nestjs/common";
 import { AuthService, devOtpStore } from "./auth.service";
 import { OtpRequestDto, OtpVerifyDto } from "./dto";
 import { Public } from "./decorators/public.decorator";
@@ -44,49 +44,24 @@ export class AuthController {
   @Public()
   @Post("otp/check")
   async checkOtpStatus(@Body() dto: { channel: string; target: string }) {
-    // Dev helper to get OTP code (development only)
+    // Dev-only helper — returns 404 in production so the route is not discoverable
     if (process.env.NODE_ENV === "production") {
-      return { error: "Not available in production" };
+      throw new NotFoundException();
     }
-    
-    try {
-      const key = `${dto.channel}:${dto.target}`;
-      const stored = devOtpStore.get(key);
-      
-      if (!stored) {
-        return { 
-          exists: false, 
-          code: null,
-          message: "No OTP code found. Please request a new code." 
-        };
-      }
-      
-      const now = new Date();
-      const isExpired = stored.expiresAt < now;
-      
-      if (isExpired) {
-        devOtpStore.delete(key);
-        return { 
-          exists: false, 
-          code: null,
-          message: "OTP has expired. Please request a new code." 
-        };
-      }
-      
-      return {
-        exists: true,
-        code: stored.code,
-        expiresAt: stored.expiresAt,
-        message: `Your OTP code is: ${stored.code}`,
-      };
-    } catch (error: any) {
-      console.error('[AuthController] Error in checkOtpStatus:', error);
-      return { 
-        exists: false, 
-        code: null,
-        message: "Error checking OTP status" 
-      };
+
+    const key = `${dto.channel}:${dto.target}`;
+    const stored = devOtpStore.get(key);
+
+    if (!stored) {
+      return { exists: false, code: null, message: "No OTP found. Request a new code." };
     }
+
+    if (stored.expiresAt < new Date()) {
+      devOtpStore.delete(key);
+      return { exists: false, code: null, message: "OTP has expired. Request a new code." };
+    }
+
+    return { exists: true, code: stored.code, expiresAt: stored.expiresAt };
   }
 }
 

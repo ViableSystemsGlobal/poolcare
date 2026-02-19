@@ -136,12 +136,17 @@ class ApiClient {
         if (!isExpectedError) {
           console.error("API Error Response:", { status: response.status, url, errorData });
         }
-        throw new Error(errorMessage);
+        const err = new Error(errorMessage) as any;
+        err.isHttpError = true;
+        throw err;
       }
 
       return response.json();
     } catch (error: any) {
-      console.error("API Request failed:", error);
+      // Only log genuine network errors — HTTP errors (4xx/5xx) are already handled above
+      if (!error.isHttpError) {
+        console.error("API Request failed:", error);
+      }
       if (error.name === "AbortError") {
         const networkIp = getNetworkIp();
         throw new Error(
@@ -180,7 +185,7 @@ class ApiClient {
   ): Promise<AuthResult> {
     const result = await this.request<AuthResult>("/auth/otp/verify", {
       method: "POST",
-      body: JSON.stringify({ channel, target, code }),
+      body: JSON.stringify({ channel, target, code, app: "carer" }),
       requireAuth: false,
     });
 
@@ -261,7 +266,7 @@ class ApiClient {
   }
 
   // Visits
-  async getVisits(params?: { jobId?: string; date?: string }) {
+  async getVisits(params?: { jobId?: string; date?: string; limit?: number; page?: number }) {
     const query = new URLSearchParams(params as any).toString();
     return this.request(`/visits${query ? `?${query}` : ""}`);
   }
@@ -303,7 +308,7 @@ class ApiClient {
       throw new Error("Not authenticated");
     }
 
-    const url = `${API_URL}/visits/${visitId}/photos/upload`;
+    const url = `${getBaseUrl()}/visits/${visitId}/photos/upload`;
     const response = await fetch(url, {
       method: "POST",
       headers: {
@@ -363,7 +368,7 @@ class ApiClient {
     }
 
     const formatParam = format ? `?format=${format}` : "";
-    const url = `${API_URL}/visits/${visitId}/report${formatParam}`;
+    const url = `${getBaseUrl()}/visits/${visitId}/report${formatParam}`;
     const response = await fetch(url, {
       method: "GET",
       headers: {
@@ -419,6 +424,41 @@ class ApiClient {
     return this.request("/settings/org");
   }
 
+  async getPublicBranding() {
+    return this.request<{
+      organizationName: string;
+      logoUrl: string | null;
+      themeColor: string;
+      primaryColorHex: string;
+    }>("/settings/branding", { requireAuth: false });
+  }
+
+  // Update carer's own profile (name, imageUrl)
+  async updateMyCarer(data: { name?: string; imageUrl?: string }) {
+    return this.request("/carers/me/carer", {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
+  }
+
+  // Upload carer's own profile photo
+  async uploadMyCarerPhoto(imageUri: string, fileName: string, mimeType: string) {
+    const formData = new FormData();
+    formData.append("photo", { uri: imageUri, name: fileName, type: mimeType } as any);
+    const token = await this.getAuthToken();
+    const url = `${getBaseUrl()}/carers/me/upload-photo`;
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: formData,
+    });
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ message: response.statusText }));
+      throw new Error(errorData?.message || response.statusText);
+    }
+    return response.json() as Promise<{ imageUrl: string }>;
+  }
+
   // Carer earnings
   async getEarnings(params?: { month?: string; year?: string }) {
     const query = new URLSearchParams(params as any).toString();
@@ -464,6 +504,14 @@ class ApiClient {
       method: "POST",
       body: JSON.stringify(body),
     });
+  }
+
+  async getNotifications(params?: { limit?: number; page?: number }) {
+    const query = new URLSearchParams();
+    if (params?.limit != null) query.set("limit", String(params.limit));
+    if (params?.page != null) query.set("page", String(params.page));
+    const qs = query.toString();
+    return this.request(`/notifications${qs ? `?${qs}` : ""}`);
   }
 }
 

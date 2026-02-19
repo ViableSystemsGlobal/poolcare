@@ -167,8 +167,18 @@ class ApiClient {
   }
 
   // Jobs
-  async getJobs(params?: { status?: string; date?: string }) {
-    const query = new URLSearchParams(params as any).toString();
+  async getJobs(params?: {
+    status?: string;
+    date?: string;
+    dateFrom?: string;
+    dateTo?: string;
+    carerId?: string;
+    limit?: number;
+  }) {
+    const filtered = Object.fromEntries(
+      Object.entries(params ?? {}).filter(([, v]) => v !== undefined)
+    ) as Record<string, string>;
+    const query = new URLSearchParams(filtered).toString();
     return this.request(`/jobs${query ? `?${query}` : ""}`);
   }
 
@@ -258,8 +268,12 @@ class ApiClient {
   }
 
   // Carers
-  async getCarers() {
-    return this.request("/carers");
+  async getCarers(params?: { active?: boolean; limit?: number }) {
+    const filtered = Object.fromEntries(
+      Object.entries(params ?? {}).filter(([, v]) => v !== undefined)
+    ) as Record<string, string>;
+    const query = new URLSearchParams(filtered).toString();
+    return this.request(`/carers${query ? `?${query}` : ""}`);
   }
 
   async createCarer(data: any) {

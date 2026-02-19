@@ -9,7 +9,7 @@ export const getNetworkIp = (): string => {
   return (
     process.env.EXPO_PUBLIC_NETWORK_IP ||
     process.env.NETWORK_IP ||
-    "192.168.1.73" // Default - update to match your dev machine's IP
+    "192.168.1.73" // Default – override with EXPO_PUBLIC_NETWORK_IP or EXPO_PUBLIC_API_URL in .env to match your Mac's IP
   );
 };
 
@@ -27,6 +27,11 @@ export const fixUrlForMobile = (url: string | null | undefined): string => {
     /https?:\/\/poolcare-ef74\.onrender\.com/g,
     "https://api.poolcare.africa"
   );
+
+  // iOS Simulator (or explicit localhost mode): keep localhost as-is — it works
+  if (process.env.EXPO_PUBLIC_USE_LOCALHOST === "true") {
+    return fixed;
+  }
 
   // On native, replace localhost with the Mac's LAN IP
   if (Platform.OS !== "web" && fixed.includes("localhost")) {

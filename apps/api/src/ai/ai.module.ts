@@ -5,6 +5,7 @@ import { DosingCoachService } from "./services/dosing-coach.service";
 import { SmartRepliesService } from "./services/smart-replies.service";
 import { RecommendationsService } from "./services/recommendations.service";
 import { BusinessPartnerService } from "./services/business-partner.service";
+import { PoolCoachService } from "./services/pool-coach.service";
 import { AuthModule } from "../auth/auth.module";
 import { SettingsModule } from "../settings/settings.module";
 
@@ -17,6 +18,7 @@ import { SettingsModule } from "../settings/settings.module";
     SmartRepliesService,
     RecommendationsService,
     BusinessPartnerService,
+    PoolCoachService,
   ],
   exports: [
     AiService,
@@ -24,6 +26,7 @@ import { SettingsModule } from "../settings/settings.module";
     SmartRepliesService,
     RecommendationsService,
     BusinessPartnerService,
+    PoolCoachService,
   ],
 })
 export class AiModule {}

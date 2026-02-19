@@ -98,7 +98,7 @@ export default function LoginPage() {
   };
 
   const logoUrl = branding?.logoUrl ?? null;
-  const primaryHex = branding?.primaryColorHex ?? "#0d9488";
+  const primaryHex = branding?.primaryColorHex ?? "#6b7280";
 
   if (entering) {
     return (
@@ -138,7 +138,7 @@ export default function LoginPage() {
             </div>
           )}
           <CardDescription className="text-gray-600">
-            Manager Console - Sign in to your account
+            {branding?.organizationName ? `${branding.organizationName} – Sign in to your account` : "Sign in to your account"}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
