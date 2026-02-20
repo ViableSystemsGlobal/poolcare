@@ -19,5 +19,11 @@ module.exports = {
         },
       },
     },
+    extra: {
+      ...base.expo.extra,
+      eas: {
+        projectId: "b53852a4-0450-4e67-9690-9564c55cce66",
+      },
+    },
   },
 };
