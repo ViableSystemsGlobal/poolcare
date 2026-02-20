@@ -81,7 +81,7 @@ export class PoolCoachService {
     userId: string,
     payload: { conversationId?: string; messages: ChatMessage[] }
   ): Promise<{ message: string; conversationId: string; title: string }> {
-    const messages = payload.messages.filter((m) => m.role !== "system");
+    const messages = payload.messages;
     const lastUserMsg = [...messages].reverse().find((m) => m.role === "user")?.content;
     if (!lastUserMsg) throw new BadRequestException("No message provided");
 
