@@ -1,0 +1,12 @@
+# Next.js build output
+apps/web/.next/
+apps/web/out/
+
+# API build output
+apps/api/dist/
+
+# Uploaded user files
+apps/api/uploads/
+
+# Test coverage
+coverage/
