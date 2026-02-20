@@ -295,12 +295,12 @@ export default function Dashboard() {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => router.push("/jobs/create")}
+            onClick={() => router.push("/jobs?new=1")}
           >
             <Plus className="h-4 w-4 mr-2" />
             New Job
           </Button>
-          <Button size="sm" onClick={() => router.push("/plans/create")}>
+          <Button size="sm" onClick={() => router.push("/plans?new=1")}>
             <Plus className="h-4 w-4 mr-2" />
             New Plan
           </Button>
@@ -447,7 +447,7 @@ export default function Dashboard() {
             <Button
               className="w-full justify-start h-12 text-left"
               variant="outline"
-              onClick={() => router.push("/jobs/create")}
+              onClick={() => router.push("/jobs?new=1")}
             >
               <div className="flex items-center w-full">
                 <div className={`p-2 bg-${theme.primaryBg} rounded-lg mr-3`}>
@@ -463,7 +463,7 @@ export default function Dashboard() {
             <Button
               className="w-full justify-start h-12 text-left"
               variant="outline"
-              onClick={() => router.push("/plans/create")}
+              onClick={() => router.push("/plans?new=1")}
             >
               <div className="flex items-center w-full">
                 <div className={`p-2 bg-${theme.primaryBg} rounded-lg mr-3`}>
@@ -495,7 +495,7 @@ export default function Dashboard() {
             <Button
               className="w-full justify-start h-12 text-left"
               variant="outline"
-              onClick={() => router.push("/quotes/create")}
+              onClick={() => router.push("/quotes?new=1")}
             >
               <div className="flex items-center w-full">
                 <div className={`p-2 bg-${theme.primaryBg} rounded-lg mr-3`}>

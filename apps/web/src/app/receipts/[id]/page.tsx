@@ -24,6 +24,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useTheme } from "@/contexts/theme-context";
+import { useToast } from "@/hooks/use-toast";
 import { SkeletonMetricCard } from "@/components/ui/skeleton";
 import { formatCurrencyForDisplay } from "@/lib/utils";
 
@@ -71,6 +72,7 @@ export default function ReceiptDetailPage() {
   const params = useParams();
   const router = useRouter();
   const { getThemeClasses } = useTheme();
+  const { toast } = useToast();
   const theme = getThemeClasses();
   const receiptId = params.id as string;
 
@@ -98,12 +100,12 @@ export default function ReceiptDetailPage() {
         const data = await response.json();
         setReceipt(data);
       } else {
-        alert("Failed to load receipt");
+        toast({ title: "Error", description: "Failed to load receipt", variant: "destructive" });
         router.push("/receipts");
       }
     } catch (error) {
       console.error("Failed to fetch receipt:", error);
-      alert("Failed to load receipt");
+      toast({ title: "Error", description: "Failed to load receipt", variant: "destructive" });
       router.push("/receipts");
     } finally {
       setLoading(false);

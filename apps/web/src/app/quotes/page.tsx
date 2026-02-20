@@ -128,6 +128,12 @@ export default function QuotesPage() {
   }, [statusFilter]);
 
   useEffect(() => {
+    if (searchParams?.get("new") === "1") {
+      setIsCreateDialogOpen(true);
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
     const issueId = searchParams?.get("issueId");
     if (issueId) {
       setFormData((prev) => ({ ...prev, issueId }));

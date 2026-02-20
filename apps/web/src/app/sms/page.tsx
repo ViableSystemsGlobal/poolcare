@@ -10,6 +10,7 @@ import { Phone, Send, Search, MessageSquare, CheckCircle, Clock } from "lucide-r
 import { DashboardAICard } from "@/components/dashboard-ai-card";
 import { useTheme } from "@/contexts/theme-context";
 import { SkeletonMetricCard } from "@/components/ui/skeleton";
+import { useToast } from "@/hooks/use-toast";
 import {
   Select,
   SelectContent,
@@ -26,6 +27,12 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
+interface Client {
+  id: string;
+  name: string;
+  phone?: string;
+}
+
 interface SmsHistory {
   id: string;
   to: string;
@@ -41,6 +48,7 @@ interface SmsHistory {
 export default function SmsPage() {
   const { getThemeClasses, getThemeColor } = useTheme();
   const theme = getThemeClasses();
+  const { toast } = useToast();
   
   const getBackgroundClasses = () => {
     const colorMap: { [key: string]: string } = {
@@ -87,6 +95,7 @@ export default function SmsPage() {
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [smsHistory, setSmsHistory] = useState<SmsHistory[]>([]);
+  const [clients, setClients] = useState<Client[]>([]);
   const [stats, setStats] = useState({
     totalSent: 0,
     sentToday: 0,
@@ -105,7 +114,24 @@ export default function SmsPage() {
   useEffect(() => {
     fetchSmsHistory();
     fetchStats();
+    fetchClients();
   }, []);
+
+  const fetchClients = async () => {
+    try {
+      const response = await fetch(`${API_URL}/clients?limit=200`, {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
+        },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setClients(data.items || []);
+      }
+    } catch (error) {
+      console.error("Failed to fetch clients:", error);
+    }
+  };
 
   const fetchSmsHistory = async () => {
     try {
@@ -164,7 +190,7 @@ export default function SmsPage() {
 
   const handleSend = async () => {
     if (!formData.to || !formData.message) {
-      alert("Please enter a phone number and message");
+      toast({ title: "Missing fields", description: "Please enter a phone number and message.", variant: "destructive" });
       return;
     }
 
@@ -184,20 +210,18 @@ export default function SmsPage() {
       });
 
       if (response.ok) {
-        const data = await response.json();
         // Clear form
         setFormData({ to: "", message: "", clientId: "" });
         // Refresh history and stats to show the new message
         await fetchSmsHistory();
         await fetchStats();
-        // Show success message
-        alert(`SMS sent successfully! Message ID: ${data.messageId}`);
+        toast({ title: "SMS sent", description: "Your message was sent successfully." });
       } else {
         const error = await response.json();
-        alert(`Failed to send SMS: ${error.error || "Unknown error"}`);
+        toast({ title: "Failed to send", description: error.error || "Unknown error", variant: "destructive" });
       }
     } catch (error: any) {
-      alert(`Failed to send SMS: ${error.message || "Unknown error"}`);
+      toast({ title: "Failed to send", description: error.message || "Unknown error", variant: "destructive" });
     } finally {
       setSending(false);
     }
@@ -334,14 +358,29 @@ export default function SmsPage() {
               <Label htmlFor="clientId">Client (Optional)</Label>
               <Select
                 value={formData.clientId || "__none__"}
-                onValueChange={(value: string) => setFormData({ ...formData, clientId: value === "__none__" ? "" : value })}
+                onValueChange={(value: string) => {
+                  if (value === "__none__") {
+                    setFormData({ ...formData, clientId: "" });
+                  } else {
+                    const client = clients.find((c) => c.id === value);
+                    setFormData({
+                      ...formData,
+                      clientId: value,
+                      to: client?.phone || formData.to,
+                    });
+                  }
+                }}
               >
                 <SelectTrigger id="clientId">
                   <SelectValue placeholder="Select a client" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__none__">None</SelectItem>
-                  {/* In production, fetch and list clients here */}
+                  {clients.map((client) => (
+                    <SelectItem key={client.id} value={client.id}>
+                      {client.name}{client.phone ? ` — ${client.phone}` : ""}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>

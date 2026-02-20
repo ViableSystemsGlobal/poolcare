@@ -169,6 +169,13 @@ export default function JobsPage() {
   }>>([]);
   const [jobAIRecommendationsSource, setJobAIRecommendationsSource] = useState<"api" | "fallback" | null>(null);
 
+  // Auto-open create dialog when navigated here with ?new=1
+  useEffect(() => {
+    if (searchParams?.get("new") === "1") {
+      setIsCreateDialogOpen(true);
+    }
+  }, [searchParams]);
+
   // Initialize and update dateFilter from URL params
   useEffect(() => {
     const dateParam = searchParams?.get("date") || "";

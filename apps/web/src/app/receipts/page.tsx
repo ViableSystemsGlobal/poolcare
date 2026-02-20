@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Receipt, Search, Download, Eye, FileText, CheckCircle } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { DashboardAICard } from "@/components/dashboard-ai-card";
+import { useToast } from "@/hooks/use-toast";
 import {
   Table,
   TableBody,
@@ -45,6 +46,7 @@ interface ReceiptData {
 export default function ReceiptsPage() {
   const router = useRouter();
   const { getThemeClasses } = useTheme();
+  const { toast } = useToast();
   const theme = getThemeClasses();
 
   const [receipts, setReceipts] = useState<ReceiptData[]>([]);
@@ -170,13 +172,13 @@ export default function ReceiptsPage() {
       window.open(`${API_URL}/receipts/${receiptId}/html`, "_blank");
     } catch (error) {
       console.error("Failed to download receipt:", error);
-      alert("Failed to download receipt");
+      toast({ title: "Error", description: "Failed to download receipt", variant: "destructive" });
     }
   };
 
   const handleBulkDownload = async () => {
     if (selectedReceipts.size === 0) {
-      alert("Select at least one receipt.");
+      toast({ title: "No receipts selected", description: "Select at least one receipt to download.", variant: "destructive" });
       return;
     }
     const ids = Array.from(selectedReceipts);
@@ -203,13 +205,13 @@ export default function ReceiptsPage() {
       if (res.ok) {
         setSelectedReceipts(new Set());
         fetchReceipts();
-        alert("Receipts deleted.");
+        toast({ title: "Deleted", description: `${selectedReceipts.size} receipt(s) deleted.` });
       } else {
         const data = await res.json().catch(() => ({}));
-        alert(data.message || "Bulk delete not supported. Delete receipts individually.");
+        toast({ title: "Error", description: data.message || "Bulk delete not supported. Delete receipts individually.", variant: "destructive" });
       }
     } catch {
-      alert("Bulk delete not supported. Delete receipts individually.");
+      toast({ title: "Error", description: "Bulk delete not supported. Delete receipts individually.", variant: "destructive" });
     }
   };
 

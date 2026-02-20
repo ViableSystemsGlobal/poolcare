@@ -23,6 +23,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useTheme } from "@/contexts/theme-context";
+import { useToast } from "@/hooks/use-toast";
 
 const colorMap: { [key: string]: string } = {
   'orange-600': '#ea580c',
@@ -120,6 +121,7 @@ interface LlmSettings {
 export default function SettingsPage() {
   const { getThemeClasses, setThemeColor, setCustomColorHex, setCustomLogo } = useTheme();
   const theme = getThemeClasses();
+  const { toast } = useToast();
   const [activeTab, setActiveTab] = useState<SettingsTab>("org");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -425,7 +427,7 @@ export default function SettingsPage() {
       return data.logoUrl;
     } catch (error: any) {
       console.error("Failed to upload logo:", error);
-      alert(`Failed to upload logo: ${error.message || "Unknown error"}`);
+      toast({ title: "Upload failed", description: error.message || "Failed to upload logo", variant: "destructive" });
       return null;
     } finally {
       setUploadingLogo(false);
@@ -481,7 +483,7 @@ export default function SettingsPage() {
       return data.faviconUrl;
     } catch (error: any) {
       console.error("Failed to upload favicon:", error);
-      alert(`Failed to upload favicon: ${error.message || "Unknown error"}`);
+      toast({ title: "Upload failed", description: error.message || "Failed to upload favicon", variant: "destructive" });
       return null;
     } finally {
       setUploadingFavicon(false);
@@ -532,7 +534,7 @@ export default function SettingsPage() {
       return data.homeCardImageUrl;
     } catch (error: any) {
       console.error("Failed to upload home card image:", error);
-      alert(`Failed to upload home card image: ${error.message || "Unknown error"}`);
+      toast({ title: "Upload failed", description: error.message || "Failed to upload home card image", variant: "destructive" });
       return null;
     } finally {
       setUploadingHomeCardImage(false);
@@ -618,11 +620,11 @@ export default function SettingsPage() {
           const text = await response.text();
           errorMessage = text || `HTTP ${response.status}: ${response.statusText}`;
         }
-        alert(`Failed to save: ${errorMessage}`);
+        toast({ title: "Save failed", description: errorMessage, variant: "destructive" });
       }
     } catch (error: any) {
       console.error("Failed to save org settings:", error);
-      alert(`Failed to save: ${error.message || "Unknown error"}`);
+      toast({ title: "Save failed", description: error.message || "Unknown error", variant: "destructive" });
     } finally {
       setSaving(false);
     }
@@ -667,11 +669,11 @@ export default function SettingsPage() {
           const text = await response.text();
           errorMessage = text || `HTTP ${response.status}: ${response.statusText}`;
         }
-        alert(`Failed to save: ${errorMessage}`);
+        toast({ title: "Save failed", description: errorMessage, variant: "destructive" });
       }
     } catch (error: any) {
       console.error("Failed to save tax settings:", error);
-      alert(`Failed to save: ${error.message || "Unknown error"}`);
+      toast({ title: "Save failed", description: error.message || "Unknown error", variant: "destructive" });
     } finally {
       setSaving(false);
     }
@@ -1466,10 +1468,10 @@ export default function SettingsPage() {
                             setTimeout(() => setSaveSuccess(false), 3000);
                           } else {
                             const error = await response.json();
-                            alert(`Failed to save: ${error.error || "Unknown error"}`);
+                            toast({ title: "Save failed", description: error.error || "Unknown error", variant: "destructive" });
                           }
                         } catch (error: any) {
-                          alert(`Failed to save: ${error.message || "Unknown error"}`);
+                          toast({ title: "Save failed", description: error.message || "Unknown error", variant: "destructive" });
                         } finally {
                           setSaving(false);
                         }
@@ -1668,10 +1670,10 @@ export default function SettingsPage() {
                             setTimeout(() => setSaveSuccess(false), 3000);
                           } else {
                             const error = await response.json();
-                            alert(`Failed to save: ${error.error || "Unknown error"}`);
+                            toast({ title: "Save failed", description: error.error || "Unknown error", variant: "destructive" });
                           }
                         } catch (error: any) {
-                          alert(`Failed to save: ${error.message || "Unknown error"}`);
+                          toast({ title: "Save failed", description: error.message || "Unknown error", variant: "destructive" });
                         } finally {
                           setSaving(false);
                         }
@@ -1922,10 +1924,10 @@ export default function SettingsPage() {
                             setTimeout(() => setSaveSuccess(false), 3000);
                           } else {
                             const error = await response.json();
-                            alert(`Failed to save: ${error.message || error.error || "Unknown error"}`);
+                            toast({ title: "Save failed", description: error.message || error.error || "Unknown error", variant: "destructive" });
                           }
                         } catch (error: any) {
-                          alert(`Failed to save: ${error.message || "Unknown error"}`);
+                          toast({ title: "Save failed", description: error.message || "Unknown error", variant: "destructive" });
                         } finally {
                           setSaving(false);
                           setVerifyingApiKey(false);

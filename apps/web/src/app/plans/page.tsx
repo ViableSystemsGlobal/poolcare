@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -40,6 +40,7 @@ import { formatCurrencyForDisplay } from "@/lib/utils";
 
 export default function PlansPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { toast } = useToast();
   const { getThemeClasses } = useTheme();
   const theme = getThemeClasses();
@@ -91,6 +92,13 @@ export default function PlansPage() {
     fetchPlans();
     fetchSubscriptionTemplates();
   }, [statusFilter]);
+
+  // Auto-open create dialog when navigated here with ?new=1
+  useEffect(() => {
+    if (searchParams?.get("new") === "1") {
+      setIsCreateDialogOpen(true);
+    }
+  }, [searchParams]);
 
   // Auto-fill form when template is selected
   useEffect(() => {
