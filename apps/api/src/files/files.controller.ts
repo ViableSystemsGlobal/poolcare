@@ -81,11 +81,12 @@ export class FilesController {
     const safeScope = scope.replace(/[^a-zA-Z0-9_-]/g, "");
     const safeFileName = fileName.replace(/[^a-zA-Z0-9._-]/g, "");
     
-    const filePath = path.join(process.cwd(), "uploads", safeScope, safeFileName);
+    const baseUploadDir = process.env.UPLOAD_DIR || path.join(process.cwd(), "uploads");
+    const filePath = path.join(baseUploadDir, safeScope, safeFileName);
     
     if (!fs.existsSync(filePath)) {
       // Also check legacy path without scope for backwards compatibility
-      const legacyPath = path.join(process.cwd(), "uploads", "carers", safeFileName);
+      const legacyPath = path.join(baseUploadDir, "carers", safeFileName);
       if (fs.existsSync(legacyPath)) {
         return this.sendFile(legacyPath, safeFileName, res);
       }
@@ -103,15 +104,16 @@ export class FilesController {
     
     // Try common scopes in order of likelihood
     const scopes = ["carers", "org_logo", "org_favicon", "visit_photos", "clients"];
+    const baseUploadDir = process.env.UPLOAD_DIR || path.join(process.cwd(), "uploads");
     for (const scope of scopes) {
-      const filePath = path.join(process.cwd(), "uploads", scope, safeFileName);
+      const filePath = path.join(baseUploadDir, scope, safeFileName);
       if (fs.existsSync(filePath)) {
         return this.sendFile(filePath, safeFileName, res);
       }
     }
     
     // Fallback: check uploads root
-    const rootPath = path.join(process.cwd(), "uploads", safeFileName);
+    const rootPath = path.join(baseUploadDir, safeFileName);
     if (fs.existsSync(rootPath)) {
       return this.sendFile(rootPath, safeFileName, res);
     }

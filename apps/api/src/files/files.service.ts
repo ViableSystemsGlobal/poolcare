@@ -400,7 +400,9 @@ export class FilesService {
     ext: string
   ): Promise<string> {
     // Create uploads directory based on scope
-    const uploadsDir = path.join(process.cwd(), "uploads", scope);
+    // UPLOAD_DIR env var lets Render persistent disk path be set explicitly
+    const baseUploadDir = process.env.UPLOAD_DIR || path.join(process.cwd(), "uploads");
+    const uploadsDir = path.join(baseUploadDir, scope);
     if (!fs.existsSync(uploadsDir)) {
       fs.mkdirSync(uploadsDir, { recursive: true });
     }
