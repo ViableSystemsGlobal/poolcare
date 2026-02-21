@@ -117,22 +117,23 @@ export class CarersService {
         }
       }
 
-      // Always ensure the user has a CARER membership (covers both new and existing users)
-      await prisma.orgMember.upsert({
-        where: {
-          orgId_userId: {
-            orgId,
-            userId: userId!,
-          },
-        },
-        create: {
+    }
+
+    // Always ensure the user has a CARER membership, even when userId was passed directly
+    await prisma.orgMember.upsert({
+      where: {
+        orgId_userId: {
           orgId,
           userId: userId!,
-          role: "CARER",
         },
-        update: { role: "CARER" },
-      });
-    }
+      },
+      create: {
+        orgId,
+        userId: userId!,
+        role: "CARER",
+      },
+      update: { role: "CARER" },
+    });
 
     const carer = await prisma.carer.create({
       data: {
