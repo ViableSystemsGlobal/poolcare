@@ -23,8 +23,9 @@ export default function Loader() {
 
           if (settings?.profile) {
             setThemeFromOrgProfile(settings.profile);
-            if (settings.profile.logoUrl) {
-              const fixedLogoUrl = fixUrlForMobile(settings.profile.logoUrl);
+            const imageUrl = settings.profile.loaderLogoUrl || settings.profile.logoUrl;
+            if (imageUrl) {
+              const fixedLogoUrl = fixUrlForMobile(imageUrl);
               if (fixedLogoUrl) setLogoUrl(fixedLogoUrl);
             }
           }
@@ -49,7 +50,7 @@ export default function Loader() {
           onError={() => setLogoUrl(null)}
         />
       ) : null}
-      <ActivityIndicator size="large" color="#999999" style={styles.spinner} />
+      <ActivityIndicator size="large" color={themeColor} style={styles.spinner} />
     </View>
   );
 }

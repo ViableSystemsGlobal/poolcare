@@ -256,12 +256,14 @@ export class AuthService {
           throw new UnauthorizedException(INVITE_ONLY_MESSAGE);
         }
         let membership = await prisma.orgMember.findFirst({
-          where: { userId: user.id },
+          where: { userId: user.id, role: { in: ["ADMIN", "MANAGER", "STAFF"] } },
+          orderBy: { createdAt: "asc" },
           include: { org: true },
         });
         if (app === "carer") {
           membership = await prisma.orgMember.findFirst({
             where: { userId: user.id, role: "CARER" },
+            orderBy: { createdAt: "asc" },
             include: { org: true },
           });
         }

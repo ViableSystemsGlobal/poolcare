@@ -95,7 +95,7 @@ export default function LoginScreen() {
         showsVerticalScrollIndicator={false}
       >
         {/* Top branding area */}
-        <View style={[styles.brandSection, { paddingTop: insets.top + 40 }]}>
+        <View style={[styles.brandSection, { paddingTop: insets.top + 130 }]}>
           <View style={styles.logoWrap}>
             {orgLogoUrl ? (
               <Image source={{ uri: orgLogoUrl }} style={styles.logo} resizeMode="contain" />
@@ -105,8 +105,7 @@ export default function LoginScreen() {
               </View>
             )}
           </View>
-          <Text style={styles.orgName}>{orgName}</Text>
-          <Text style={[styles.appTag, { color: activeColor }]}>Client Portal</Text>
+          <Text style={[styles.appTag, { color: activeColor }]}>CLIENT PORTAL</Text>
         </View>
 
         {/* Form card */}

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { View, StyleSheet, BackHandler, ActivityIndicator } from "react-native";
+import { View, StyleSheet, BackHandler } from "react-native";
 import { Stack, usePathname, router } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import * as SplashScreen from "expo-splash-screen";
@@ -38,11 +38,7 @@ export default function RootLayout() {
 
   // While fonts are loading show a blank white screen — avoids the [?] flash
   if (!fontsLoaded) {
-    return (
-      <View style={styles.fontLoading}>
-        <ActivityIndicator size="large" color="#14b8a6" />
-      </View>
-    );
+    return <View style={styles.fontLoading} />;
   }
 
   // Fonts ready but app still "warming up" — safe to show Loader icons now

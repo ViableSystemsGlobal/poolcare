@@ -15,9 +15,10 @@ export default function Loader() {
         const token = await api.getAuthToken();
         if (token) {
           const settings = await api.getOrgSettings();
-          if (settings?.profile?.logoUrl) {
+          const imageUrl = settings?.profile?.loaderLogoUrl || settings?.profile?.logoUrl;
+          if (imageUrl) {
             // Fix URL for mobile (replace localhost with network IP)
-            const fixedLogoUrl = fixUrlForMobile(settings.profile.logoUrl);
+            const fixedLogoUrl = fixUrlForMobile(imageUrl);
             setLogoUrl(fixedLogoUrl);
           }
         }
@@ -33,10 +34,10 @@ export default function Loader() {
 
   return (
     <View style={styles.container}>
-      {logoUrl ? (
-        <Image 
-          source={{ uri: logoUrl }} 
-          style={styles.logo} 
+      {loading ? null : logoUrl ? (
+        <Image
+          source={{ uri: logoUrl }}
+          style={styles.logo}
           resizeMode="contain"
           onError={(error) => {
             console.error("Failed to load logo image:", error);

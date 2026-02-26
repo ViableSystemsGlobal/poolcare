@@ -138,6 +138,46 @@ export class SettingsController {
     }
   }
 
+  @Post("upload-loader-logo")
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "MANAGER")
+  @UseInterceptors(FileInterceptor("loaderLogo"))
+  async uploadLoaderLogo(
+    @CurrentUser() user: { org_id: string },
+    @UploadedFile(
+      new ParseFilePipe({
+        fileIsRequired: true,
+        validators: [
+          new MaxFileSizeValidator({ maxSize: 2 * 1024 * 1024 }), // 2MB
+          new FileTypeValidator({ fileType: /(jpeg|jpg|png|webp|svg)$/ }),
+        ],
+      })
+    )
+    file: Express.Multer.File
+  ) {
+    if (!file) {
+      throw new BadRequestException("No file uploaded");
+    }
+
+    try {
+      const loaderLogoUrl = await this.filesService.uploadImage(
+        user.org_id,
+        file,
+        "loader_logo",
+        user.org_id
+      );
+
+      await this.settingsService.updateOrgSettings(user.org_id, {
+        profile: { loaderLogoUrl },
+      });
+
+      return { loaderLogoUrl };
+    } catch (error: any) {
+      console.error("Loader logo upload error:", error);
+      throw new BadRequestException(error.message || "Failed to upload loader logo");
+    }
+  }
+
   @Post("upload-home-card-image")
   @UseGuards(RolesGuard)
   @Roles("ADMIN", "MANAGER")

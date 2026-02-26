@@ -51,6 +51,13 @@ const ROLE_LABELS: Record<string, string> = {
   CLIENT: "Client",
 };
 
+const ROLE_BADGE_CLASS: Record<string, string> = {
+  ADMIN:   "bg-purple-100 text-purple-800",
+  MANAGER: "bg-blue-100 text-blue-800",
+  CARER:   "bg-teal-100 text-teal-800",
+  CLIENT:  "bg-orange-100 text-orange-800",
+};
+
 export default function TeamPage() {
   const { user: currentUser } = useAuth();
 
@@ -299,7 +306,7 @@ export default function TeamPage() {
                       </div>
                     </TableCell>
                     <TableCell>
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-gray-100 dark:bg-gray-800">
+                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${ROLE_BADGE_CLASS[m.role] || "bg-gray-100 text-gray-700"}`}>
                         <Shield className="h-3 w-3" />
                         {ROLE_LABELS[m.role] || m.role}
                       </span>

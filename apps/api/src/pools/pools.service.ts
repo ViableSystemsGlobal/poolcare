@@ -19,7 +19,8 @@ export class PoolsService {
       tag?: string;
       page: number;
       limit: number;
-    }
+    },
+    currentUserId?: string
   ) {
     const where: any = {
       orgId,
@@ -41,7 +42,7 @@ export class PoolsService {
       const client = await prisma.client.findFirst({
         where: {
           orgId,
-          userId: null, // Will be set from JWT in real implementation
+          userId: currentUserId,
         },
       });
       if (client) {

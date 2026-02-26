@@ -63,6 +63,7 @@ type SettingsTab = "org" | "tax" | "policies" | "integrations";
 interface OrgProfile {
   name: string;
   logoUrl?: string | null;
+  loaderLogoUrl?: string | null;
   faviconUrl?: string | null;
   homeCardImageUrl?: string | null;
   themeColor?: string;
@@ -135,6 +136,7 @@ export default function SettingsPage() {
   const [orgProfile, setOrgProfile] = useState<OrgProfile>({
     name: "",
     logoUrl: null,
+    loaderLogoUrl: null,
     faviconUrl: null,
     homeCardImageUrl: null,
     themeColor: "orange",
@@ -147,11 +149,14 @@ export default function SettingsPage() {
   });
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
+  const [loaderLogoFile, setLoaderLogoFile] = useState<File | null>(null);
+  const [loaderLogoPreview, setLoaderLogoPreview] = useState<string | null>(null);
   const [faviconFile, setFaviconFile] = useState<File | null>(null);
   const [faviconPreview, setFaviconPreview] = useState<string | null>(null);
   const [homeCardImageFile, setHomeCardImageFile] = useState<File | null>(null);
   const [homeCardImagePreview, setHomeCardImagePreview] = useState<string | null>(null);
   const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [uploadingLoaderLogo, setUploadingLoaderLogo] = useState(false);
   const [uploadingFavicon, setUploadingFavicon] = useState(false);
   const [uploadingHomeCardImage, setUploadingHomeCardImage] = useState(false);
   const colorInputRef = useRef<HTMLInputElement>(null);
@@ -378,6 +383,18 @@ export default function SettingsPage() {
     }
   };
 
+  const handleLoaderLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setLoaderLogoFile(file);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setLoaderLogoPreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
   const handleFaviconChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -431,6 +448,47 @@ export default function SettingsPage() {
       return null;
     } finally {
       setUploadingLogo(false);
+    }
+  };
+
+  const uploadLoaderLogo = async (): Promise<string | null> => {
+    if (!loaderLogoFile) return null;
+
+    try {
+      setUploadingLoaderLogo(true);
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+      const uploadFormData = new FormData();
+      uploadFormData.append("loaderLogo", loaderLogoFile);
+
+      const response = await fetch(`${API_URL}/settings/upload-loader-logo`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
+        },
+        body: uploadFormData,
+      });
+
+      if (!response.ok) {
+        let errorMessage = "Failed to upload loader logo";
+        try {
+          const error = await response.json();
+          errorMessage = error.error || error.message || errorMessage;
+        } catch (e) {
+          errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+        }
+        throw new Error(errorMessage);
+      }
+
+      const data = await response.json();
+      setOrgProfile({ ...orgProfile, loaderLogoUrl: data.loaderLogoUrl });
+      setLoaderLogoFile(null);
+      return data.loaderLogoUrl;
+    } catch (error: any) {
+      console.error("Failed to upload loader logo:", error);
+      toast({ title: "Upload failed", description: error.message || "Failed to upload loader logo", variant: "destructive" });
+      return null;
+    } finally {
+      setUploadingLoaderLogo(false);
     }
   };
 
@@ -546,13 +604,18 @@ export default function SettingsPage() {
       setSaving(true);
       setSaveSuccess(false);
 
-      // Upload logo, favicon, and home card image first if files were selected
+      // Upload images first if files were selected
       let uploadedLogoUrl: string | null = null;
+      let uploadedLoaderLogoUrl: string | null = null;
       let uploadedFaviconUrl: string | null = null;
       let uploadedHomeCardImageUrl: string | null = null;
       if (logoFile) {
         uploadedLogoUrl = await uploadLogo();
         if (!uploadedLogoUrl) return;
+      }
+      if (loaderLogoFile) {
+        uploadedLoaderLogoUrl = await uploadLoaderLogo();
+        if (!uploadedLoaderLogoUrl) return;
       }
       if (faviconFile) {
         uploadedFaviconUrl = await uploadFavicon();
@@ -569,6 +632,7 @@ export default function SettingsPage() {
       const profileToSave = {
         ...orgProfile,
         ...(uploadedLogoUrl != null && { logoUrl: uploadedLogoUrl }),
+        ...(uploadedLoaderLogoUrl != null && { loaderLogoUrl: uploadedLoaderLogoUrl }),
         ...(uploadedFaviconUrl != null && { faviconUrl: uploadedFaviconUrl }),
         ...(uploadedHomeCardImageUrl != null && { homeCardImageUrl: uploadedHomeCardImageUrl }),
       };
@@ -789,6 +853,41 @@ export default function SettingsPage() {
                       </div>
                       {uploadingLogo && (
                         <p className="text-sm text-gray-500">Uploading logo...</p>
+                      )}
+                    </div>
+
+                    {/* Loader Logo Upload */}
+                    <div className="space-y-2">
+                      <Label htmlFor="loaderLogo" className="flex items-center gap-2">
+                        <Image className="h-4 w-4" />
+                        App Loader Logo
+                      </Label>
+                      <div className="flex items-center gap-4">
+                        <div className="flex-1">
+                          <Input
+                            id="loaderLogo"
+                            type="file"
+                            accept="image/*"
+                            onChange={handleLoaderLogoChange}
+                            className="cursor-pointer"
+                          />
+                          <p className="text-xs text-gray-500 mt-1">Logo shown on the loading screen of the client and carer apps (max 2MB). Falls back to sidebar logo if not set.</p>
+                        </div>
+                        {(loaderLogoPreview || orgProfile.loaderLogoUrl) && (
+                          <div className="relative">
+                            <img
+                              src={loaderLogoPreview || orgProfile.loaderLogoUrl || ""}
+                              alt="Loader logo preview"
+                              className="w-16 h-16 rounded object-contain border-2 border-gray-200"
+                            />
+                            {orgProfile.loaderLogoUrl && !loaderLogoFile && (
+                              <p className="text-xs text-gray-500 mt-1">Current logo</p>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                      {uploadingLoaderLogo && (
+                        <p className="text-sm text-gray-500">Uploading loader logo...</p>
                       )}
                     </div>
 

@@ -14,6 +14,7 @@ export class SettingsService {
   async getPublicBranding(): Promise<{
     organizationName: string;
     logoUrl: string | null;
+    loaderLogoUrl: string | null;
     themeColor: string;
     primaryColorHex: string;
   }> {
@@ -53,22 +54,26 @@ export class SettingsService {
       return {
         organizationName: "",
         logoUrl: null,
+        loaderLogoUrl: null,
         themeColor: "teal",
         primaryColorHex: "#6b7280",
       };
     }
 
     const rawLogoUrl = profile.logoUrl || null;
+    const rawLoaderLogoUrl = profile.loaderLogoUrl || null;
     const themeColor = profile.themeColor || "teal";
     const customHex = profile.customColorHex && String(profile.customColorHex).trim();
     const primaryColorHex = customHex
       ? (customHex.startsWith("#") ? customHex : `#${customHex}`)
       : this.getThemeColorHex(themeColor);
-    // Ensure logo URL is absolute so login page (different origin) can load it
+    // Ensure logo URLs are absolute so login page (different origin) can load them
     const logoUrl = rawLogoUrl ? this.toAbsoluteLogoUrl(rawLogoUrl) : null;
+    const loaderLogoUrl = rawLoaderLogoUrl ? this.toAbsoluteLogoUrl(rawLoaderLogoUrl) : null;
     return {
       organizationName: org.name || "PoolCare",
       logoUrl,
+      loaderLogoUrl,
       themeColor,
       primaryColorHex,
     };
@@ -120,6 +125,7 @@ export class SettingsService {
       profile: {
         name: org.name,
         logoUrl: profile.logoUrl || null,
+        loaderLogoUrl: profile.loaderLogoUrl || null,
         faviconUrl: profile.faviconUrl || null,
         homeCardImageUrl: profile.homeCardImageUrl || null,
         themeColor: profile.themeColor || "orange",
@@ -167,6 +173,7 @@ export class SettingsService {
           ...currentProfile,
           name: updated.name,
           logoUrl: profile.logoUrl !== undefined ? profile.logoUrl : (currentProfile.logoUrl || null),
+          loaderLogoUrl: profile.loaderLogoUrl !== undefined ? profile.loaderLogoUrl : (currentProfile.loaderLogoUrl || null),
           faviconUrl: profile.faviconUrl !== undefined ? profile.faviconUrl : (currentProfile.faviconUrl || null),
           homeCardImageUrl: profile.homeCardImageUrl !== undefined ? (profile.homeCardImageUrl || null) : (currentProfile.homeCardImageUrl || null),
           themeColor: profile.themeColor || currentProfile.themeColor || "orange",
@@ -187,6 +194,7 @@ export class SettingsService {
       profile: {
         name: updated.name,
         logoUrl: savedProfile.logoUrl || null,
+        loaderLogoUrl: savedProfile.loaderLogoUrl || null,
         faviconUrl: savedProfile.faviconUrl || null,
         homeCardImageUrl: savedProfile.homeCardImageUrl || null,
         themeColor: savedProfile.themeColor || "orange",

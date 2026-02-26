@@ -32,7 +32,7 @@ export class PoolsController {
 
   @Get()
   async list(
-    @CurrentUser() user: { org_id: string; role: string },
+    @CurrentUser() user: { org_id: string; role: string; sub: string },
     @Query("clientId") clientId?: string,
     @Query("query") query?: string,
     @Query("tag") tag?: string,
@@ -45,7 +45,7 @@ export class PoolsController {
       tag,
       page: page ? parseInt(page) : 1,
       limit: limit ? parseInt(limit) : 50,
-    });
+    }, user.sub);
   }
 
   @Post()
