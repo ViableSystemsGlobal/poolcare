@@ -369,20 +369,26 @@ export default function VisitDetailPage() {
                 <Text style={styles.infoValue}>{visit.pool.name}</Text>
               </View>
             </View>
-            <View style={styles.infoRow}>
-              <Ionicons name="location-outline" size={20} color="#14b8a6" />
-              <View style={styles.infoContent}>
-                <Text style={styles.infoLabel}>Address</Text>
-                <Text style={styles.infoValue}>{visit.pool.address}</Text>
+            {!!visit.pool.address && (
+              <View style={styles.infoRow}>
+                <Ionicons name="location-outline" size={20} color="#14b8a6" />
+                <View style={styles.infoContent}>
+                  <Text style={styles.infoLabel}>Address</Text>
+                  <Text style={styles.infoValue}>{visit.pool.address}</Text>
+                </View>
               </View>
-            </View>
-            <View style={styles.infoRow}>
-              <Ionicons name="construct-outline" size={20} color="#14b8a6" />
-              <View style={styles.infoContent}>
-                <Text style={styles.infoLabel}>Type</Text>
-                <Text style={styles.infoValue}>{visit.pool.type}</Text>
+            )}
+            {!!visit.pool.type && (
+              <View style={styles.infoRow}>
+                <Ionicons name="construct-outline" size={20} color="#14b8a6" />
+                <View style={styles.infoContent}>
+                  <Text style={styles.infoLabel}>Surface Type</Text>
+                  <Text style={styles.infoValue}>
+                    {visit.pool.type.charAt(0).toUpperCase() + visit.pool.type.slice(1)}
+                  </Text>
+                </View>
               </View>
-            </View>
+            )}
           </View>
         </View>
 
@@ -398,18 +404,60 @@ export default function VisitDetailPage() {
                   <Text style={styles.infoValue}>{visit.carer.name}</Text>
                 </View>
               </View>
-              <TouchableOpacity
-                style={styles.infoRow}
-                onPress={() => Linking.openURL(`tel:${visit.carer?.phone}`)}
-              >
-                <Ionicons name="call-outline" size={20} color="#14b8a6" />
-                <View style={styles.infoContent}>
-                  <Text style={styles.infoLabel}>Phone</Text>
-                  <Text style={[styles.infoValue, styles.linkText]}>
-                    {visit.carer.phone}
+              {!!visit.carer.phone && (
+                <TouchableOpacity
+                  style={styles.callRow}
+                  onPress={() => Linking.openURL(`tel:${visit.carer?.phone}`)}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.callRowLeft}>
+                    <Ionicons name="call-outline" size={20} color="#14b8a6" />
+                    <View style={styles.infoContent}>
+                      <Text style={styles.infoLabel}>Phone</Text>
+                      <Text style={[styles.infoValue, styles.linkText]}>
+                        {visit.carer.phone}
+                      </Text>
+                    </View>
+                  </View>
+                  <View style={styles.callBadge}>
+                    <Ionicons name="call" size={14} color="#ffffff" />
+                    <Text style={styles.callBadgeText}>Call</Text>
+                  </View>
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
+        )}
+
+        {/* Upcoming visit info card — shown instead of all the empty sections */}
+        {(visit.status === "scheduled" || visit.status === "in-progress") && (
+          <View style={styles.section}>
+            <View style={styles.upcomingCard}>
+              <View style={styles.upcomingHeader}>
+                <View style={styles.upcomingIconWrap}>
+                  <Ionicons
+                    name={visit.status === "scheduled" ? "calendar-outline" : "time-outline"}
+                    size={24}
+                    color="#14b8a6"
+                  />
+                </View>
+                <Text style={styles.upcomingTitle}>
+                  {visit.status === "scheduled" ? "Your service is coming up" : "Service in progress"}
+                </Text>
+              </View>
+              <Text style={styles.upcomingBody}>
+                {visit.status === "scheduled"
+                  ? "Your technician will arrive during the scheduled window. Water chemistry readings, completed tasks, and your service report will be available here once the visit is done."
+                  : "Your technician is currently at the site. Results will appear here once the service is complete."}
+              </Text>
+              {visit.status === "scheduled" && visit.carer && (
+                <View style={styles.upcomingTip}>
+                  <Ionicons name="information-circle-outline" size={16} color="#6b7280" />
+                  <Text style={styles.upcomingTipText}>
+                    Ensure pool access is available for {visit.carer.name}.
                   </Text>
                 </View>
-              </TouchableOpacity>
+              )}
             </View>
           </View>
         )}
@@ -491,14 +539,20 @@ export default function VisitDetailPage() {
           </View>
         ) : null}
 
-        {/* Tasks Completed */}
+        {/* Tasks */}
         {visit.tasks && visit.tasks.length > 0 ? (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Tasks Completed</Text>
+            <Text style={styles.sectionTitle}>
+              {visit.status === "completed" ? "Tasks Completed" : "Planned Tasks"}
+            </Text>
             <View style={styles.tasksCard}>
               {visit.tasks.map((task, index) => (
                 <View key={index} style={styles.taskItem}>
-                  <Ionicons name="checkmark-circle" size={20} color="#10b981" />
+                  <Ionicons
+                    name={visit.status === "completed" ? "checkmark-circle" : "ellipse-outline"}
+                    size={20}
+                    color={visit.status === "completed" ? "#10b981" : "#14b8a6"}
+                  />
                   <Text style={styles.taskText}>{task}</Text>
                 </View>
               ))}
@@ -515,123 +569,90 @@ export default function VisitDetailPage() {
               </Text>
             </View>
           </View>
-        ) : visit.status === "scheduled" || visit.status === "in-progress" ? (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Tasks Completed</Text>
-            <View style={styles.emptyStateCard}>
-              <Ionicons name="time-outline" size={48} color="#d1d5db" />
-              <Text style={styles.emptyStateTitle}>Visit in progress</Text>
-              <Text style={styles.emptyStateText}>
-                Task details will be available after the service technician completes the visit.
-              </Text>
-            </View>
-          </View>
         ) : null}
 
-        {/* Report */}
-        {visit.report ? (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Service Report</Text>
-            <View style={styles.reportCard}>
-              <Text style={styles.reportSummary}>{visit.report.summary}</Text>
+        {/* Report — completed visits only */}
+        {visit.status === "completed" && (
+          visit.report ? (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Service Report</Text>
+              <View style={styles.reportCard}>
+                <Text style={styles.reportSummary}>{visit.report.summary}</Text>
 
-              {visit.report.recommendations &&
-                visit.report.recommendations.length > 0 && (
-                  <View style={styles.recommendations}>
-                    <Text style={styles.recommendationsTitle}>
-                      Recommendations:
+                {visit.report.recommendations &&
+                  visit.report.recommendations.length > 0 && (
+                    <View style={styles.recommendations}>
+                      <Text style={styles.recommendationsTitle}>
+                        Recommendations:
+                      </Text>
+                      {visit.report.recommendations.map((rec, index) => (
+                        <View key={index} style={styles.recommendationItem}>
+                          <Ionicons name="bulb-outline" size={16} color="#14b8a6" />
+                          <Text style={styles.recommendationText}>{rec}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+
+                {visit.report.pdfUrl && (
+                  <TouchableOpacity
+                    style={styles.downloadButton}
+                    onPress={() => Linking.openURL(visit.report!.pdfUrl!)}
+                  >
+                    <Ionicons name="download-outline" size={20} color="#14b8a6" />
+                    <Text style={styles.downloadButtonText}>
+                      Download PDF Report
                     </Text>
-                    {visit.report.recommendations.map((rec, index) => (
-                      <View key={index} style={styles.recommendationItem}>
-                        <Ionicons
-                          name="bulb-outline"
-                          size={16}
-                          color="#14b8a6"
-                        />
-                        <Text style={styles.recommendationText}>{rec}</Text>
-                      </View>
-                    ))}
-                  </View>
+                  </TouchableOpacity>
                 )}
+              </View>
+            </View>
+          ) : (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Service Report</Text>
+              <View style={styles.emptyStateCard}>
+                <Ionicons name="document-text-outline" size={48} color="#d1d5db" />
+                <Text style={styles.emptyStateTitle}>No report available</Text>
+                <Text style={styles.emptyStateText}>
+                  A service report was not generated for this visit.
+                </Text>
+              </View>
+            </View>
+          )
+        )}
 
-              {visit.report.pdfUrl && (
-                <TouchableOpacity
-                  style={styles.downloadButton}
-                  onPress={() => Linking.openURL(visit.report!.pdfUrl!)}
-                >
-                  <Ionicons name="download-outline" size={20} color="#14b8a6" />
-                  <Text style={styles.downloadButtonText}>
-                    Download PDF Report
-                  </Text>
-                </TouchableOpacity>
-              )}
+        {/* Photos — completed visits only */}
+        {visit.status === "completed" && (
+          visit.photos && visit.photos.length > 0 ? (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Photos</Text>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.photosContainer}
+              >
+                {visit.photos.map((photo, index) => (
+                  <Image
+                    key={index}
+                    source={{ uri: photo }}
+                    style={styles.photo}
+                  />
+                ))}
+              </ScrollView>
             </View>
-          </View>
-        ) : visit.status === "completed" ? (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Service Report</Text>
-            <View style={styles.emptyStateCard}>
-              <Ionicons name="document-text-outline" size={48} color="#d1d5db" />
-              <Text style={styles.emptyStateTitle}>No report available</Text>
-              <Text style={styles.emptyStateText}>
-                A service report was not generated for this visit.
-              </Text>
+          ) : (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Photos</Text>
+              <View style={styles.emptyStateCard}>
+                <Ionicons name="camera-outline" size={48} color="#d1d5db" />
+                <Text style={styles.emptyStateTitle}>No photos available</Text>
+                <Text style={styles.emptyStateText}>
+                  Photos were not taken during this visit.
+                </Text>
+              </View>
             </View>
-          </View>
-        ) : visit.status === "scheduled" || visit.status === "in-progress" ? (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Service Report</Text>
-            <View style={styles.emptyStateCard}>
-              <Ionicons name="time-outline" size={48} color="#d1d5db" />
-              <Text style={styles.emptyStateTitle}>Report pending</Text>
-              <Text style={styles.emptyStateText}>
-                The service report will be available after the visit is completed.
-              </Text>
-            </View>
-          </View>
-        ) : null}
-
-        {/* Photos */}
-        {visit.photos && visit.photos.length > 0 ? (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Photos</Text>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.photosContainer}
-            >
-              {visit.photos.map((photo, index) => (
-                <Image
-                  key={index}
-                  source={{ uri: photo }}
-                  style={styles.photo}
-                />
-              ))}
-            </ScrollView>
-          </View>
-        ) : visit.status === "completed" ? (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Photos</Text>
-            <View style={styles.emptyStateCard}>
-              <Ionicons name="camera-outline" size={48} color="#d1d5db" />
-              <Text style={styles.emptyStateTitle}>No photos available</Text>
-              <Text style={styles.emptyStateText}>
-                Photos were not taken during this visit.
-              </Text>
-            </View>
-          </View>
-        ) : visit.status === "scheduled" || visit.status === "in-progress" ? (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Photos</Text>
-            <View style={styles.emptyStateCard}>
-              <Ionicons name="time-outline" size={48} color="#d1d5db" />
-              <Text style={styles.emptyStateTitle}>Photos pending</Text>
-              <Text style={styles.emptyStateText}>
-                Photos will be available after the service technician completes the visit.
-              </Text>
-            </View>
-          </View>
-        ) : null}
+          )
+        )}
 
         {/* Rating Section */}
         {visit.status === "completed" && (
@@ -982,6 +1003,79 @@ const styles = StyleSheet.create({
   },
   linkText: {
     color: "#14b8a6",
+  },
+  callRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 20,
+  },
+  callRowLeft: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 12,
+    flex: 1,
+  },
+  callBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "#14b8a6",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+  },
+  callBadgeText: {
+    color: "#ffffff",
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  upcomingCard: {
+    backgroundColor: "#f0fdfa",
+    borderRadius: 16,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: "#99f6e4",
+  },
+  upcomingHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    marginBottom: 12,
+  },
+  upcomingIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "#ccfbf1",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  upcomingTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#0f766e",
+    flex: 1,
+  },
+  upcomingBody: {
+    fontSize: 14,
+    color: "#374151",
+    lineHeight: 22,
+    marginBottom: 12,
+  },
+  upcomingTip: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: "#99f6e4",
+  },
+  upcomingTipText: {
+    flex: 1,
+    fontSize: 13,
+    color: "#6b7280",
+    lineHeight: 19,
   },
   readingsGrid: {
     flexDirection: "row",

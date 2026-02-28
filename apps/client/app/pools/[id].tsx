@@ -474,7 +474,7 @@ export default function PoolDetailScreen() {
         </TouchableOpacity>
         <TouchableOpacity
           style={styles.quickActionButton}
-          onPress={() => router.push(`/request?poolId=${id}`)}
+          onPress={() => router.push(`/book-service?poolId=${id}`)}
           activeOpacity={0.7}
         >
           <Ionicons name="chatbubble-ellipses-outline" size={20} color={themeColor} />
