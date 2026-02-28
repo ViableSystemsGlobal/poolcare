@@ -19,6 +19,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { api } from "../../src/lib/api-client";
 import { fixUrlForMobile } from "../../src/lib/network-utils";
+import { useTheme } from "../../src/contexts/ThemeContext";
 
 interface VisitDetail {
   id: string;
@@ -55,6 +56,7 @@ interface VisitDetail {
 
 export default function VisitDetailPage() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const { themeColor } = useTheme();
   const [visit, setVisit] = useState<VisitDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [rating, setRating] = useState<number | null>(null);
@@ -235,7 +237,7 @@ export default function VisitDetailPage() {
   const getStatusColor = (status: VisitDetail["status"]) => {
     switch (status) {
       case "scheduled":
-        return "#14b8a6";
+        return themeColor;
       case "in-progress":
         return "#f59e0b";
       case "completed":
@@ -283,7 +285,7 @@ export default function VisitDetailPage() {
           <View style={{ width: 24 }} />
         </View>
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#14b8a6" />
+          <ActivityIndicator size="large" color={themeColor} />
           <Text style={styles.loadingText}>Loading visit details...</Text>
         </View>
       </SafeAreaView>
@@ -314,7 +316,7 @@ export default function VisitDetailPage() {
               <Text style={styles.secondaryButtonText}>Go Back</Text>
             </TouchableOpacity>
             <TouchableOpacity 
-              style={styles.retryButton}
+              style={[styles.retryButton, { backgroundColor: themeColor }]}
               onPress={loadVisitDetail}
             >
               <Text style={styles.retryButtonText}>Retry</Text>
@@ -363,7 +365,7 @@ export default function VisitDetailPage() {
           <Text style={styles.sectionTitle}>Pool Information</Text>
           <View style={styles.infoCard}>
             <View style={styles.infoRow}>
-              <Ionicons name="water-outline" size={20} color="#14b8a6" />
+              <Ionicons name="water-outline" size={20} color={themeColor} />
               <View style={styles.infoContent}>
                 <Text style={styles.infoLabel}>Pool Name</Text>
                 <Text style={styles.infoValue}>{visit.pool.name}</Text>
@@ -371,7 +373,7 @@ export default function VisitDetailPage() {
             </View>
             {!!visit.pool.address && (
               <View style={styles.infoRow}>
-                <Ionicons name="location-outline" size={20} color="#14b8a6" />
+                <Ionicons name="location-outline" size={20} color={themeColor} />
                 <View style={styles.infoContent}>
                   <Text style={styles.infoLabel}>Address</Text>
                   <Text style={styles.infoValue}>{visit.pool.address}</Text>
@@ -380,7 +382,7 @@ export default function VisitDetailPage() {
             )}
             {!!visit.pool.type && (
               <View style={styles.infoRow}>
-                <Ionicons name="construct-outline" size={20} color="#14b8a6" />
+                <Ionicons name="construct-outline" size={20} color={themeColor} />
                 <View style={styles.infoContent}>
                   <Text style={styles.infoLabel}>Surface Type</Text>
                   <Text style={styles.infoValue}>
@@ -398,7 +400,7 @@ export default function VisitDetailPage() {
             <Text style={styles.sectionTitle}>Service Technician</Text>
             <View style={styles.infoCard}>
               <View style={styles.infoRow}>
-                <Ionicons name="person-outline" size={20} color="#14b8a6" />
+                <Ionicons name="person-outline" size={20} color={themeColor} />
                 <View style={styles.infoContent}>
                   <Text style={styles.infoLabel}>Name</Text>
                   <Text style={styles.infoValue}>{visit.carer.name}</Text>
@@ -411,15 +413,15 @@ export default function VisitDetailPage() {
                   activeOpacity={0.7}
                 >
                   <View style={styles.callRowLeft}>
-                    <Ionicons name="call-outline" size={20} color="#14b8a6" />
+                    <Ionicons name="call-outline" size={20} color={themeColor} />
                     <View style={styles.infoContent}>
                       <Text style={styles.infoLabel}>Phone</Text>
-                      <Text style={[styles.infoValue, styles.linkText]}>
+                      <Text style={[styles.infoValue, styles.linkText, { color: themeColor }]}>
                         {visit.carer.phone}
                       </Text>
                     </View>
                   </View>
-                  <View style={styles.callBadge}>
+                  <View style={[styles.callBadge, { backgroundColor: themeColor }]}>
                     <Ionicons name="call" size={14} color="#ffffff" />
                     <Text style={styles.callBadgeText}>Call</Text>
                   </View>
@@ -432,16 +434,16 @@ export default function VisitDetailPage() {
         {/* Upcoming visit info card — shown instead of all the empty sections */}
         {(visit.status === "scheduled" || visit.status === "in-progress") && (
           <View style={styles.section}>
-            <View style={styles.upcomingCard}>
+            <View style={[styles.upcomingCard, { backgroundColor: themeColor + "10", borderColor: themeColor + "40" }]}>
               <View style={styles.upcomingHeader}>
-                <View style={styles.upcomingIconWrap}>
+                <View style={[styles.upcomingIconWrap, { backgroundColor: themeColor + "25" }]}>
                   <Ionicons
                     name={visit.status === "scheduled" ? "calendar-outline" : "time-outline"}
                     size={24}
-                    color="#14b8a6"
+                    color={themeColor}
                   />
                 </View>
-                <Text style={styles.upcomingTitle}>
+                <Text style={[styles.upcomingTitle, { color: themeColor }]}>
                   {visit.status === "scheduled" ? "Your service is coming up" : "Service in progress"}
                 </Text>
               </View>
@@ -551,7 +553,7 @@ export default function VisitDetailPage() {
                   <Ionicons
                     name={visit.status === "completed" ? "checkmark-circle" : "ellipse-outline"}
                     size={20}
-                    color={visit.status === "completed" ? "#10b981" : "#14b8a6"}
+                    color={visit.status === "completed" ? "#10b981" : themeColor}
                   />
                   <Text style={styles.taskText}>{task}</Text>
                 </View>
@@ -587,7 +589,7 @@ export default function VisitDetailPage() {
                       </Text>
                       {visit.report.recommendations.map((rec, index) => (
                         <View key={index} style={styles.recommendationItem}>
-                          <Ionicons name="bulb-outline" size={16} color="#14b8a6" />
+                          <Ionicons name="bulb-outline" size={16} color={themeColor} />
                           <Text style={styles.recommendationText}>{rec}</Text>
                         </View>
                       ))}
@@ -596,11 +598,11 @@ export default function VisitDetailPage() {
 
                 {visit.report.pdfUrl && (
                   <TouchableOpacity
-                    style={styles.downloadButton}
+                    style={[styles.downloadButton, { borderColor: themeColor }]}
                     onPress={() => Linking.openURL(visit.report!.pdfUrl!)}
                   >
-                    <Ionicons name="download-outline" size={20} color="#14b8a6" />
-                    <Text style={styles.downloadButtonText}>
+                    <Ionicons name="download-outline" size={20} color={themeColor} />
+                    <Text style={[styles.downloadButtonText, { color: themeColor }]}>
                       Download PDF Report
                     </Text>
                   </TouchableOpacity>
@@ -675,19 +677,19 @@ export default function VisitDetailPage() {
                     You rated this visit {rating} out of 5
                   </Text>
                   <TouchableOpacity
-                    style={styles.changeRatingButton}
+                    style={[styles.changeRatingButton, { borderColor: themeColor }]}
                     onPress={() => setShowRatingModal(true)}
                   >
-                    <Text style={styles.changeRatingText}>Change Rating</Text>
+                    <Text style={[styles.changeRatingText, { color: themeColor }]}>Change Rating</Text>
                   </TouchableOpacity>
                 </View>
               ) : (
                 <TouchableOpacity
-                  style={styles.rateButton}
+                  style={[styles.rateButton, { borderColor: themeColor }]}
                   onPress={() => setShowRatingModal(true)}
                 >
-                  <Ionicons name="star-outline" size={24} color="#14b8a6" />
-                  <Text style={styles.rateButtonText}>Rate This Visit</Text>
+                  <Ionicons name="star-outline" size={24} color={themeColor} />
+                  <Text style={[styles.rateButtonText, { color: themeColor }]}>Rate This Visit</Text>
                 </TouchableOpacity>
               )}
             </View>
@@ -700,11 +702,11 @@ export default function VisitDetailPage() {
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>Complaints</Text>
               <TouchableOpacity
-                style={styles.addComplaintButton}
+                style={[styles.addComplaintButton, { borderColor: themeColor }]}
                 onPress={() => setShowComplaintModal(true)}
               >
-                <Ionicons name="add-circle-outline" size={20} color="#14b8a6" />
-                <Text style={styles.addComplaintText}>Add Complaint</Text>
+                <Ionicons name="add-circle-outline" size={20} color={themeColor} />
+                <Text style={[styles.addComplaintText, { color: themeColor }]}>Add Complaint</Text>
               </TouchableOpacity>
             </View>
             {complaints.length > 0 ? (
@@ -824,7 +826,7 @@ export default function VisitDetailPage() {
                 <Text style={styles.cancelButtonText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.modalButton, styles.submitButton]}
+                style={[styles.modalButton, styles.submitButton, { backgroundColor: themeColor }]}
                 onPress={handleSubmitComplaint}
               >
                 <Text style={styles.submitButtonText}>Submit</Text>
@@ -898,7 +900,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
   },
   retryButton: {
-    backgroundColor: "#14b8a6",
     paddingHorizontal: 24,
     paddingVertical: 12,
     borderRadius: 12,
@@ -1001,9 +1002,7 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: "#111827",
   },
-  linkText: {
-    color: "#14b8a6",
-  },
+  linkText: {},
   callRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -1020,7 +1019,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
-    backgroundColor: "#14b8a6",
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 20,
@@ -1031,11 +1029,9 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   upcomingCard: {
-    backgroundColor: "#f0fdfa",
     borderRadius: 16,
     padding: 20,
     borderWidth: 1,
-    borderColor: "#99f6e4",
   },
   upcomingHeader: {
     flexDirection: "row",
@@ -1047,14 +1043,12 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: "#ccfbf1",
     alignItems: "center",
     justifyContent: "center",
   },
   upcomingTitle: {
     fontSize: 16,
     fontWeight: "700",
-    color: "#0f766e",
     flex: 1,
   },
   upcomingBody: {
@@ -1069,7 +1063,7 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingTop: 12,
     borderTopWidth: 1,
-    borderTopColor: "#99f6e4",
+    borderTopColor: "#e5e7eb",
   },
   upcomingTipText: {
     flex: 1,
@@ -1186,12 +1180,10 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: "#14b8a6",
   },
   downloadButtonText: {
     fontSize: 15,
     fontWeight: "600",
-    color: "#14b8a6",
   },
   photosContainer: {
     gap: 12,
@@ -1230,12 +1222,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: "#14b8a6",
   },
   changeRatingText: {
     fontSize: 14,
     fontWeight: "600",
-    color: "#14b8a6",
   },
   rateButton: {
     flexDirection: "row",
@@ -1245,12 +1235,10 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: "#14b8a6",
   },
   rateButtonText: {
     fontSize: 16,
     fontWeight: "600",
-    color: "#14b8a6",
   },
   sectionHeader: {
     flexDirection: "row",
@@ -1266,12 +1254,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: "#14b8a6",
   },
   addComplaintText: {
     fontSize: 14,
     fontWeight: "600",
-    color: "#14b8a6",
   },
   complaintsCard: {
     backgroundColor: "#ffffff",
@@ -1406,9 +1392,7 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: "#374151",
   },
-  submitButton: {
-    backgroundColor: "#14b8a6",
-  },
+  submitButton: {},
   submitButtonText: {
     fontSize: 16,
     fontWeight: "600",
