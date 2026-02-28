@@ -326,31 +326,56 @@ export class AuthService {
         console.log('[AuthService] Found existing user:', user.id);
       }
 
+      // Prefer CLIENT membership so client-app users always get the right role/org
       let membership = await prisma.orgMember.findFirst({
-        where: { userId: user.id },
+        where: { userId: user.id, role: "CLIENT" },
+        orderBy: { createdAt: "asc" },
         include: { org: true },
       });
 
+      // Fall back to any other membership (e.g. admin using the client app)
       if (!membership) {
-        console.log('[AuthService] Creating default org for user');
-        try {
-          const org = await prisma.organization.create({
-            data: { name: `${user.phone || user.email}'s Organization` },
-          });
-          membership = await prisma.orgMember.create({
-            data: {
-              orgId: org.id,
-              userId: user.id,
-              role: "ADMIN",
-            },
-            include: { org: true },
-          });
-        } catch (error: any) {
-          console.error('[AuthService] Failed to create org/membership:', error);
-          throw new BadRequestException(`Failed to create organization: ${error.message}`);
+        membership = await prisma.orgMember.findFirst({
+          where: { userId: user.id },
+          orderBy: { createdAt: "asc" },
+          include: { org: true },
+        });
+      }
+
+      if (!membership) {
+        // Maybe they have a Client record but no OrgMember — repair it
+        const clientRecord = await prisma.client.findFirst({
+          where: { userId: user.id },
+          select: { orgId: true },
+        });
+        if (clientRecord) {
+          console.log('[AuthService] Repairing missing CLIENT membership for user');
+          try {
+            membership = await prisma.orgMember.create({
+              data: { orgId: clientRecord.orgId, userId: user.id, role: "CLIENT" },
+              include: { org: true },
+            });
+          } catch (error: any) {
+            console.error('[AuthService] Failed to repair membership:', error);
+            throw new BadRequestException(`Failed to set up membership: ${error.message}`);
+          }
+        } else {
+          console.log('[AuthService] Creating default org for user');
+          try {
+            const org = await prisma.organization.create({
+              data: { name: `${user.phone || user.email}'s Organization` },
+            });
+            membership = await prisma.orgMember.create({
+              data: { orgId: org.id, userId: user.id, role: "ADMIN" },
+              include: { org: true },
+            });
+          } catch (error: any) {
+            console.error('[AuthService] Failed to create org/membership:', error);
+            throw new BadRequestException(`Failed to create organization: ${error.message}`);
+          }
         }
       } else {
-        console.log('[AuthService] Found existing membership');
+        console.log('[AuthService] Found existing membership, role:', membership.role);
       }
 
       // Issue JWT

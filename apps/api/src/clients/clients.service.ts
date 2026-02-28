@@ -113,23 +113,24 @@ export class ClientsService {
           }
           throw err;
         }
+      }
 
-        // Add membership
-        await prisma.orgMember.upsert({
-          where: {
-            orgId_userId: {
-              orgId,
-              userId,
-            },
-          },
-          create: {
+      // Always ensure a CLIENT membership exists in this org — covers both new
+      // users and existing users being added as clients for the first time.
+      await prisma.orgMember.upsert({
+        where: {
+          orgId_userId: {
             orgId,
             userId,
-            role: "CLIENT",
           },
-          update: {},
-        });
-      }
+        },
+        create: {
+          orgId,
+          userId,
+          role: "CLIENT",
+        },
+        update: {},
+      });
     }
 
     const client = await prisma.client.create({
