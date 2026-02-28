@@ -1,57 +1,38 @@
-import { View, Image, ActivityIndicator, StyleSheet, Text } from "react-native";
+import { View, Image, ActivityIndicator, StyleSheet } from "react-native";
 import { useState, useEffect } from "react";
-import { Ionicons } from "@expo/vector-icons";
-import { api } from "../lib/api-client";
-import { COLORS } from "../theme";
+import { getCachedLogoUrl } from "../lib/logo-cache";
 import { fixUrlForMobile } from "../lib/network-utils";
+import { COLORS } from "../theme";
 
-export default function Loader() {
-  const [logoUrl, setLogoUrl] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+interface Props {
+  logoUrl?: string | null;
+}
+
+export default function Loader({ logoUrl: propLogoUrl }: Props = {}) {
+  const [logoUrl, setLogoUrl] = useState<string | null>(propLogoUrl ?? null);
 
   useEffect(() => {
-    const fetchLogo = async () => {
-      try {
-        const token = await api.getAuthToken();
-        if (token) {
-          const settings = await api.getOrgSettings();
-          const imageUrl = settings?.profile?.loaderLogoUrl || settings?.profile?.logoUrl;
-          if (imageUrl) {
-            // Fix URL for mobile (replace localhost with network IP)
-            const fixedLogoUrl = fixUrlForMobile(imageUrl);
-            setLogoUrl(fixedLogoUrl);
-          }
-        }
-      } catch (error) {
-        console.error("Failed to fetch logo:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchLogo();
-  }, []);
+    // If a URL was already resolved and passed from the layout, use it directly
+    if (propLogoUrl !== undefined) {
+      setLogoUrl(propLogoUrl);
+      return;
+    }
+    // Otherwise read from cache — this is fast (AsyncStorage, no network call)
+    getCachedLogoUrl().then((cached) => {
+      if (cached) setLogoUrl(fixUrlForMobile(cached));
+    });
+  }, [propLogoUrl]);
 
   return (
     <View style={styles.container}>
-      {loading ? null : logoUrl ? (
+      {logoUrl ? (
         <Image
           source={{ uri: logoUrl }}
           style={styles.logo}
           resizeMode="contain"
-          onError={(error) => {
-            console.error("Failed to load logo image:", error);
-            setLogoUrl(null); // Fallback to placeholder on error
-          }}
+          onError={() => setLogoUrl(null)}
         />
-      ) : (
-        <View style={styles.logoPlaceholder}>
-          <View style={styles.iconContainer}>
-            <Ionicons name="water" size={64} color="#ffffff" />
-          </View>
-          <Text style={styles.appName}>PoolCare</Text>
-        </View>
-      )}
+      ) : null}
       <ActivityIndicator size="large" color={COLORS.primary[500]} style={styles.spinner} />
     </View>
   );
@@ -69,32 +50,7 @@ const styles = StyleSheet.create({
     height: 120,
     marginBottom: 40,
   },
-  logoPlaceholder: {
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: 40,
-  },
-  iconContainer: {
-    width: 100,
-    height: 100,
-    borderRadius: 24,
-    backgroundColor: COLORS.primary[500],
-    justifyContent: "center",
-    alignItems: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    elevation: 8,
-  },
-  appName: {
-    fontSize: 24,
-    fontWeight: "bold",
-    color: COLORS.primary[500],
-    marginTop: 16,
-  },
   spinner: {
     marginTop: 20,
   },
 });
-

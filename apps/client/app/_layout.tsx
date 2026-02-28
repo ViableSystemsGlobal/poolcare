@@ -7,6 +7,9 @@ import * as Notifications from "expo-notifications";
 import { ThemeProvider } from "../src/contexts/ThemeContext";
 import Loader from "../src/components/Loader";
 import BottomNav from "../src/components/BottomNav";
+import { api } from "../src/lib/api-client";
+import { fixUrlForMobile } from "../src/lib/network-utils";
+import { getCachedLogoUrl, setCachedLogoUrl } from "../src/lib/logo-cache";
 
 // Show notifications even when the app is in the foreground
 Notifications.setNotificationHandler({
@@ -17,7 +20,6 @@ Notifications.setNotificationHandler({
   }),
 });
 
-// Screens where the floating bottom nav should be visible (and where we consume back press)
 const TAB_ROUTES = ["/", "/index", "index", "/visits", "visits", "/pools", "pools", "/poolshop", "poolshop", "/settings", "settings"];
 
 // Keep the splash screen visible while we fetch resources
@@ -25,16 +27,44 @@ SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
   const [appIsReady, setAppIsReady] = useState(false);
+  const [loaderLogoUrl, setLoaderLogoUrl] = useState<string | null>(null);
 
   useEffect(() => {
     async function prepare() {
       try {
-        // Hide native splash screen immediately to show our custom Loader
+        // 1. Read cached logo URL immediately (no network call)
+        const cached = await getCachedLogoUrl();
+
+        // 2. Fetch fresh logo from API (3s timeout so we don't hang forever)
+        let rawUrl: string | null = null;
+        try {
+          const token = await api.getAuthToken();
+          if (token) {
+            const settings = await Promise.race([
+              api.getOrgSettings(),
+              new Promise<null>((r) => setTimeout(() => r(null), 3000)),
+            ]) as any;
+            rawUrl = settings?.profile?.loaderLogoUrl || settings?.profile?.logoUrl || null;
+          }
+        } catch {}
+
+        // 3. Use fresh URL if we got one, otherwise fall back to cache
+        const urlToShow = rawUrl
+          ? fixUrlForMobile(rawUrl)
+          : cached
+          ? fixUrlForMobile(cached)
+          : null;
+
+        if (urlToShow) setLoaderLogoUrl(urlToShow);
+
+        // 4. Persist fresh URL for next launch
+        if (rawUrl) await setCachedLogoUrl(rawUrl);
+
+        // 5. NOW hide native splash — our Loader is already rendered with the logo
         await SplashScreen.hideAsync();
-        // Give time for auth check and logo fetch
-        await new Promise(resolve => setTimeout(resolve, 1500));
       } catch (e) {
         console.warn(e);
+        await SplashScreen.hideAsync();
       } finally {
         setAppIsReady(true);
       }
@@ -43,10 +73,12 @@ export default function RootLayout() {
     prepare();
   }, []);
 
+  // Logo being fetched — Loader is rendered behind native splash.
+  // When hideAsync() is called, the splash fades to reveal Loader already showing the logo.
   if (!appIsReady) {
     return (
       <ThemeProvider>
-        <Loader />
+        <Loader logoUrl={loaderLogoUrl} />
       </ThemeProvider>
     );
   }
@@ -63,11 +95,10 @@ function LayoutInner() {
   const showNav = TAB_ROUTES.includes(pathname);
   const notificationResponseListener = useRef<Notifications.EventSubscription>();
 
-  // Prevent "GO_BACK was not handled" on any screen that shows the floating nav (all 5 tab roots)
   useEffect(() => {
     const onBack = () => {
       if (showNav) {
-        return true; // consume back press so navigator doesn't dispatch GO_BACK
+        return true;
       }
       return false;
     };
@@ -75,13 +106,11 @@ function LayoutInner() {
     return () => sub.remove();
   }, [showNav]);
 
-  // Navigate to the correct screen when user taps a notification
   useEffect(() => {
     notificationResponseListener.current =
       Notifications.addNotificationResponseReceivedListener((response) => {
         const data = response.notification.request.content.data as Record<string, string> | undefined;
         if (!data) return;
-        // Payload shape: { type: "visit" | "invoice" | "quote" | "notification", id?: string }
         if (data.url) {
           router.push(data.url as any);
         } else if (data.type === "visit" && data.id) {
@@ -144,4 +173,3 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 });
-

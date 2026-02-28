@@ -9,6 +9,9 @@ import { ToastProvider } from "../src/components/Toast";
 import { ThemeProvider } from "../src/contexts/ThemeContext";
 import Loader from "../src/components/Loader";
 import BottomNav from "../src/components/BottomNav";
+import { api } from "../src/lib/api-client";
+import { fixUrlForMobile } from "../src/lib/network-utils";
+import { getCachedLogoUrl, setCachedLogoUrl } from "../src/lib/logo-cache";
 
 // Keep the splash screen visible while we load resources
 SplashScreen.preventAutoHideAsync();
@@ -17,35 +20,66 @@ SplashScreen.preventAutoHideAsync();
 const TAB_ROUTES = ["/", "/index", "index", "/schedule", "/supplies", "/earnings", "/profile"];
 
 export default function RootLayout() {
-  // Load the Ionicons font — without this every icon renders as [?]
   const [fontsLoaded] = Font.useFonts(Ionicons.font);
   const [appIsReady, setAppIsReady] = useState(false);
+  const [loaderLogoUrl, setLoaderLogoUrl] = useState<string | null>(null);
 
   useEffect(() => {
+    // Wait for fonts before doing anything — icons render as [?] without them
+    if (!fontsLoaded) return;
+
     async function prepare() {
       try {
+        // 1. Read cached logo URL immediately (no network call)
+        const cached = await getCachedLogoUrl();
+
+        // 2. Fetch fresh logo from API (3s timeout so we don't hang forever)
+        let rawUrl: string | null = null;
+        try {
+          const token = await api.getAuthToken();
+          if (token) {
+            const settings = await Promise.race([
+              api.getOrgSettings(),
+              new Promise<null>((r) => setTimeout(() => r(null), 3000)),
+            ]) as any;
+            rawUrl = settings?.profile?.loaderLogoUrl || settings?.profile?.logoUrl || null;
+          }
+        } catch {}
+
+        // 3. Use fresh URL if we got one, otherwise fall back to cache
+        const urlToShow = rawUrl
+          ? fixUrlForMobile(rawUrl)
+          : cached
+          ? fixUrlForMobile(cached)
+          : null;
+
+        if (urlToShow) setLoaderLogoUrl(urlToShow);
+
+        // 4. Persist fresh URL for next launch
+        if (rawUrl) await setCachedLogoUrl(rawUrl);
+
+        // 5. NOW hide native splash — our Loader is already rendered with the logo
         await SplashScreen.hideAsync();
-        // Brief delay so the Loader is visible while auth/data primes
-        await new Promise((resolve) => setTimeout(resolve, 1200));
       } catch (e) {
         console.warn(e);
+        await SplashScreen.hideAsync();
       } finally {
         setAppIsReady(true);
       }
     }
+
     prepare();
-  }, []);
+  }, [fontsLoaded]);
 
-  // While fonts are loading show a blank white screen — avoids the [?] flash
-  if (!fontsLoaded) {
-    return <View style={styles.fontLoading} />;
-  }
+  // Fonts not ready yet — native splash is still covering us, so render nothing
+  if (!fontsLoaded) return null;
 
-  // Fonts ready but app still "warming up" — safe to show Loader icons now
+  // Fonts ready, logo being fetched — Loader is rendered behind native splash.
+  // When hideAsync() is called, the splash fades to reveal Loader already showing the logo.
   if (!appIsReady) {
     return (
       <ThemeProvider>
-        <Loader />
+        <Loader logoUrl={loaderLogoUrl} />
       </ThemeProvider>
     );
   }
@@ -63,7 +97,6 @@ function LayoutInner() {
   const pathname = usePathname();
   const showNav = TAB_ROUTES.includes(pathname);
 
-  // Consume Android back-press on tab screens so navigator doesn't crash
   useEffect(() => {
     const onBack = () => {
       if (showNav) return true;
@@ -93,10 +126,4 @@ function LayoutInner() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  fontLoading: {
-    flex: 1,
-    backgroundColor: "#ffffff",
-    justifyContent: "center",
-    alignItems: "center",
-  },
 });

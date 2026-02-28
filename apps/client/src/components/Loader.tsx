@@ -1,44 +1,28 @@
 import { View, Image, ActivityIndicator, StyleSheet } from "react-native";
 import { useState, useEffect } from "react";
-import { api } from "../lib/api-client";
+import { getCachedLogoUrl } from "../lib/logo-cache";
 import { fixUrlForMobile } from "../lib/network-utils";
 import { useTheme } from "../contexts/ThemeContext";
 
-export default function Loader() {
-  const { themeColor, setThemeFromOrgProfile } = useTheme();
-  const [logoUrl, setLogoUrl] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+interface Props {
+  logoUrl?: string | null;
+}
+
+export default function Loader({ logoUrl: propLogoUrl }: Props = {}) {
+  const { themeColor } = useTheme();
+  const [logoUrl, setLogoUrl] = useState<string | null>(propLogoUrl ?? null);
 
   useEffect(() => {
-    const fetchLogo = async () => {
-      try {
-        const token = await api.getAuthToken();
-        if (token) {
-          const timeoutMs = 5000;
-          const settingsPromise = api.getOrgSettings();
-          const timeoutPromise = new Promise<null>((resolve) =>
-            setTimeout(() => resolve(null), timeoutMs)
-          );
-          const settings = (await Promise.race([settingsPromise, timeoutPromise])) as any;
-
-          if (settings?.profile) {
-            setThemeFromOrgProfile(settings.profile);
-            const imageUrl = settings.profile.loaderLogoUrl || settings.profile.logoUrl;
-            if (imageUrl) {
-              const fixedLogoUrl = fixUrlForMobile(imageUrl);
-              if (fixedLogoUrl) setLogoUrl(fixedLogoUrl);
-            }
-          }
-        }
-      } catch (error) {
-        if (__DEV__) console.warn("Loader: could not fetch org logo", error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchLogo();
-  }, [setThemeFromOrgProfile]);
+    // If a URL was already resolved and passed from the layout, use it directly
+    if (propLogoUrl !== undefined) {
+      setLogoUrl(propLogoUrl);
+      return;
+    }
+    // Otherwise read from cache — this is fast (AsyncStorage, no network call)
+    getCachedLogoUrl().then((cached) => {
+      if (cached) setLogoUrl(fixUrlForMobile(cached));
+    });
+  }, [propLogoUrl]);
 
   return (
     <View style={styles.container}>
@@ -71,4 +55,3 @@ const styles = StyleSheet.create({
     marginTop: 20,
   },
 });
-
