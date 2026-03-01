@@ -327,404 +327,300 @@ export default function VisitDetailPage() {
     );
   }
 
+  const statusColor = getStatusColor(visit.status);
+  const initials = visit.carer?.name
+    ? visit.carer.name.split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2)
+    : "?";
+
+  const chemReadings = visit.readings
+    ? [
+        { label: "pH", value: visit.readings.ph, unit: "", min: 7.2, max: 7.6, decimals: 1 },
+        { label: "Chlorine", value: visit.readings.chlorine, unit: "ppm", min: 1, max: 3, decimals: 1 },
+        { label: "Alkalinity", value: visit.readings.alkalinity, unit: "ppm", min: 80, max: 120, decimals: 0 },
+        { label: "Temperature", value: visit.readings.temperature, unit: "°C", min: 24, max: 32, decimals: 1 },
+      ]
+    : [];
+
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}>
-          <Ionicons name="arrow-back" size={24} color="#111827" />
+        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
+          <Ionicons name="arrow-back" size={20} color="#111827" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Visit Details</Text>
-        <View style={{ width: 24 }} />
+        <View style={styles.backBtn} />
       </View>
 
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-      >
-        {/* Status Card */}
-        <View style={styles.statusCard}>
-          <View
-            style={[
-              styles.statusBadge,
-              { backgroundColor: getStatusColor(visit.status) + "15" },
-            ]}
-          >
-            <Text
-              style={[styles.statusText, { color: getStatusColor(visit.status) }]}
-            >
-              {getStatusLabel(visit.status)}
-            </Text>
-          </View>
-          <Text style={styles.visitDate}>{formatDate(visit.date)}</Text>
-          <Text style={styles.visitTime}>{visit.time}</Text>
-        </View>
+      <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
 
-        {/* Pool Info */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Pool Information</Text>
-          <View style={styles.infoCard}>
-            <View style={styles.infoRow}>
-              <Ionicons name="water-outline" size={20} color={themeColor} />
-              <View style={styles.infoContent}>
-                <Text style={styles.infoLabel}>Pool Name</Text>
-                <Text style={styles.infoValue}>{visit.pool.name}</Text>
+        {/* ── Hero Status Card ── */}
+        <View style={styles.heroCard}>
+          <View style={[styles.heroAccent, { backgroundColor: statusColor }]} />
+          <View style={styles.heroInner}>
+            <View style={styles.heroTopRow}>
+              <View style={[styles.statusPill, { backgroundColor: statusColor + "18" }]}>
+                <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
+                <Text style={[styles.statusPillText, { color: statusColor }]}>
+                  {getStatusLabel(visit.status)}
+                </Text>
+              </View>
+              <View style={[styles.typePill, { backgroundColor: "#f3f4f6" }]}>
+                <Text style={styles.typePillText}>
+                  {visit.type.charAt(0).toUpperCase() + visit.type.slice(1)}
+                </Text>
               </View>
             </View>
-            {!!visit.pool.address && (
-              <View style={styles.infoRow}>
-                <Ionicons name="location-outline" size={20} color={themeColor} />
-                <View style={styles.infoContent}>
-                  <Text style={styles.infoLabel}>Address</Text>
-                  <Text style={styles.infoValue}>{visit.pool.address}</Text>
-                </View>
-              </View>
-            )}
-            {!!visit.pool.type && (
-              <View style={styles.infoRow}>
-                <Ionicons name="construct-outline" size={20} color={themeColor} />
-                <View style={styles.infoContent}>
-                  <Text style={styles.infoLabel}>Surface Type</Text>
-                  <Text style={styles.infoValue}>
-                    {visit.pool.type.charAt(0).toUpperCase() + visit.pool.type.slice(1)}
-                  </Text>
-                </View>
-              </View>
-            )}
+            <Text style={styles.heroDate}>{formatDate(visit.date)}</Text>
+            <View style={styles.heroTimeRow}>
+              <Ionicons name="time-outline" size={16} color="#6b7280" />
+              <Text style={styles.heroTime}>{visit.time}</Text>
+            </View>
           </View>
         </View>
 
-        {/* Carer Info */}
-        {visit.carer && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Service Technician</Text>
-            <View style={styles.infoCard}>
-              <View style={styles.infoRow}>
-                <Ionicons name="person-outline" size={20} color={themeColor} />
-                <View style={styles.infoContent}>
-                  <Text style={styles.infoLabel}>Name</Text>
-                  <Text style={styles.infoValue}>{visit.carer.name}</Text>
-                </View>
-              </View>
-              {!!visit.carer.phone && (
-                <TouchableOpacity
-                  style={styles.callRow}
-                  onPress={() => Linking.openURL(`tel:${visit.carer?.phone}`)}
-                  activeOpacity={0.7}
-                >
-                  <View style={styles.callRowLeft}>
-                    <Ionicons name="call-outline" size={20} color={themeColor} />
-                    <View style={styles.infoContent}>
-                      <Text style={styles.infoLabel}>Phone</Text>
-                      <Text style={[styles.infoValue, styles.linkText, { color: themeColor }]}>
-                        {visit.carer.phone}
-                      </Text>
-                    </View>
-                  </View>
-                  <View style={[styles.callBadge, { backgroundColor: themeColor }]}>
-                    <Ionicons name="call" size={14} color="#ffffff" />
-                    <Text style={styles.callBadgeText}>Call</Text>
-                  </View>
-                </TouchableOpacity>
+        {/* ── Pool + Technician combined card ── */}
+        <View style={styles.card}>
+          {/* Pool row */}
+          <View style={styles.cardSection}>
+            <View style={[styles.cardIconWrap, { backgroundColor: themeColor + "15" }]}>
+              <Ionicons name="water" size={20} color={themeColor} />
+            </View>
+            <View style={styles.cardSectionBody}>
+              <Text style={styles.cardSectionLabel}>Pool</Text>
+              <Text style={styles.cardSectionValue}>{visit.pool.name}</Text>
+              {!!visit.pool.address && (
+                <Text style={styles.cardSectionSub}>{visit.pool.address}</Text>
+              )}
+              {!!visit.pool.type && (
+                <Text style={styles.cardSectionSub}>
+                  {visit.pool.type.charAt(0).toUpperCase() + visit.pool.type.slice(1)} surface
+                </Text>
               )}
             </View>
           </View>
-        )}
 
-        {/* Upcoming visit info card — shown instead of all the empty sections */}
-        {(visit.status === "scheduled" || visit.status === "in-progress") && (
-          <View style={styles.section}>
-            <View style={[styles.upcomingCard, { backgroundColor: themeColor + "10", borderColor: themeColor + "40" }]}>
-              <View style={styles.upcomingHeader}>
-                <View style={[styles.upcomingIconWrap, { backgroundColor: themeColor + "25" }]}>
-                  <Ionicons
-                    name={visit.status === "scheduled" ? "calendar-outline" : "time-outline"}
-                    size={24}
-                    color={themeColor}
-                  />
+          {visit.carer && (
+            <>
+              <View style={styles.cardDivider} />
+              {/* Technician row */}
+              <View style={styles.cardSection}>
+                <View style={[styles.avatarCircle, { backgroundColor: themeColor }]}>
+                  <Text style={styles.avatarInitials}>{initials}</Text>
                 </View>
-                <Text style={[styles.upcomingTitle, { color: themeColor }]}>
-                  {visit.status === "scheduled" ? "Your service is coming up" : "Service in progress"}
-                </Text>
+                <View style={styles.cardSectionBody}>
+                  <Text style={styles.cardSectionLabel}>Technician</Text>
+                  <Text style={styles.cardSectionValue}>{visit.carer.name}</Text>
+                  {!!visit.carer.phone && (
+                    <Text style={[styles.cardSectionSub, { color: themeColor }]}>{visit.carer.phone}</Text>
+                  )}
+                </View>
+                {!!visit.carer.phone && (
+                  <TouchableOpacity
+                    style={[styles.callBtn, { backgroundColor: themeColor }]}
+                    onPress={() => Linking.openURL(`tel:${visit.carer?.phone}`)}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons name="call" size={16} color="#fff" />
+                    <Text style={styles.callBtnText}>Call</Text>
+                  </TouchableOpacity>
+                )}
               </View>
-              <Text style={styles.upcomingBody}>
+            </>
+          )}
+        </View>
+
+        {/* ── Upcoming / In-progress banner ── */}
+        {(visit.status === "scheduled" || visit.status === "in-progress") && (
+          <View style={[styles.upcomingBanner, { borderLeftColor: themeColor, backgroundColor: themeColor + "08" }]}>
+            <Ionicons
+              name={visit.status === "scheduled" ? "calendar-outline" : "radio-outline"}
+              size={20}
+              color={themeColor}
+            />
+            <View style={styles.upcomingBannerBody}>
+              <Text style={[styles.upcomingBannerTitle, { color: themeColor }]}>
+                {visit.status === "scheduled" ? "Service is confirmed" : "Technician is on site"}
+              </Text>
+              <Text style={styles.upcomingBannerText}>
                 {visit.status === "scheduled"
-                  ? "Your technician will arrive during the scheduled window. Water chemistry readings, completed tasks, and your service report will be available here once the visit is done."
-                  : "Your technician is currently at the site. Results will appear here once the service is complete."}
+                  ? "Results — water readings, tasks, and a service report — will appear here once the visit is complete."
+                  : "Your technician is currently servicing your pool. Check back soon."}
               </Text>
               {visit.status === "scheduled" && visit.carer && (
-                <View style={styles.upcomingTip}>
-                  <Ionicons name="information-circle-outline" size={16} color="#6b7280" />
-                  <Text style={styles.upcomingTipText}>
-                    Ensure pool access is available for {visit.carer.name}.
-                  </Text>
-                </View>
+                <Text style={styles.upcomingBannerTip}>
+                  Ensure pool access is available for {visit.carer.name}.
+                </Text>
               )}
             </View>
           </View>
         )}
 
-        {/* Water Chemistry Readings */}
-        {visit.readings ? (
+        {/* ── Water Chemistry ── */}
+        {chemReadings.length > 0 && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Water Chemistry</Text>
-            <View style={styles.readingsGrid}>
-              <View style={styles.readingCard}>
-                <Text style={styles.readingLabel}>pH</Text>
-                <Text style={styles.readingValue}>{visit.readings.ph}</Text>
-                <View
-                  style={[
-                    styles.readingIndicator,
-                    {
-                      backgroundColor:
-                        visit.readings.ph >= 7.2 && visit.readings.ph <= 7.6
-                          ? "#10b981"
-                          : "#f59e0b",
-                    },
-                  ]}
-                />
-              </View>
-              <View style={styles.readingCard}>
-                <Text style={styles.readingLabel}>Chlorine</Text>
-                <Text style={styles.readingValue}>
-                  {visit.readings.chlorine} ppm
-                </Text>
-                <View
-                  style={[
-                    styles.readingIndicator,
-                    {
-                      backgroundColor:
-                        visit.readings.chlorine >= 1 && visit.readings.chlorine <= 3
-                          ? "#10b981"
-                          : "#f59e0b",
-                    },
-                  ]}
-                />
-              </View>
-              <View style={styles.readingCard}>
-                <Text style={styles.readingLabel}>Alkalinity</Text>
-                <Text style={styles.readingValue}>
-                  {visit.readings.alkalinity} ppm
-                </Text>
-                <View
-                  style={[
-                    styles.readingIndicator,
-                    {
-                      backgroundColor:
-                        visit.readings.alkalinity >= 80 &&
-                        visit.readings.alkalinity <= 120
-                          ? "#10b981"
-                          : "#f59e0b",
-                    },
-                  ]}
-                />
-              </View>
-              <View style={styles.readingCard}>
-                <Text style={styles.readingLabel}>Temperature</Text>
-                <Text style={styles.readingValue}>
-                  {visit.readings.temperature}°C
-                </Text>
-                <View style={[styles.readingIndicator, { backgroundColor: "#10b981" }]} />
-              </View>
+            <View style={styles.chemGrid}>
+              {chemReadings.map((r) => {
+                const inRange = r.value >= r.min && r.value <= r.max;
+                const statusC = inRange ? "#16a34a" : "#f59e0b";
+                const pct = Math.min(100, Math.max(0, ((r.value - r.min) / (r.max - r.min)) * 100));
+                return (
+                  <View key={r.label} style={styles.chemCard}>
+                    <View style={styles.chemTopRow}>
+                      <Text style={styles.chemLabel}>{r.label}</Text>
+                      <View style={[styles.chemStatusPill, { backgroundColor: statusC + "18" }]}>
+                        <Text style={[styles.chemStatusText, { color: statusC }]}>
+                          {inRange ? "Good" : "Check"}
+                        </Text>
+                      </View>
+                    </View>
+                    <Text style={styles.chemValue}>
+                      {r.value.toFixed(r.decimals)}{r.unit}
+                    </Text>
+                    <View style={styles.chemBarTrack}>
+                      <View style={[styles.chemBarFill, { width: `${pct}%` as any, backgroundColor: statusC }]} />
+                    </View>
+                    <Text style={styles.chemRange}>
+                      Ideal: {r.min}–{r.max}{r.unit}
+                    </Text>
+                  </View>
+                );
+              })}
             </View>
           </View>
-        ) : visit.status === "completed" ? (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Water Chemistry</Text>
-            <View style={styles.emptyStateCard}>
-              <Ionicons name="water-outline" size={48} color="#d1d5db" />
-              <Text style={styles.emptyStateTitle}>No readings available</Text>
-              <Text style={styles.emptyStateText}>
-                Water chemistry readings were not recorded for this visit.
-              </Text>
-            </View>
-          </View>
-        ) : null}
+        )}
 
-        {/* Tasks */}
-        {visit.tasks && visit.tasks.length > 0 ? (
+        {/* ── Tasks ── */}
+        {visit.tasks && visit.tasks.length > 0 && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>
               {visit.status === "completed" ? "Tasks Completed" : "Planned Tasks"}
             </Text>
-            <View style={styles.tasksCard}>
-              {visit.tasks.map((task, index) => (
-                <View key={index} style={styles.taskItem}>
-                  <Ionicons
-                    name={visit.status === "completed" ? "checkmark-circle" : "ellipse-outline"}
-                    size={20}
-                    color={visit.status === "completed" ? "#10b981" : themeColor}
-                  />
+            <View style={styles.card}>
+              {visit.tasks.map((task, i) => (
+                <View key={i} style={[styles.taskRow, i < visit.tasks!.length - 1 && styles.taskRowBorder]}>
+                  <View style={[
+                    styles.taskCheck,
+                    { backgroundColor: visit.status === "completed" ? "#dcfce7" : themeColor + "15" }
+                  ]}>
+                    <Ionicons
+                      name={visit.status === "completed" ? "checkmark" : "ellipse-outline"}
+                      size={14}
+                      color={visit.status === "completed" ? "#16a34a" : themeColor}
+                    />
+                  </View>
                   <Text style={styles.taskText}>{task}</Text>
                 </View>
               ))}
             </View>
           </View>
-        ) : visit.status === "completed" ? (
+        )}
+
+        {/* ── Service Report ── */}
+        {visit.status === "completed" && visit.report && (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Tasks Completed</Text>
-            <View style={styles.emptyStateCard}>
-              <Ionicons name="checkmark-circle-outline" size={48} color="#d1d5db" />
-              <Text style={styles.emptyStateTitle}>No tasks recorded</Text>
-              <Text style={styles.emptyStateText}>
-                Task completion details were not recorded for this visit.
-              </Text>
-            </View>
-          </View>
-        ) : null}
-
-        {/* Report — completed visits only */}
-        {visit.status === "completed" && (
-          visit.report ? (
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Service Report</Text>
-              <View style={styles.reportCard}>
-                <Text style={styles.reportSummary}>{visit.report.summary}</Text>
-
-                {visit.report.recommendations &&
-                  visit.report.recommendations.length > 0 && (
-                    <View style={styles.recommendations}>
-                      <Text style={styles.recommendationsTitle}>
-                        Recommendations:
-                      </Text>
-                      {visit.report.recommendations.map((rec, index) => (
-                        <View key={index} style={styles.recommendationItem}>
-                          <Ionicons name="bulb-outline" size={16} color={themeColor} />
-                          <Text style={styles.recommendationText}>{rec}</Text>
-                        </View>
-                      ))}
+            <Text style={styles.sectionTitle}>Service Report</Text>
+            <View style={styles.card}>
+              <Text style={styles.reportSummary}>{visit.report.summary}</Text>
+              {visit.report.recommendations && visit.report.recommendations.length > 0 && (
+                <>
+                  <View style={styles.cardDivider} />
+                  <Text style={styles.recsTitle}>Recommendations</Text>
+                  {visit.report.recommendations.map((rec, i) => (
+                    <View key={i} style={styles.recRow}>
+                      <Ionicons name="bulb-outline" size={15} color={themeColor} />
+                      <Text style={styles.recText}>{rec}</Text>
                     </View>
-                  )}
-
-                {visit.report.pdfUrl && (
-                  <TouchableOpacity
-                    style={[styles.downloadButton, { borderColor: themeColor }]}
-                    onPress={() => Linking.openURL(visit.report!.pdfUrl!)}
-                  >
-                    <Ionicons name="download-outline" size={20} color={themeColor} />
-                    <Text style={[styles.downloadButtonText, { color: themeColor }]}>
-                      Download PDF Report
-                    </Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-            </View>
-          ) : (
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Service Report</Text>
-              <View style={styles.emptyStateCard}>
-                <Ionicons name="document-text-outline" size={48} color="#d1d5db" />
-                <Text style={styles.emptyStateTitle}>No report available</Text>
-                <Text style={styles.emptyStateText}>
-                  A service report was not generated for this visit.
-                </Text>
-              </View>
-            </View>
-          )
-        )}
-
-        {/* Photos — completed visits only */}
-        {visit.status === "completed" && (
-          visit.photos && visit.photos.length > 0 ? (
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Photos</Text>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.photosContainer}
-              >
-                {visit.photos.map((photo, index) => (
-                  <Image
-                    key={index}
-                    source={{ uri: photo }}
-                    style={styles.photo}
-                  />
-                ))}
-              </ScrollView>
-            </View>
-          ) : (
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Photos</Text>
-              <View style={styles.emptyStateCard}>
-                <Ionicons name="camera-outline" size={48} color="#d1d5db" />
-                <Text style={styles.emptyStateTitle}>No photos available</Text>
-                <Text style={styles.emptyStateText}>
-                  Photos were not taken during this visit.
-                </Text>
-              </View>
-            </View>
-          )
-        )}
-
-        {/* Rating Section */}
-        {visit.status === "completed" && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Rate This Visit</Text>
-            <View style={styles.ratingCard}>
-              {rating ? (
-                <View style={styles.ratingDisplay}>
-                  <View style={styles.starsContainer}>
-                    {[...Array(5)].map((_, i) => (
-                      <Ionicons
-                        key={i}
-                        name="star"
-                        size={28}
-                        color={i < rating ? "#fbbf24" : "#d1d5db"}
-                      />
-                    ))}
-                  </View>
-                  <Text style={styles.ratingText}>
-                    You rated this visit {rating} out of 5
-                  </Text>
-                  <TouchableOpacity
-                    style={[styles.changeRatingButton, { borderColor: themeColor }]}
-                    onPress={() => setShowRatingModal(true)}
-                  >
-                    <Text style={[styles.changeRatingText, { color: themeColor }]}>Change Rating</Text>
-                  </TouchableOpacity>
-                </View>
-              ) : (
+                  ))}
+                </>
+              )}
+              {visit.report.pdfUrl && (
                 <TouchableOpacity
-                  style={[styles.rateButton, { borderColor: themeColor }]}
-                  onPress={() => setShowRatingModal(true)}
+                  style={[styles.pdfBtn, { borderColor: themeColor }]}
+                  onPress={() => Linking.openURL(visit.report!.pdfUrl!)}
                 >
-                  <Ionicons name="star-outline" size={24} color={themeColor} />
-                  <Text style={[styles.rateButtonText, { color: themeColor }]}>Rate This Visit</Text>
+                  <Ionicons name="document-text-outline" size={18} color={themeColor} />
+                  <Text style={[styles.pdfBtnText, { color: themeColor }]}>Download PDF Report</Text>
                 </TouchableOpacity>
               )}
             </View>
           </View>
         )}
 
-        {/* Complaints Section */}
+        {/* ── Photos ── */}
+        {visit.status === "completed" && visit.photos && visit.photos.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Photos</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.photosRow}>
+              {visit.photos.map((photo, i) => (
+                <Image key={i} source={{ uri: photo }} style={styles.photo} />
+              ))}
+            </ScrollView>
+          </View>
+        )}
+
+        {/* ── Rating ── */}
         {visit.status === "completed" && (
           <View style={styles.section}>
-            <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Your Rating</Text>
+            {rating ? (
+              <View style={styles.card}>
+                <View style={styles.ratingRow}>
+                  {[...Array(5)].map((_, i) => (
+                    <Ionicons key={i} name="star" size={32} color={i < rating ? "#fbbf24" : "#e5e7eb"} />
+                  ))}
+                </View>
+                <Text style={styles.ratingLabel}>
+                  {rating === 5 ? "Excellent!" : rating === 4 ? "Great!" : rating === 3 ? "Good" : rating === 2 ? "Fair" : "Poor"} — {rating}/5
+                </Text>
+                <TouchableOpacity onPress={() => setShowRatingModal(true)}>
+                  <Text style={[styles.changeRating, { color: themeColor }]}>Change rating</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <TouchableOpacity
+                style={[styles.rateBtn, { borderColor: themeColor + "60", backgroundColor: themeColor + "08" }]}
+                onPress={() => setShowRatingModal(true)}
+                activeOpacity={0.8}
+              >
+                <View style={styles.rateBtnStars}>
+                  {[...Array(5)].map((_, i) => (
+                    <Ionicons key={i} name="star-outline" size={28} color={themeColor} />
+                  ))}
+                </View>
+                <Text style={[styles.rateBtnText, { color: themeColor }]}>Tap to rate this visit</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
+
+        {/* ── Complaints ── */}
+        {visit.status === "completed" && (
+          <View style={[styles.section, { marginBottom: 40 }]}>
+            <View style={styles.sectionRow}>
               <Text style={styles.sectionTitle}>Complaints</Text>
               <TouchableOpacity
-                style={[styles.addComplaintButton, { borderColor: themeColor }]}
+                style={[styles.addBtn, { borderColor: themeColor }]}
                 onPress={() => setShowComplaintModal(true)}
               >
-                <Ionicons name="add-circle-outline" size={20} color={themeColor} />
-                <Text style={[styles.addComplaintText, { color: themeColor }]}>Add Complaint</Text>
+                <Ionicons name="add" size={16} color={themeColor} />
+                <Text style={[styles.addBtnText, { color: themeColor }]}>Add</Text>
               </TouchableOpacity>
             </View>
             {complaints.length > 0 ? (
-              <View style={styles.complaintsCard}>
-                {complaints.map((complaint, index) => (
-                  <View key={index} style={styles.complaintItem}>
-                    <Ionicons name="alert-circle-outline" size={20} color="#ef4444" />
-                    <Text style={styles.complaintText}>{complaint}</Text>
+              <View style={styles.card}>
+                {complaints.map((c, i) => (
+                  <View key={i} style={[styles.complaintRow, i < complaints.length - 1 && styles.taskRowBorder]}>
+                    <View style={styles.complaintDot} />
+                    <Text style={styles.complaintText}>{c}</Text>
                   </View>
                 ))}
               </View>
             ) : (
-              <View style={styles.emptyComplaintsCard}>
-                <Ionicons name="checkmark-circle-outline" size={48} color="#d1d5db" />
-                <Text style={styles.emptyComplaintsText}>No complaints</Text>
-                <Text style={styles.emptyComplaintsSubtext}>
-                  If you have any concerns about this visit, please add them above.
-                </Text>
+              <View style={styles.emptyComplaints}>
+                <Ionicons name="shield-checkmark-outline" size={32} color="#d1d5db" />
+                <Text style={styles.emptyComplaintsText}>No complaints — great visit!</Text>
               </View>
             )}
           </View>
@@ -732,33 +628,20 @@ export default function VisitDetailPage() {
       </ScrollView>
 
       {/* Rating Modal */}
-      <Modal
-        visible={showRatingModal}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setShowRatingModal(false)}
-      >
+      <Modal visible={showRatingModal} transparent animationType="slide" onRequestClose={() => setShowRatingModal(false)}>
         <View style={styles.modalOverlay}>
-          <KeyboardAvoidingView
-            behavior={Platform.OS === "ios" ? "padding" : "height"}
-            style={styles.modalContent}
-          >
+          <View style={styles.modalSheet}>
+            <View style={styles.modalHandle} />
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Rate This Visit</Text>
               <TouchableOpacity onPress={() => setShowRatingModal(false)}>
-                <Ionicons name="close" size={24} color="#6b7280" />
+                <Ionicons name="close" size={22} color="#6b7280" />
               </TouchableOpacity>
             </View>
-            <Text style={styles.modalSubtitle}>
-              How would you rate the service quality?
-            </Text>
-            <View style={styles.modalStarsContainer}>
+            <Text style={styles.modalSub}>How was the service quality?</Text>
+            <View style={styles.modalStars}>
               {[...Array(5)].map((_, i) => (
-                <TouchableOpacity
-                  key={i}
-                  onPress={() => handleRateVisit(i + 1)}
-                  style={styles.modalStarButton}
-                >
+                <TouchableOpacity key={i} onPress={() => handleRateVisit(i + 1)} style={styles.modalStarBtn}>
                   <Ionicons
                     name={rating && i < rating ? "star" : "star-outline"}
                     size={48}
@@ -767,636 +650,264 @@ export default function VisitDetailPage() {
                 </TouchableOpacity>
               ))}
             </View>
-            {rating && (
+            {!!rating && (
               <Text style={styles.modalRatingText}>
-                {rating === 5
-                  ? "Excellent!"
-                  : rating === 4
-                  ? "Great!"
-                  : rating === 3
-                  ? "Good"
-                  : rating === 2
-                  ? "Fair"
-                  : "Poor"}
+                {rating === 5 ? "Excellent!" : rating === 4 ? "Great!" : rating === 3 ? "Good" : rating === 2 ? "Fair" : "Poor"}
               </Text>
             )}
-          </KeyboardAvoidingView>
+          </View>
         </View>
       </Modal>
 
       {/* Complaint Modal */}
-      <Modal
-        visible={showComplaintModal}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setShowComplaintModal(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <KeyboardAvoidingView
-            behavior={Platform.OS === "ios" ? "padding" : "height"}
-            style={styles.modalContent}
-          >
+      <Modal visible={showComplaintModal} transparent animationType="slide" onRequestClose={() => setShowComplaintModal(false)}>
+        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.modalOverlay}>
+          <View style={styles.modalSheet}>
+            <View style={styles.modalHandle} />
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Add Complaint</Text>
-              <TouchableOpacity onPress={() => setShowComplaintModal(false)}>
-                <Ionicons name="close" size={24} color="#6b7280" />
+              <TouchableOpacity onPress={() => { setComplaintText(""); setShowComplaintModal(false); }}>
+                <Ionicons name="close" size={22} color="#6b7280" />
               </TouchableOpacity>
             </View>
-            <Text style={styles.modalSubtitle}>
-              Please describe your complaint or concern about this visit.
-            </Text>
+            <Text style={styles.modalSub}>Describe your concern about this visit.</Text>
             <TextInput
               style={styles.complaintInput}
-              placeholder="Enter your complaint..."
+              placeholder="E.g. technician arrived late, pool not fully cleaned…"
               placeholderTextColor="#9ca3af"
               multiline
-              numberOfLines={6}
               value={complaintText}
               onChangeText={setComplaintText}
               textAlignVertical="top"
             />
             <View style={styles.modalActions}>
-              <TouchableOpacity
-                style={[styles.modalButton, styles.cancelButton]}
-                onPress={() => {
-                  setComplaintText("");
-                  setShowComplaintModal(false);
-                }}
-              >
-                <Text style={styles.cancelButtonText}>Cancel</Text>
+              <TouchableOpacity style={styles.cancelBtn} onPress={() => { setComplaintText(""); setShowComplaintModal(false); }}>
+                <Text style={styles.cancelBtnText}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.modalButton, styles.submitButton, { backgroundColor: themeColor }]}
-                onPress={handleSubmitComplaint}
-              >
-                <Text style={styles.submitButtonText}>Submit</Text>
+              <TouchableOpacity style={[styles.submitBtn, { backgroundColor: themeColor }]} onPress={handleSubmitComplaint}>
+                <Text style={styles.submitBtnText}>Submit</Text>
               </TouchableOpacity>
             </View>
-          </KeyboardAvoidingView>
-        </View>
+          </View>
+        </KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#f9fafb",
-  },
+  container: { flex: 1, backgroundColor: "#f3f4f6" },
+
   header: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    backgroundColor: "#ffffff",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: "#fff",
     borderBottomWidth: 1,
     borderBottomColor: "#e5e7eb",
   },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: "700",
-    color: "#111827",
-    letterSpacing: -0.3,
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    padding: 20,
-    paddingBottom: 40,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    paddingVertical: 64,
-  },
-  loadingText: {
-    fontSize: 16,
-    color: "#6b7280",
-    marginTop: 16,
-    marginBottom: 24,
-  },
-  emptyStateTitle: {
-    fontSize: 20,
-    fontWeight: "700",
-    color: "#111827",
-    marginTop: 16,
-    marginBottom: 8,
-  },
-  emptyStateText: {
-    fontSize: 15,
-    color: "#6b7280",
-    textAlign: "center",
-    marginBottom: 24,
-    paddingHorizontal: 20,
-    lineHeight: 22,
-  },
-  emptyStateActions: {
-    flexDirection: "row",
-    gap: 12,
-    paddingHorizontal: 20,
-  },
-  retryButton: {
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 12,
-    flex: 1,
-  },
-  retryButtonText: {
-    color: "#ffffff",
-    fontSize: 16,
-    fontWeight: "600",
-    textAlign: "center",
-  },
-  secondaryButton: {
+  backBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: "#f3f4f6",
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 12,
-    flex: 1,
-  },
-  secondaryButtonText: {
-    color: "#374151",
-    fontSize: 16,
-    fontWeight: "600",
-    textAlign: "center",
-  },
-  statusCard: {
-    backgroundColor: "#ffffff",
-    borderRadius: 16,
-    padding: 24,
-    marginBottom: 20,
-    alignItems: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 4,
-  },
-  statusBadge: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 12,
-    marginBottom: 16,
-  },
-  statusText: {
-    fontSize: 13,
-    fontWeight: "700",
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-  },
-  visitDate: {
-    fontSize: 20,
-    fontWeight: "700",
-    color: "#111827",
-    marginBottom: 6,
-    letterSpacing: -0.3,
-  },
-  visitTime: {
-    fontSize: 16,
-    color: "#6b7280",
-    fontWeight: "500",
-  },
-  section: {
-    marginBottom: 20,
-  },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: "700",
-    color: "#111827",
-    marginBottom: 16,
-    letterSpacing: -0.3,
-  },
-  infoCard: {
-    backgroundColor: "#ffffff",
-    borderRadius: 16,
-    padding: 20,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 4,
-  },
-  infoRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    marginBottom: 20,
-    gap: 12,
-  },
-  infoContent: {
-    flex: 1,
-  },
-  infoLabel: {
-    fontSize: 13,
-    color: "#6b7280",
-    marginBottom: 6,
-    fontWeight: "500",
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-  },
-  infoValue: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#111827",
-  },
-  linkText: {},
-  callRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 20,
-  },
-  callRowLeft: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 12,
-    flex: 1,
-  },
-  callBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-  },
-  callBadgeText: {
-    color: "#ffffff",
-    fontSize: 13,
-    fontWeight: "600",
-  },
-  upcomingCard: {
-    borderRadius: 16,
-    padding: 20,
-    borderWidth: 1,
-  },
-  upcomingHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    marginBottom: 12,
-  },
-  upcomingIconWrap: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
     alignItems: "center",
     justifyContent: "center",
   },
-  upcomingTitle: {
-    fontSize: 16,
-    fontWeight: "700",
-    flex: 1,
-  },
-  upcomingBody: {
-    fontSize: 14,
-    color: "#374151",
-    lineHeight: 22,
+  headerTitle: { fontSize: 17, fontWeight: "700", color: "#111827" },
+
+  scrollView: { flex: 1 },
+  scrollContent: { padding: 16, paddingTop: 20 },
+
+  loadingContainer: { flex: 1, alignItems: "center", justifyContent: "center", paddingVertical: 64 },
+  loadingText: { fontSize: 15, color: "#6b7280", marginTop: 12 },
+  emptyStateTitle: { fontSize: 20, fontWeight: "700", color: "#111827", marginTop: 16, marginBottom: 8 },
+  emptyStateText: { fontSize: 14, color: "#6b7280", textAlign: "center", lineHeight: 21, paddingHorizontal: 24, marginBottom: 24 },
+  emptyStateActions: { flexDirection: "row", gap: 12 },
+  retryButton: { paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12, flex: 1 },
+  retryButtonText: { color: "#fff", fontSize: 15, fontWeight: "600", textAlign: "center" },
+  secondaryButton: { backgroundColor: "#f3f4f6", paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12, flex: 1 },
+  secondaryButtonText: { color: "#374151", fontSize: 15, fontWeight: "600", textAlign: "center" },
+
+  // Hero card
+  heroCard: {
+    backgroundColor: "#fff",
+    borderRadius: 18,
     marginBottom: 12,
-  },
-  upcomingTip: {
     flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 8,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: "#e5e7eb",
-  },
-  upcomingTipText: {
-    flex: 1,
-    fontSize: 13,
-    color: "#6b7280",
-    lineHeight: 19,
-  },
-  readingsGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 12,
-  },
-  readingCard: {
-    flex: 1,
-    minWidth: "45%",
-    backgroundColor: "#ffffff",
-    borderRadius: 16,
-    padding: 20,
-    alignItems: "center",
+    overflow: "hidden",
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 4,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.07,
+    shadowRadius: 10,
+    elevation: 3,
   },
-  readingLabel: {
-    fontSize: 13,
-    color: "#6b7280",
-    marginBottom: 10,
-    fontWeight: "600",
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-  },
-  readingValue: {
-    fontSize: 24,
-    fontWeight: "700",
-    color: "#111827",
-    marginBottom: 10,
-    letterSpacing: -0.5,
-  },
-  readingIndicator: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  tasksCard: {
-    backgroundColor: "#ffffff",
-    borderRadius: 16,
-    padding: 20,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 4,
-  },
-  taskItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    marginBottom: 12,
-  },
-  taskText: {
-    flex: 1,
-    fontSize: 15,
-    color: "#374151",
-    lineHeight: 22,
-  },
-  reportCard: {
-    backgroundColor: "#ffffff",
-    borderRadius: 16,
-    padding: 20,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 4,
-  },
-  reportSummary: {
-    fontSize: 16,
-    color: "#374151",
-    lineHeight: 24,
-    marginBottom: 20,
-  },
-  recommendations: {
-    marginTop: 16,
-    paddingTop: 16,
-    borderTopWidth: 1,
-    borderTopColor: "#f3f4f6",
-  },
-  recommendationsTitle: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#111827",
-    marginBottom: 12,
-  },
-  recommendationItem: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 8,
-    marginBottom: 10,
-  },
-  recommendationText: {
-    flex: 1,
-    fontSize: 14,
-    color: "#374151",
-    lineHeight: 20,
-  },
-  downloadButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    marginTop: 16,
-    paddingVertical: 12,
-    borderRadius: 8,
-    borderWidth: 1,
-  },
-  downloadButtonText: {
-    fontSize: 15,
-    fontWeight: "600",
-  },
-  photosContainer: {
-    gap: 12,
-    paddingRight: 20,
-  },
-  photo: {
-    width: 200,
-    height: 200,
-    borderRadius: 16,
-  },
-  ratingCard: {
-    backgroundColor: "#ffffff",
-    borderRadius: 16,
-    padding: 24,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 4,
-  },
-  ratingDisplay: {
-    alignItems: "center",
-  },
-  starsContainer: {
-    flexDirection: "row",
-    gap: 8,
-    marginBottom: 12,
-  },
-  ratingText: {
-    fontSize: 15,
-    color: "#374151",
-    marginBottom: 12,
-  },
-  changeRatingButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    borderWidth: 1,
-  },
-  changeRatingText: {
-    fontSize: 14,
-    fontWeight: "600",
-  },
-  rateButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    paddingVertical: 16,
-    borderRadius: 8,
-    borderWidth: 1,
-  },
-  rateButtonText: {
-    fontSize: 16,
-    fontWeight: "600",
-  },
-  sectionHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 12,
-  },
-  addComplaintButton: {
+  heroAccent: { width: 5 },
+  heroInner: { flex: 1, padding: 20 },
+  heroTopRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 14 },
+  statusPill: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 20,
   },
-  addComplaintText: {
-    fontSize: 14,
-    fontWeight: "600",
-  },
-  complaintsCard: {
-    backgroundColor: "#ffffff",
+  statusDot: { width: 6, height: 6, borderRadius: 3 },
+  statusPillText: { fontSize: 12, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.5 },
+  typePill: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20 },
+  typePillText: { fontSize: 12, fontWeight: "600", color: "#6b7280" },
+  heroDate: { fontSize: 22, fontWeight: "800", color: "#111827", marginBottom: 6, letterSpacing: -0.5 },
+  heroTimeRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+  heroTime: { fontSize: 14, color: "#6b7280", fontWeight: "500" },
+
+  // Generic card
+  card: {
+    backgroundColor: "#fff",
     borderRadius: 16,
-    padding: 20,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 4,
-  },
-  complaintItem: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 12,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: "#f3f4f6",
-  },
-  complaintText: {
-    flex: 1,
-    fontSize: 14,
-    color: "#374151",
-    lineHeight: 20,
-  },
-  emptyComplaintsCard: {
-    backgroundColor: "#ffffff",
-    borderRadius: 12,
-    padding: 32,
-    alignItems: "center",
+    padding: 16,
+    marginBottom: 12,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.06,
     shadowRadius: 8,
     elevation: 2,
   },
-  emptyComplaintsText: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#111827",
-    marginTop: 12,
-    marginBottom: 4,
+  cardDivider: { height: 1, backgroundColor: "#f3f4f6", marginVertical: 14 },
+
+  // Card section (pool / technician rows)
+  cardSection: { flexDirection: "row", alignItems: "flex-start", gap: 12 },
+  cardIconWrap: { width: 42, height: 42, borderRadius: 21, alignItems: "center", justifyContent: "center" },
+  avatarCircle: { width: 42, height: 42, borderRadius: 21, alignItems: "center", justifyContent: "center" },
+  avatarInitials: { color: "#fff", fontSize: 15, fontWeight: "700" },
+  cardSectionBody: { flex: 1 },
+  cardSectionLabel: { fontSize: 11, fontWeight: "600", color: "#9ca3af", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 3 },
+  cardSectionValue: { fontSize: 16, fontWeight: "700", color: "#111827", marginBottom: 2 },
+  cardSectionSub: { fontSize: 13, color: "#6b7280", marginTop: 1, lineHeight: 18 },
+
+  // Call button
+  callBtn: { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20 },
+  callBtnText: { color: "#fff", fontSize: 13, fontWeight: "600" },
+
+  // Upcoming banner
+  upcomingBanner: {
+    flexDirection: "row",
+    gap: 12,
+    padding: 16,
+    borderRadius: 14,
+    borderLeftWidth: 4,
+    marginBottom: 12,
   },
-  emptyComplaintsSubtext: {
-    fontSize: 14,
-    color: "#6b7280",
-    textAlign: "center",
+  upcomingBannerBody: { flex: 1 },
+  upcomingBannerTitle: { fontSize: 14, fontWeight: "700", marginBottom: 4 },
+  upcomingBannerText: { fontSize: 13, color: "#4b5563", lineHeight: 19, marginBottom: 6 },
+  upcomingBannerTip: { fontSize: 12, color: "#6b7280", fontStyle: "italic" },
+
+  section: { marginBottom: 4 },
+  sectionTitle: { fontSize: 17, fontWeight: "700", color: "#111827", marginBottom: 10 },
+  sectionRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 10 },
+
+  // Chemistry
+  chemGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+  chemCard: {
+    flex: 1,
+    minWidth: "46%",
+    backgroundColor: "#fff",
+    borderRadius: 14,
+    padding: 14,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    elevation: 2,
+    marginBottom: 0,
   },
-  emptyStateCard: {
-    backgroundColor: "#ffffff",
-    borderRadius: 16,
-    padding: 40,
+  chemTopRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 },
+  chemLabel: { fontSize: 11, fontWeight: "700", color: "#6b7280", textTransform: "uppercase", letterSpacing: 0.5 },
+  chemStatusPill: { paddingHorizontal: 7, paddingVertical: 2, borderRadius: 10 },
+  chemStatusText: { fontSize: 10, fontWeight: "700" },
+  chemValue: { fontSize: 26, fontWeight: "800", color: "#111827", letterSpacing: -0.5, marginBottom: 10 },
+  chemBarTrack: { height: 4, backgroundColor: "#f3f4f6", borderRadius: 2, marginBottom: 6, overflow: "hidden" },
+  chemBarFill: { height: 4, borderRadius: 2 },
+  chemRange: { fontSize: 10, color: "#9ca3af" },
+
+  // Tasks
+  taskRow: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 12 },
+  taskRowBorder: { borderBottomWidth: 1, borderBottomColor: "#f3f4f6" },
+  taskCheck: { width: 26, height: 26, borderRadius: 13, alignItems: "center", justifyContent: "center" },
+  taskText: { flex: 1, fontSize: 14, color: "#374151", lineHeight: 20 },
+
+  // Report
+  reportSummary: { fontSize: 14, color: "#374151", lineHeight: 22 },
+  recsTitle: { fontSize: 13, fontWeight: "700", color: "#111827", marginBottom: 10 },
+  recRow: { flexDirection: "row", alignItems: "flex-start", gap: 8, marginBottom: 8 },
+  recText: { flex: 1, fontSize: 13, color: "#4b5563", lineHeight: 19 },
+  pdfBtn: {
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 4,
+    gap: 8,
+    marginTop: 14,
+    paddingVertical: 11,
+    borderRadius: 10,
+    borderWidth: 1,
   },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
-    justifyContent: "flex-end",
-  },
-  modalContent: {
-    backgroundColor: "#ffffff",
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
+  pdfBtnText: { fontSize: 14, fontWeight: "600" },
+
+  // Photos
+  photosRow: { gap: 10, paddingBottom: 4 },
+  photo: { width: 180, height: 180, borderRadius: 14 },
+
+  // Rating
+  ratingRow: { flexDirection: "row", gap: 6, justifyContent: "center", marginBottom: 10 },
+  ratingLabel: { fontSize: 14, color: "#374151", textAlign: "center", marginBottom: 8 },
+  changeRating: { fontSize: 13, fontWeight: "600", textAlign: "center" },
+  rateBtn: { borderRadius: 14, borderWidth: 1.5, padding: 20, alignItems: "center", gap: 8, marginBottom: 12 },
+  rateBtnStars: { flexDirection: "row", gap: 6 },
+  rateBtnText: { fontSize: 14, fontWeight: "600" },
+
+  // Complaints
+  addBtn: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, borderWidth: 1 },
+  addBtnText: { fontSize: 13, fontWeight: "600" },
+  complaintRow: { flexDirection: "row", alignItems: "flex-start", gap: 10, paddingVertical: 12 },
+  complaintDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: "#ef4444", marginTop: 7 },
+  complaintText: { flex: 1, fontSize: 14, color: "#374151", lineHeight: 20 },
+  emptyComplaints: { alignItems: "center", paddingVertical: 24, gap: 8 },
+  emptyComplaintsText: { fontSize: 14, color: "#9ca3af" },
+
+  // Modals
+  modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.45)", justifyContent: "flex-end" },
+  modalSheet: {
+    backgroundColor: "#fff",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
     padding: 24,
     paddingBottom: 40,
-    maxHeight: "80%",
   },
-  modalHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 16,
-  },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: "700",
-    color: "#111827",
-  },
-  modalSubtitle: {
-    fontSize: 15,
-    color: "#6b7280",
-    marginBottom: 24,
-    lineHeight: 22,
-  },
-  modalStarsContainer: {
-    flexDirection: "row",
-    justifyContent: "center",
-    gap: 16,
-    marginBottom: 16,
-  },
-  modalStarButton: {
-    padding: 8,
-  },
-  modalRatingText: {
-    fontSize: 18,
-    fontWeight: "600",
-    color: "#111827",
-    textAlign: "center",
-  },
+  modalHandle: { width: 36, height: 4, borderRadius: 2, backgroundColor: "#e5e7eb", alignSelf: "center", marginBottom: 20 },
+  modalHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 },
+  modalTitle: { fontSize: 18, fontWeight: "700", color: "#111827" },
+  modalSub: { fontSize: 14, color: "#6b7280", marginBottom: 24, lineHeight: 20 },
+  modalStars: { flexDirection: "row", justifyContent: "center", gap: 12, marginBottom: 16 },
+  modalStarBtn: { padding: 4 },
+  modalRatingText: { fontSize: 18, fontWeight: "700", color: "#111827", textAlign: "center" },
   complaintInput: {
     backgroundColor: "#f9fafb",
     borderRadius: 12,
-    padding: 16,
-    fontSize: 15,
+    padding: 14,
+    fontSize: 14,
     color: "#111827",
     borderWidth: 1,
     borderColor: "#e5e7eb",
-    minHeight: 120,
-    marginBottom: 24,
+    minHeight: 110,
+    marginBottom: 20,
   },
-  modalActions: {
-    flexDirection: "row",
-    gap: 12,
-  },
-  modalButton: {
-    flex: 1,
-    paddingVertical: 14,
-    borderRadius: 12,
-    alignItems: "center",
-  },
-  cancelButton: {
-    backgroundColor: "#f3f4f6",
-  },
-  cancelButtonText: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#374151",
-  },
-  submitButton: {},
-  submitButtonText: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#ffffff",
-  },
+  modalActions: { flexDirection: "row", gap: 10 },
+  cancelBtn: { flex: 1, paddingVertical: 14, borderRadius: 12, backgroundColor: "#f3f4f6", alignItems: "center" },
+  cancelBtnText: { fontSize: 15, fontWeight: "600", color: "#374151" },
+  submitBtn: { flex: 1, paddingVertical: 14, borderRadius: 12, alignItems: "center" },
+  submitBtnText: { fontSize: 15, fontWeight: "600", color: "#fff" },
 });
 
