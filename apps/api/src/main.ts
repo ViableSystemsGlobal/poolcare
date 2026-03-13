@@ -4,6 +4,7 @@ import { AppModule } from "./app.module";
 import { HttpExceptionFilter } from "./core/http-exception.filter";
 import * as express from "express";
 import * as os from "os";
+import helmet from "helmet";
 
 async function bootstrap() {
   try {
@@ -20,6 +21,8 @@ async function bootstrap() {
     const expressApp = app.getHttpAdapter().getInstance();
     expressApp.use(express.json({ limit: '10mb' }));
     expressApp.use(express.urlencoded({ limit: '10mb', extended: true }));
+
+    app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" } }));
 
     app.useGlobalPipes(
       new ValidationPipe({

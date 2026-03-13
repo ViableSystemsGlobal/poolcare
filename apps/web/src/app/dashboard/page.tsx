@@ -100,11 +100,11 @@ export default function Dashboard() {
       try {
         const token = localStorage.getItem("auth_token");
         const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
-        const headers = token ? { Authorization: `Bearer ${token}` } : {};
+        const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
 
         const dashboardRes = await fetch(`${API_URL}/dashboard`, {
           headers,
-          cache: "no-store",
+          cache: "no-store" as RequestCache,
         });
         const data = dashboardRes.ok ? await dashboardRes.json() : null;
         if (data) {
@@ -113,7 +113,7 @@ export default function Dashboard() {
 
         const recRes = await fetch(`${API_URL}/ai/recommendations?context=dashboard`, {
           headers,
-          cache: "no-store",
+          cache: "no-store" as RequestCache,
         });
         if (recRes.ok) {
           const recData = await recRes.json();

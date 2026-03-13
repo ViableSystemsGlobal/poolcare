@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, BadRequestException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { prisma } from "@poolcare/db";
 import { SmsAdapter } from "./adapters/sms.adapter";
@@ -28,64 +28,20 @@ export class NotificationsService {
         subject: dto.subject,
         body: dto.body,
         status: "pending",
-        metadata: dto.metadata,
+        metadata: { ...(dto.metadata as object ?? {}), _to: dto.to },
       },
     });
 
-    // Send via appropriate adapter
     try {
-      let providerRef: string | undefined;
+      const providerRef = await this.deliverNotification({ ...notification, to: dto.to });
 
-      if (dto.channel === "sms") {
-        providerRef = await this.smsAdapter.send(dto.to, dto.body, orgId);
-      } else if (dto.channel === "email") {
-        const subject = dto.subject || dto.template || "PoolCare Notification";
-        const html =
-          dto.metadata && typeof dto.metadata === "object" && typeof dto.metadata.html === "string"
-            ? dto.metadata.html
-            : undefined;
-
-        providerRef = await this.emailAdapter.send(dto.to, subject, dto.body, html, orgId);
-      } else if (dto.channel === "push") {
-        // Push notifications require device tokens
-        // If 'to' is a device token, send directly
-        // Otherwise, if recipientId is provided, fetch tokens for that user
-        if (dto.to && dto.to.startsWith("ExponentPushToken") || dto.to.startsWith("ExpoPushToken")) {
-          // Direct device token
-          providerRef = await this.pushAdapter.send(
-            dto.to,
-            dto.subject || dto.template || "PoolCare Notification",
-            dto.body,
-            dto.metadata as Record<string, any>
-          );
-        } else if (dto.recipientId) {
-          // Send to user by fetching their device tokens
-          const results = await this.pushAdapter.sendToUser(
-            dto.recipientId,
-            orgId,
-            dto.subject || dto.template || "PoolCare Notification",
-            dto.body,
-            dto.metadata as Record<string, any>
-          );
-          providerRef = results.length > 0 ? results[0] : undefined;
-        } else {
-          throw new Error("Push notifications require either a device token or recipientId");
-        }
-      }
-
-      // Update notification status
       await prisma.notification.update({
         where: { id: notification.id },
-        data: {
-          status: "sent",
-          providerRef,
-          sentAt: new Date(),
-        },
+        data: { status: "sent", providerRef, sentAt: new Date() },
       });
 
       return notification;
     } catch (error) {
-      // Mark as failed
       await prisma.notification.update({
         where: { id: notification.id },
         data: {
@@ -93,12 +49,75 @@ export class NotificationsService {
           metadata: { error: error instanceof Error ? error.message : String(error) },
         },
       });
-
       throw error;
     }
   }
 
+  /**
+   * Core delivery logic — used by both send() and the scheduler.
+   * Accepts a notification record (with an optional `to` override for address).
+   */
+  async deliverNotification(notification: any): Promise<string | undefined> {
+    const { orgId, channel, body, subject, template, recipientId, metadata } = notification;
+    // `to` may be passed directly or stored in metadata._to (for scheduled notifications)
+    const to: string | undefined = notification.to ?? (metadata as any)?._to;
+
+    if (channel === "sms" || channel === "whatsapp") {
+      const phone = to || await this.resolvePhone(recipientId, orgId);
+      if (!phone) throw new BadRequestException("No phone number for recipient");
+      return this.smsAdapter.send(phone, body, orgId);
+    }
+
+    if (channel === "email") {
+      const email = to || await this.resolveEmail(recipientId, orgId);
+      if (!email) throw new BadRequestException("No email for recipient");
+      const html =
+        metadata && typeof metadata === "object" && typeof metadata.html === "string"
+          ? metadata.html
+          : undefined;
+      return this.emailAdapter.send(email, subject || template || "PoolCare Notification", body, html, orgId);
+    }
+
+    if (channel === "push") {
+      if (to && (to.startsWith("ExponentPushToken") || to.startsWith("ExpoPushToken"))) {
+        return this.pushAdapter.send(to, subject || template || "PoolCare Notification", body, metadata);
+      }
+      if (recipientId) {
+        const results = await this.pushAdapter.sendToUser(
+          recipientId,
+          orgId,
+          subject || template || "PoolCare Notification",
+          body,
+          metadata
+        );
+        return results.length > 0 ? results[0] : undefined;
+      }
+      throw new BadRequestException("Push notifications require either a device token or recipientId");
+    }
+
+    return undefined;
+  }
+
+  private async resolvePhone(recipientId: string | null, orgId: string): Promise<string | null> {
+    if (!recipientId) return null;
+    const carer = await prisma.carer.findFirst({ where: { userId: recipientId, orgId }, select: { phone: true } });
+    if (carer?.phone) return carer.phone;
+    const client = await prisma.client.findFirst({ where: { userId: recipientId, orgId }, select: { phone: true } });
+    return client?.phone ?? null;
+  }
+
+  private async resolveEmail(recipientId: string | null, orgId: string): Promise<string | null> {
+    if (!recipientId) return null;
+    const client = await prisma.client.findFirst({ where: { userId: recipientId, orgId }, select: { email: true } });
+    return client?.email ?? null;
+  }
+
   async schedule(orgId: string, dto: SendNotificationDto & { scheduledFor: string }) {
+    const scheduledFor = new Date(dto.scheduledFor);
+    if (isNaN(scheduledFor.getTime())) {
+      throw new BadRequestException("Invalid scheduledFor date");
+    }
+
     const notification = await prisma.notification.create({
       data: {
         orgId,
@@ -109,12 +128,12 @@ export class NotificationsService {
         subject: dto.subject,
         body: dto.body,
         status: "pending",
-        scheduledFor: new Date(dto.scheduledFor),
-        metadata: dto.metadata,
+        scheduledFor,
+        metadata: { ...(dto.metadata as object ?? {}), _to: dto.to },
       },
     });
 
-    // TODO: Queue in BullMQ for scheduled delivery
+    // Picked up by NotificationSchedulerService cron (runs every minute)
     return notification;
   }
 

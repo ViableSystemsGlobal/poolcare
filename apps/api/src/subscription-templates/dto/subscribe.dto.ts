@@ -11,4 +11,8 @@ export class SubscribeToTemplateDto {
   @IsOptional()
   @IsBoolean()
   autoRenew?: boolean;
+
+  @IsOptional()
+  @IsString()
+  preferredCarerId?: string;
 }

@@ -206,8 +206,10 @@ export default function Sidebar() {
   const pathname = usePathname();
   const [expandedSections, setExpandedSections] = useState<string[]>([]);
   const [collapsed, setCollapsed] = useState(false);
+  const [logoError, setLogoError] = useState(false);
   const { getThemeClasses, customLogo, getThemeColor } = useTheme();
-  const theme = getThemeClasses();
+
+  useEffect(() => { setLogoError(false); }, [customLogo]);
 
   const isActive = (href: string) => {
     if (pathname === href) return true;
@@ -236,7 +238,6 @@ export default function Sidebar() {
   }, [pathname]);
 
   const themeHex = getThemeColor();
-  const themeHexDark = `var(--theme-color-dark, ${themeHex})`;
 
   // Return inline style objects that use the exact custom color
   const getActiveStyle = (): React.CSSProperties => ({
@@ -266,11 +267,12 @@ export default function Sidebar() {
     >
       {/* Header */}
       <div className="flex h-20 items-center justify-center border-b border-gray-200 px-2">
-        {customLogo ? (
+        {customLogo && !logoError ? (
           <img
             src={customLogo}
             alt="Logo"
             className="h-16 w-auto max-w-full rounded-lg object-contain"
+            onError={() => setLogoError(true)}
           />
         ) : (
           <div

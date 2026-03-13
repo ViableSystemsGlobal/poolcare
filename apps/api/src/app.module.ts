@@ -1,6 +1,8 @@
 import { Module } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
-import { APP_INTERCEPTOR } from "@nestjs/core";
+import { APP_GUARD, APP_INTERCEPTOR } from "@nestjs/core";
+import { ThrottlerModule, ThrottlerGuard } from "@nestjs/throttler";
+import { ScheduleModule } from "@nestjs/schedule";
 import { AppController } from "./app.controller";
 import { AuthModule } from "./auth/auth.module";
 import { OrgsModule } from "./orgs/orgs.module";
@@ -37,6 +39,11 @@ import { RlsInterceptor } from "./core/rls.interceptor";
       isGlobal: true,
       envFilePath: ['.env', '../api/.env', '../../apps/api/.env'],
     }),
+    ThrottlerModule.forRoot([
+      { name: "short",  ttl: 1000,  limit: 20  }, // 20 req/s
+      { name: "medium", ttl: 60000, limit: 200 }, // 200 req/min
+    ]),
+    ScheduleModule.forRoot(),
     AuthModule,
     OrgsModule,
     CarersModule,
@@ -67,6 +74,10 @@ import { RlsInterceptor } from "./core/rls.interceptor";
   ],
   controllers: [AppController],
   providers: [
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
+    },
     {
       provide: APP_INTERCEPTOR,
       useClass: RlsInterceptor,

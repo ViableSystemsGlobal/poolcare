@@ -78,6 +78,16 @@ export class AiController {
     return this.aiService.optimizeDispatch(user.org_id, dto);
   }
 
+  @Get("visits/:visitId/summary")
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "MANAGER", "CARER")
+  async summarizeVisit(
+    @CurrentUser() user: { org_id: string },
+    @Param("visitId") visitId: string
+  ) {
+    return this.aiService.summarizeVisit(user.org_id, visitId);
+  }
+
   @Post("business-partner/chat")
   @UseGuards(RolesGuard)
   @Roles("ADMIN", "MANAGER")

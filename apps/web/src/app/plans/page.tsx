@@ -47,6 +47,7 @@ export default function PlansPage() {
 
   const [plans, setPlans] = useState([]);
   const [pools, setPools] = useState([]);
+  const [carers, setCarers] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("");
@@ -82,6 +83,7 @@ export default function PlansPage() {
     billingType: "per_visit",
     autoRenew: false,
     templateId: "",
+    preferredCarerId: "",
   });
 
   const [subscriptionTemplates, setSubscriptionTemplates] = useState<any[]>([]);
@@ -91,6 +93,7 @@ export default function PlansPage() {
     fetchPools();
     fetchPlans();
     fetchSubscriptionTemplates();
+    fetchCarers();
   }, [statusFilter]);
 
   // Auto-open create dialog when navigated here with ?new=1
@@ -312,6 +315,23 @@ export default function PlansPage() {
     }
   };
 
+  const fetchCarers = async () => {
+    try {
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+      const response = await fetch(`${API_URL}/carers?limit=100`, {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
+        },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setCarers(data.items || data || []);
+      }
+    } catch (error) {
+      console.error("Failed to fetch carers:", error);
+    }
+  };
+
   const resetForm = () => {
     setFormData({
       poolId: "",
@@ -331,6 +351,7 @@ export default function PlansPage() {
       billingType: "per_visit",
       autoRenew: false,
       templateId: "",
+      preferredCarerId: "",
     });
     setUseTemplate(false);
   };
@@ -380,6 +401,7 @@ export default function PlansPage() {
       if (formData.startsOn) payload.startsOn = formData.startsOn;
       if (formData.endsOn) payload.endsOn = formData.endsOn;
       if (formData.notes) payload.notes = formData.notes;
+      if (formData.preferredCarerId) payload.preferredCarerId = formData.preferredCarerId;
 
       // Subscription fields
       if (formData.billingType) payload.billingType = formData.billingType;
@@ -759,6 +781,27 @@ export default function PlansPage() {
                   onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
                   rows={3}
                 />
+              </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="preferredCarer">Preferred Carer (optional)</Label>
+                <Select
+                  value={formData.preferredCarerId}
+                  onValueChange={(value) => setFormData({ ...formData, preferredCarerId: value === "none" ? "" : value })}
+                >
+                  <SelectTrigger id="preferredCarer">
+                    <SelectValue placeholder="No preference — assign later" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">No preference</SelectItem>
+                    {carers.map((carer: any) => (
+                      <SelectItem key={carer.id} value={carer.id}>
+                        {carer.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">When set, all auto-generated jobs for this plan will be pre-assigned to this carer.</p>
               </div>
 
               <div className="flex justify-end gap-2 mt-4">

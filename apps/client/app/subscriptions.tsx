@@ -52,6 +52,8 @@ export default function SubscriptionsScreen() {
   const [showSubscribeModal, setShowSubscribeModal] = useState(false);
   const [selectedPoolId, setSelectedPoolId] = useState<string>("");
   const [autoRenew, setAutoRenew] = useState(true);
+  const [carers, setCarers] = useState<{ id: string; name: string }[]>([]);
+  const [selectedCarerId, setSelectedCarerId] = useState<string>("");
 
   useEffect(() => {
     fetchData();
@@ -65,9 +67,10 @@ export default function SubscriptionsScreen() {
   const fetchData = async () => {
     try {
       setLoading(true);
-      const [templatesRes, poolsRes] = await Promise.all([
+      const [templatesRes, poolsRes, carersRes] = await Promise.all([
         api.getSubscriptionTemplates(),
         api.getPools(),
+        api.getCarers().catch(() => null),
       ]);
 
       const templatesData = templatesRes.items || templatesRes || [];
@@ -75,6 +78,10 @@ export default function SubscriptionsScreen() {
 
       setTemplates(templatesData);
       setPools(poolsData);
+      if (carersRes) {
+        const carersData = carersRes.items || carersRes || [];
+        setCarers(carersData.map((c: any) => ({ id: c.id, name: c.name || "Unknown" })));
+      }
     } catch (error) {
       console.error("Error fetching data:", error);
       Alert.alert("Error", "Failed to load subscription plans");
@@ -95,6 +102,7 @@ export default function SubscriptionsScreen() {
       await api.subscribeToTemplate(selectedTemplate.id, {
         poolId: selectedPoolId,
         autoRenew,
+        ...(selectedCarerId ? { preferredCarerId: selectedCarerId } : {}),
       });
 
       Alert.alert(
@@ -107,6 +115,7 @@ export default function SubscriptionsScreen() {
               setShowSubscribeModal(false);
               setSelectedTemplate(null);
               setSelectedPoolId("");
+              setSelectedCarerId("");
               fetchData(); // Refresh to show new subscription
             },
           },
@@ -358,6 +367,44 @@ export default function SubscriptionsScreen() {
                   ))
                 )}
               </View>
+
+              {pools.length > 0 && carers.length > 0 && (
+                <View style={styles.formGroup}>
+                  <Text style={styles.label}>Preferred carer (optional)</Text>
+                  <TouchableOpacity
+                    style={[styles.poolOption, !selectedCarerId && { borderColor: "#d1d5db" }]}
+                    onPress={() => setSelectedCarerId("")}
+                  >
+                    <Ionicons
+                      name={!selectedCarerId ? "radio-button-on" : "radio-button-off"}
+                      size={20}
+                      color={!selectedCarerId ? themeColor : "#9ca3af"}
+                    />
+                    <View style={styles.poolOptionText}>
+                      <Text style={styles.poolOptionName}>No preference</Text>
+                    </View>
+                  </TouchableOpacity>
+                  {carers.map((carer) => (
+                    <TouchableOpacity
+                      key={carer.id}
+                      style={[
+                        styles.poolOption,
+                        selectedCarerId === carer.id && { borderColor: themeColor, backgroundColor: `${themeColor}12` },
+                      ]}
+                      onPress={() => setSelectedCarerId(carer.id)}
+                    >
+                      <Ionicons
+                        name={selectedCarerId === carer.id ? "radio-button-on" : "radio-button-off"}
+                        size={20}
+                        color={selectedCarerId === carer.id ? themeColor : "#9ca3af"}
+                      />
+                      <View style={styles.poolOptionText}>
+                        <Text style={styles.poolOptionName}>{carer.name}</Text>
+                      </View>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
 
               {pools.length > 0 && (
                 <>

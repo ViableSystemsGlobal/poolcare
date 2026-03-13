@@ -880,9 +880,9 @@ export default function PoolsPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-600">Unique Clients</p>
-                <p className="text-2xl font-bold text-orange-600">{stats.totalClients}</p>
+                <p className="text-2xl font-bold" style={{ color: 'var(--theme-color)' }}>{stats.totalClients}</p>
               </div>
-              <Users className="h-8 w-8 text-orange-400" />
+              <Users className="h-8 w-8" style={{ color: 'var(--theme-color-light)' }} />
             </div>
           </Card>
 

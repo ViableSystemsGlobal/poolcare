@@ -1,4 +1,4 @@
-import { Injectable, Logger } from "@nestjs/common";
+import { Injectable, Logger, InternalServerErrorException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { prisma } from "@poolcare/db";
 
@@ -92,7 +92,7 @@ export class PushAdapter {
         this.logger.error(
           `Expo Push API HTTP error: ${response.status} - ${errorText}`
         );
-        throw new Error(`Expo Push API HTTP error: ${response.status}`);
+        throw new InternalServerErrorException(`Expo Push API HTTP error: ${response.status}`);
       }
 
       const result = await response.json() as ExpoPushResponse;

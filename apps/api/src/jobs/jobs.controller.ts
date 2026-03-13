@@ -7,6 +7,9 @@ import {
   Query,
   Body,
   UseGuards,
+  NotFoundException,
+  ForbiddenException,
+  BadRequestException,
 } from "@nestjs/common";
 import { JobsService } from "./jobs.service";
 import { DispatchService } from "./dispatch.service";
@@ -212,7 +215,7 @@ export class JobsController {
     if (user.role === "CARER") {
       const job = await this.jobsService.getOne(user.org_id, user.role, (user as any).sub, id);
       if (!job) {
-        throw new Error("Job not found");
+        throw new NotFoundException("Job not found");
       }
     }
     return this.jobsService.recalculateETA(user.org_id, id);
@@ -234,15 +237,15 @@ export class JobsController {
         where: { orgId: user.org_id, userId: (user as any).sub },
       });
       if (!carer) {
-        throw new Error("Carer profile not found");
+        throw new NotFoundException("Carer profile not found");
       }
       targetCarerId = carer.id;
     } else if (user.role !== "ADMIN" && user.role !== "MANAGER") {
-      throw new Error("Access denied");
+      throw new ForbiddenException();
     }
 
     if (!targetCarerId) {
-      throw new Error("carerId is required");
+      throw new BadRequestException("carerId is required");
     }
 
     const updatedCount = await this.jobsService.recalculateCarerETAs(user.org_id, targetCarerId);

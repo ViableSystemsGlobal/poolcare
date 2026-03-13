@@ -111,6 +111,7 @@ export class SubscriptionTemplatesController {
       poolId: dto.poolId,
       startsOn: dto.startsOn,
       autoRenew: dto.autoRenew ?? true,
+      preferredCarerId: dto.preferredCarerId,
     });
   }
 }

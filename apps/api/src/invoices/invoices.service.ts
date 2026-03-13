@@ -7,46 +7,23 @@ import { createEmailTemplate, getOrgEmailSettings } from "../email/email-templat
 @Injectable()
 export class InvoicesService {
   constructor(private readonly notificationsService: NotificationsService) {}
-  private async generateInvoiceNumber(orgId: string, retryCount = 0): Promise<string> {
+  private async nextInvoiceNumber(orgId: string, tx: any): Promise<string> {
+    // Advisory lock scoped to this transaction — only one concurrent invoice creation per org
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${orgId}))`;
+
     const year = new Date().getFullYear();
     const prefix = `INV-${year}-`;
 
-    // Use a transaction to get the latest invoice number atomically
-    const lastInvoice = await prisma.invoice.findFirst({
-      where: {
-        orgId,
-        invoiceNumber: {
-          startsWith: prefix,
-        },
-      },
+    const lastInvoice = await tx.invoice.findFirst({
+      where: { orgId, invoiceNumber: { startsWith: prefix } },
       orderBy: { invoiceNumber: "desc" },
     });
 
-    let nextNum: number;
-    if (!lastInvoice) {
-      nextNum = 1;
-    } else {
-      const lastNum = parseInt(lastInvoice.invoiceNumber.replace(prefix, ""));
-      nextNum = lastNum + 1;
-    }
+    const nextNum = lastInvoice
+      ? parseInt(lastInvoice.invoiceNumber.replace(prefix, ""), 10) + 1
+      : 1;
 
-    const invoiceNumber = `${prefix}${String(nextNum).padStart(4, "0")}`;
-
-    // Check if this number already exists (race condition check)
-    const existing = await prisma.invoice.findUnique({
-      where: { invoiceNumber },
-    });
-
-    if (existing) {
-      // If it exists and we haven't retried too many times, try next number
-      if (retryCount < 10) {
-        return this.generateInvoiceNumber(orgId, retryCount + 1);
-      }
-      // Fallback: add timestamp to ensure uniqueness
-      return `${prefix}${String(nextNum).padStart(4, "0")}-${Date.now().toString().slice(-4)}`;
-    }
-
-    return invoiceNumber;
+    return `${prefix}${String(nextNum).padStart(4, "0")}`;
   }
 
   private calculateTotals(items: any[]): { subtotalCents: number; taxCents: number; totalCents: number } {
@@ -107,60 +84,32 @@ export class InvoicesService {
 
     const totals = this.calculateTotals(items);
 
-    // Retry logic to handle race conditions in invoice number generation
-    let retries = 0;
-    const maxRetries = 5;
-    let invoice;
+    const invoice = await prisma.$transaction(async (tx) => {
+      const invoiceNumber = await this.nextInvoiceNumber(orgId, tx);
 
-    while (retries < maxRetries) {
-      try {
-        const invoiceNumber = await this.generateInvoiceNumber(orgId);
-
-        invoice = await prisma.invoice.create({
-          data: {
-            orgId,
-            clientId: dto.clientId,
-            poolId: dto.poolId,
-            visitId: dto.visitId,
-            quoteId: dto.quoteId,
-            invoiceNumber,
-            currency: dto.currency || "GHS",
-            items: items as any,
-            subtotalCents: totals.subtotalCents,
-            taxCents: totals.taxCents,
-            totalCents: totals.totalCents,
-            dueDate: dto.dueDate ? new Date(dto.dueDate) : null,
-            notes: dto.notes,
-            status: "draft",
-          },
-          include: {
-            client: true,
-            pool: true,
-          },
-        });
-
-        // Success - break out of retry loop
-        break;
-      } catch (error: any) {
-        // Check if it's a unique constraint violation on invoiceNumber
-        if (
-          error.code === "P2002" &&
-          error.meta?.target?.includes("invoiceNumber") &&
-          retries < maxRetries - 1
-        ) {
-          retries++;
-          // Wait a bit before retrying (exponential backoff)
-          await new Promise((resolve) => setTimeout(resolve, 50 * retries));
-          continue;
-        }
-        // If it's not a unique constraint error or we've exhausted retries, throw
-        throw error;
-      }
-    }
-
-    if (!invoice) {
-      throw new BadRequestException("Failed to create invoice after multiple attempts");
-    }
+      return tx.invoice.create({
+        data: {
+          orgId,
+          clientId: dto.clientId,
+          poolId: dto.poolId,
+          visitId: dto.visitId,
+          quoteId: dto.quoteId,
+          invoiceNumber,
+          currency: dto.currency || "GHS",
+          items: items as any,
+          subtotalCents: totals.subtotalCents,
+          taxCents: totals.taxCents,
+          totalCents: totals.totalCents,
+          dueDate: dto.dueDate ? new Date(dto.dueDate) : null,
+          notes: dto.notes,
+          status: "draft",
+        },
+        include: {
+          client: true,
+          pool: true,
+        },
+      });
+    });
 
     return invoice;
   }

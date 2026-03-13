@@ -584,9 +584,9 @@ export default function ClientsPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-600">Total Pools</p>
-                <p className="text-2xl font-bold text-orange-600">{stats.totalPools}</p>
+                <p className="text-2xl font-bold" style={{ color: 'var(--theme-color)' }}>{stats.totalPools}</p>
               </div>
-              <Droplet className="h-8 w-8 text-orange-400" />
+              <Droplet className="h-8 w-8" style={{ color: 'var(--theme-color-light)' }} />
             </div>
           </Card>
 
@@ -621,7 +621,7 @@ export default function ClientsPage() {
         <CardContent>
           {/* Bulk Actions Bar */}
           {selectedClients.size > 0 && (
-            <div className="flex items-center justify-between p-4 mb-4 bg-orange-50 border border-orange-200 rounded-lg">
+            <div className="flex items-center justify-between p-4 mb-4 border rounded-lg" style={{ backgroundColor: 'var(--theme-color-lighter)', borderColor: 'var(--theme-color-light)' }}>
               <div className="flex items-center gap-2">
                 <span className="text-sm font-medium text-gray-900">
                   {selectedClients.size} client{selectedClients.size !== 1 ? "s" : ""} selected

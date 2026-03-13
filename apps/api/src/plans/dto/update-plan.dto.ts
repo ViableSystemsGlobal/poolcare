@@ -58,5 +58,9 @@ export class UpdatePlanDto {
   @IsOptional()
   @IsString()
   notes?: string;
+
+  @IsOptional()
+  @IsString()
+  preferredCarerId?: string | null; // null to clear the preferred carer
 }
 

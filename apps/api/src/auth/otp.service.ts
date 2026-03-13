@@ -1,4 +1,4 @@
-import { Injectable, Logger } from "@nestjs/common";
+import { Injectable, Logger, BadRequestException } from "@nestjs/common";
 import { SmsAdapter } from "../notifications/adapters/sms.adapter";
 import { EmailAdapter } from "../notifications/adapters/email.adapter";
 
@@ -34,7 +34,7 @@ export class OtpService {
       return await this.emailAdapter.send(target, subject, text, html, orgId);
     }
 
-    throw new Error(`Unsupported OTP channel: ${channel}`);
+    throw new BadRequestException(`Unsupported OTP channel: ${channel}`);
   }
 }
 

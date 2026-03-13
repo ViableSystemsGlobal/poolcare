@@ -17,7 +17,7 @@ interface JobWithLocation {
   };
 }
 
-interface OptimizationChange {
+export interface OptimizationChange {
   jobId: string;
   fromSeq: number;
   toSeq: number;

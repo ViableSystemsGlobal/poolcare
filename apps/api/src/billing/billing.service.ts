@@ -122,41 +122,45 @@ export class BillingService {
         let invoiceId: string | undefined;
         if (plan.pool.clientId) {
           try {
-            const invoiceNumber = await this.generateInvoiceNumber(plan.orgId);
             const dueDate = new Date(today);
             dueDate.setDate(dueDate.getDate() + 7); // Due in 7 days
 
-            const invoice = await prisma.invoice.create({
-              data: {
-                orgId: plan.orgId,
-                clientId: plan.pool.clientId,
-                poolId: plan.poolId,
-                invoiceNumber,
-                status: "sent",
-                currency: plan.currency || "GHS",
-                items: [
-                  {
-                    label: `${plan.template?.name || "Subscription"} - ${billingPeriodStart.toLocaleDateString()} to ${billingPeriodEnd.toLocaleDateString()}`,
-                    qty: 1,
-                    unitPriceCents: subtotalCents,
-                    taxPct: plan.taxPct || 0,
+            const invoice = await prisma.$transaction(async (tx) => {
+              const invoiceNumber = await this.nextInvoiceNumber(plan.orgId, tx);
+
+              return tx.invoice.create({
+                data: {
+                  orgId: plan.orgId,
+                  clientId: plan.pool.clientId,
+                  poolId: plan.poolId,
+                  invoiceNumber,
+                  status: "sent",
+                  currency: plan.currency || "GHS",
+                  items: [
+                    {
+                      label: `${plan.template?.name || "Subscription"} - ${billingPeriodStart.toLocaleDateString()} to ${billingPeriodEnd.toLocaleDateString()}`,
+                      qty: 1,
+                      unitPriceCents: subtotalCents,
+                      taxPct: plan.taxPct || 0,
+                    },
+                  ],
+                  subtotalCents,
+                  taxCents: taxAmountCents,
+                  discountCents: discountAmountCents,
+                  totalCents,
+                  dueDate,
+                  metadata: {
+                    servicePlanId: plan.id,
+                    subscriptionBillingId: billing.id,
+                    billingPeriodStart: billingPeriodStart.toISOString(),
+                    billingPeriodEnd: billingPeriodEnd.toISOString(),
                   },
-                ],
-                subtotalCents,
-                taxCents: taxAmountCents,
-                discountCents: discountAmountCents,
-                totalCents,
-                dueDate,
-                metadata: {
-                  servicePlanId: plan.id,
-                  subscriptionBillingId: billing.id,
-                  billingPeriodStart: billingPeriodStart.toISOString(),
-                  billingPeriodEnd: billingPeriodEnd.toISOString(),
                 },
-              },
+              });
             });
 
             invoiceId = invoice.id;
+            const invoiceNumber = invoice.invoiceNumber;
 
             // Link invoice to billing
             await prisma.subscriptionBilling.update({
@@ -245,48 +249,25 @@ export class BillingService {
   }
 
   /**
-   * Generate invoice number (same format as InvoicesService)
+   * Generate next invoice number inside an existing transaction.
+   * Uses a PostgreSQL advisory lock to prevent concurrent duplicates for the same org.
    */
-  private async generateInvoiceNumber(orgId: string, retryCount = 0): Promise<string> {
+  private async nextInvoiceNumber(orgId: string, tx: any): Promise<string> {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${orgId}))`;
+
     const year = new Date().getFullYear();
     const prefix = `INV-${year}-`;
 
-    // Use a transaction to get the latest invoice number atomically
-    const lastInvoice = await prisma.invoice.findFirst({
-      where: {
-        orgId,
-        invoiceNumber: {
-          startsWith: prefix,
-        },
-      },
+    const lastInvoice = await tx.invoice.findFirst({
+      where: { orgId, invoiceNumber: { startsWith: prefix } },
       orderBy: { invoiceNumber: "desc" },
     });
 
-    let nextNum: number;
-    if (!lastInvoice) {
-      nextNum = 1;
-    } else {
-      const lastNum = parseInt(lastInvoice.invoiceNumber.replace(prefix, ""));
-      nextNum = lastNum + 1;
-    }
+    const nextNum = lastInvoice
+      ? parseInt(lastInvoice.invoiceNumber.replace(prefix, ""), 10) + 1
+      : 1;
 
-    const invoiceNumber = `${prefix}${String(nextNum).padStart(4, "0")}`;
-
-    // Check if this number already exists (race condition check)
-    const existing = await prisma.invoice.findUnique({
-      where: { invoiceNumber },
-    });
-
-    if (existing) {
-      // If it exists and we haven't retried too many times, try next number
-      if (retryCount < 10) {
-        return this.generateInvoiceNumber(orgId, retryCount + 1);
-      }
-      // Fallback: add timestamp to ensure uniqueness
-      return `${prefix}${String(nextNum).padStart(4, "0")}-${Date.now().toString().slice(-4)}`;
-    }
-
-    return invoiceNumber;
+    return `${prefix}${String(nextNum).padStart(4, "0")}`;
   }
 
   /**

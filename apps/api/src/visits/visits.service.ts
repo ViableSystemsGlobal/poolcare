@@ -547,7 +547,7 @@ export class VisitsService {
       // Don't fail the completion if report generation fails
     });
 
-    // TODO: Trigger AI report writer and quality auditor (workers)
+    // AI visit summary + quality audit available on-demand via GET /ai/visits/:id/summary
 
     return updated;
   }
@@ -569,7 +569,7 @@ export class VisitsService {
     const client = pool.client;
 
     if (!plan || !pool || !client) {
-      throw new Error("Missing required data for invoice creation");
+      throw new BadRequestException("Missing required data for invoice creation");
     }
 
     // Calculate invoice items from service plan

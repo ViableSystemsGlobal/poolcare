@@ -1,4 +1,5 @@
 import { Body, Controller, Post, HttpCode, HttpStatus, NotFoundException } from "@nestjs/common";
+import { Throttle } from "@nestjs/throttler";
 import { AuthService, devOtpStore } from "./auth.service";
 import { OtpRequestDto, OtpVerifyDto } from "./dto";
 import { Public } from "./decorators/public.decorator";
@@ -8,6 +9,7 @@ export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Public()
+  @Throttle({ short: { ttl: 60000, limit: 5 } }) // max 5 OTP requests per minute per IP
   @Post("otp/request")
   @HttpCode(HttpStatus.OK)
   async requestOtp(@Body() dto: OtpRequestDto) {

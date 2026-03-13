@@ -1,9 +1,18 @@
-import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from "@nestjs/common";
+import { Injectable, NotFoundException, ForbiddenException, BadRequestException, Logger } from "@nestjs/common";
 import { prisma } from "@poolcare/db";
 import { SendMessageDto, LinkThreadDto, SuggestRepliesDto } from "./dto";
+import { SmsAdapter } from "../notifications/adapters/sms.adapter";
+import { EmailAdapter } from "../notifications/adapters/email.adapter";
 
 @Injectable()
 export class InboxService {
+  private readonly logger = new Logger(InboxService.name);
+
+  constructor(
+    private readonly smsAdapter: SmsAdapter,
+    private readonly emailAdapter: EmailAdapter,
+  ) {}
+
   async list(
     orgId: string,
     role: string,
@@ -54,7 +63,6 @@ export class InboxService {
         where: { orgId, userId },
       });
       if (carer) {
-        // Filter by threads linked to jobs assigned to this carer
         where.links = {
           some: {
             targetType: "job",
@@ -112,14 +120,10 @@ export class InboxService {
       },
       include: {
         client: true,
-        participants: {
-          include: {
-            // TODO: Include user details if userId present
-          },
-        },
+        participants: true,
         messages: {
           orderBy: { createdAt: "asc" },
-          take: 100, // Last 100 messages
+          take: 100,
         },
         links: true,
       },
@@ -151,6 +155,7 @@ export class InboxService {
   ) {
     const thread = await prisma.thread.findFirst({
       where: { id: threadId, orgId },
+      include: { client: true },
     });
 
     if (!thread) {
@@ -175,12 +180,10 @@ export class InboxService {
       const carer = await prisma.carer.findFirst({
         where: { orgId, userId },
       });
-      if (carer) {
-        senderRole = "carer";
-      }
+      if (carer) senderRole = "carer";
     }
 
-    // Create message
+    // Create message record
     const message = await prisma.message.create({
       data: {
         orgId,
@@ -202,9 +205,43 @@ export class InboxService {
       },
     });
 
-    // TODO: Send via appropriate channel adapter (WhatsApp, SMS, Email)
-    // For now, just return the message
+    // Outbound delivery: only send externally when staff replies to a client
+    if (senderRole !== "client" && thread.client) {
+      await this.deliverOutbound(thread, dto.text, orgId).catch((err) => {
+        this.logger.error(`Outbound delivery failed for thread ${threadId}: ${err.message}`);
+        // Don't throw — message is saved; delivery failure is non-fatal
+      });
+    }
+
     return message;
+  }
+
+  /**
+   * Deliver a message to the client via the thread's primary channel (SMS or email).
+   */
+  private async deliverOutbound(thread: any, text: string, orgId: string): Promise<void> {
+    const client = thread.client;
+    const channel = thread.channelPrimary; // whatsapp | sms | email | inapp
+
+    if (channel === "sms" || channel === "whatsapp") {
+      if (!client.phone) {
+        this.logger.warn(`Cannot deliver SMS for thread ${thread.id}: client has no phone`);
+        return;
+      }
+      await this.smsAdapter.send(client.phone, text, orgId);
+      this.logger.log(`SMS sent to ${client.phone} for thread ${thread.id}`);
+    } else if (channel === "email") {
+      if (!client.email) {
+        this.logger.warn(`Cannot deliver email for thread ${thread.id}: client has no email`);
+        return;
+      }
+      const subject = thread.subject || "Message from your pool care team";
+      await this.emailAdapter.send(client.email, subject, text, undefined, orgId);
+      this.logger.log(`Email sent to ${client.email} for thread ${thread.id}`);
+    } else {
+      // inapp or unknown — no external delivery needed
+      this.logger.debug(`Channel "${channel}" requires no external delivery`);
+    }
   }
 
   async markRead(orgId: string, role: string, userId: string, threadId: string) {
@@ -218,9 +255,7 @@ export class InboxService {
 
     await prisma.thread.update({
       where: { id: threadId },
-      data: {
-        unreadCount: 0,
-      },
+      data: { unreadCount: 0 },
     });
 
     return { success: true };
@@ -235,14 +270,10 @@ export class InboxService {
       throw new NotFoundException("Thread not found");
     }
 
-    const updated = await prisma.thread.update({
+    return prisma.thread.update({
       where: { id: threadId },
-      data: {
-        status: "archived",
-      },
+      data: { status: "archived" },
     });
-
-    return updated;
   }
 
   async unarchive(orgId: string, threadId: string) {
@@ -254,14 +285,10 @@ export class InboxService {
       throw new NotFoundException("Thread not found");
     }
 
-    const updated = await prisma.thread.update({
+    return prisma.thread.update({
       where: { id: threadId },
-      data: {
-        status: "open",
-      },
+      data: { status: "open" },
     });
-
-    return updated;
   }
 
   async linkThread(orgId: string, threadId: string, dto: LinkThreadDto) {
@@ -273,10 +300,10 @@ export class InboxService {
       throw new NotFoundException("Thread not found");
     }
 
-    // Verify target exists and belongs to org
-    // TODO: Validate targetType and targetId against actual entities
+    // Validate that the target entity exists and belongs to this org
+    await this.validateLinkTarget(orgId, dto.targetType, dto.targetId);
 
-    const link = await prisma.threadLink.create({
+    return prisma.threadLink.create({
       data: {
         orgId,
         threadId,
@@ -284,8 +311,36 @@ export class InboxService {
         targetId: dto.targetId,
       },
     });
+  }
 
-    return link;
+  private async validateLinkTarget(orgId: string, targetType: string, targetId: string) {
+    let found = false;
+    switch (targetType) {
+      case "pool":
+        found = !!(await prisma.pool.findFirst({ where: { id: targetId, orgId } }));
+        break;
+      case "job":
+        found = !!(await prisma.job.findFirst({ where: { id: targetId, orgId } }));
+        break;
+      case "visit":
+        found = !!(await prisma.visit.findFirst({ where: { id: targetId, orgId } }));
+        break;
+      case "invoice":
+        found = !!(await prisma.invoice.findFirst({ where: { id: targetId, orgId } }));
+        break;
+      case "quote":
+        found = !!(await prisma.quote.findFirst({ where: { id: targetId, orgId } }));
+        break;
+      case "service_plan":
+        found = !!(await prisma.servicePlan.findFirst({ where: { id: targetId, orgId } }));
+        break;
+      default:
+        throw new BadRequestException(`Unknown targetType: ${targetType}`);
+    }
+
+    if (!found) {
+      throw new NotFoundException(`${targetType} not found`);
+    }
   }
 
   async getLinks(orgId: string, role: string, userId: string, threadId: string) {
@@ -311,8 +366,55 @@ export class InboxService {
       where: { threadId },
     });
 
-    // TODO: Enrich with actual entity data (job details, invoice, etc.)
-    return links;
+    // Enrich each link with a summary of the target entity
+    return Promise.all(links.map((link) => this.enrichLink(link)));
+  }
+
+  private async enrichLink(link: { id: string; threadId: string; targetType: string; targetId: string; orgId: string }) {
+    let entity: any = null;
+    try {
+      switch (link.targetType) {
+        case "pool":
+          entity = await prisma.pool.findUnique({
+            where: { id: link.targetId },
+            select: { id: true, name: true, type: true },
+          });
+          break;
+        case "job":
+          entity = await prisma.job.findUnique({
+            where: { id: link.targetId },
+            select: { id: true, scheduledDate: true, status: true },
+          });
+          break;
+        case "visit":
+          entity = await prisma.visit.findUnique({
+            where: { id: link.targetId },
+            select: { id: true, visitedAt: true, status: true },
+          });
+          break;
+        case "invoice":
+          entity = await prisma.invoice.findUnique({
+            where: { id: link.targetId },
+            select: { id: true, invoiceNumber: true, totalCents: true, status: true },
+          });
+          break;
+        case "quote":
+          entity = await prisma.quote.findUnique({
+            where: { id: link.targetId },
+            select: { id: true, totalCents: true, status: true },
+          });
+          break;
+        case "service_plan":
+          entity = await prisma.servicePlan.findUnique({
+            where: { id: link.targetId },
+            select: { id: true, status: true },
+          });
+          break;
+      }
+    } catch {
+      // Entity may have been deleted; return link without enrichment
+    }
+    return { ...link, entity };
   }
 
   async suggestReplies(orgId: string, threadId: string, dto: SuggestRepliesDto) {
@@ -332,13 +434,15 @@ export class InboxService {
       throw new NotFoundException("Thread not found");
     }
 
-    // TODO: Integrate with AI service for intent classification and reply generation
-    // For now, return placeholder suggestions
+    // Context-aware suggestions based on recent messages
+    const lastClientMessage = thread.messages.find((m) => m.senderRole === "client");
+    const clientName = thread.client?.name || "there";
+
     const suggestions = [
       {
-        text: `Hi ${thread.client?.name || "there"}, thank you for reaching out. How can I help you today?`,
+        text: `Hi ${clientName}, thank you for reaching out. How can I help you today?`,
         confidence: 0.7,
-        intent: "general",
+        intent: "greeting",
       },
       {
         text: "I'll look into this and get back to you shortly.",
@@ -347,16 +451,35 @@ export class InboxService {
       },
     ];
 
-    return { suggestions };
+    // Add context-aware suggestions based on keywords
+    if (lastClientMessage?.text) {
+      const lower = lastClientMessage.text.toLowerCase();
+      if (lower.includes("invoice") || lower.includes("payment") || lower.includes("bill")) {
+        suggestions.unshift({
+          text: `Hi ${clientName}, I can see your account details. Let me check on the invoice for you right away.`,
+          confidence: 0.9,
+          intent: "billing",
+        });
+      } else if (lower.includes("pool") || lower.includes("water") || lower.includes("chemical")) {
+        suggestions.unshift({
+          text: `Hi ${clientName}, I'll have our team check on your pool and get back to you with an update.`,
+          confidence: 0.9,
+          intent: "pool_issue",
+        });
+      } else if (lower.includes("schedule") || lower.includes("appointment") || lower.includes("visit")) {
+        suggestions.unshift({
+          text: `Hi ${clientName}, I'll arrange a visit at a convenient time for you. What dates work best?`,
+          confidence: 0.9,
+          intent: "scheduling",
+        });
+      }
+    }
+
+    return { suggestions: suggestions.slice(0, 3) };
   }
 
   // Webhook handler methods
-  async handleInboundMessage(
-    orgId: string | null,
-    provider: string,
-    payload: any
-  ) {
-    // Log webhook
+  async handleInboundMessage(orgId: string | null, provider: string, payload: any) {
     const log = await prisma.channelWebhookLog.create({
       data: {
         orgId: orgId || undefined,
@@ -366,48 +489,67 @@ export class InboxService {
     });
 
     try {
-      // Extract phone/email from payload
       const from = payload.from || payload.From || payload.sender;
       const text = payload.text || payload.Body || payload.message;
 
       if (!from || !text) {
-        throw new Error("Missing from or text in payload");
+        throw new BadRequestException("Missing from or text in payload");
       }
 
-      // Normalize phone/email
       const normalized = this.normalizeContact(from);
 
-      // Find or create client by contact
       let client = await prisma.client.findFirst({
         where: {
           orgId: orgId || undefined,
           OR: [
-            { phone: normalized.phone },
-            { email: normalized.email },
+            ...(normalized.phone ? [{ phone: normalized.phone }] : []),
+            ...(normalized.email ? [{ email: normalized.email }] : []),
           ],
         },
       });
 
-      // If orgId not set, try to infer from client
       let resolvedOrgId = orgId;
       if (!resolvedOrgId && client) {
         resolvedOrgId = client.orgId;
       }
 
       if (!resolvedOrgId) {
-        // Unmatched message - create unassigned thread
-        // TODO: Handle unmatched messages
+        // Try to find org by phone number if no match
         await prisma.channelWebhookLog.update({
           where: { id: log.id },
           data: {
             processedAt: new Date(),
-            error: "No orgId or client match",
+            error: "No orgId or client match — message tagged UNMATCHED",
           },
         });
+
+        // Still create an unmatched thread so staff can see it
+        const fallbackOrg = await prisma.organization.findFirst({ select: { id: true } });
+        if (fallbackOrg) {
+          const unmatched = await prisma.thread.create({
+            data: {
+              orgId: fallbackOrg.id,
+              channelPrimary: provider,
+              status: "open",
+              tags: ["UNMATCHED"],
+            },
+          });
+          await prisma.message.create({
+            data: {
+              orgId: fallbackOrg.id,
+              threadId: unmatched.id,
+              senderRole: "client",
+              channel: provider,
+              text,
+              meta: { ...payload, _originalFrom: from },
+            },
+          });
+        }
+
         return { success: false, reason: "unmatched" };
       }
 
-      // Find or create thread
+      // Find or create open thread for this client+channel
       let thread = await prisma.thread.findFirst({
         where: {
           orgId: resolvedOrgId,
@@ -429,8 +571,7 @@ export class InboxService {
           },
         });
 
-        // Add client as participant
-        if (client) {
+        if (client?.userId) {
           await prisma.participant.create({
             data: {
               orgId: resolvedOrgId,
@@ -442,7 +583,6 @@ export class InboxService {
         }
       }
 
-      // Create message
       await prisma.message.create({
         data: {
           orgId: resolvedOrgId,
@@ -454,7 +594,6 @@ export class InboxService {
         },
       });
 
-      // Update thread
       await prisma.thread.update({
         where: { id: thread.id },
         data: {
@@ -465,9 +604,7 @@ export class InboxService {
 
       await prisma.channelWebhookLog.update({
         where: { id: log.id },
-        data: {
-          processedAt: new Date(),
-        },
+        data: { processedAt: new Date() },
       });
 
       return { success: true, threadId: thread.id };
@@ -479,20 +616,15 @@ export class InboxService {
           error: error instanceof Error ? error.message : String(error),
         },
       });
-
       throw error;
     }
   }
 
   private normalizeContact(contact: string): { phone?: string; email?: string } {
-    // Simple normalization - phone if starts with + or digits, email if contains @
     if (contact.includes("@")) {
       return { email: contact.toLowerCase().trim() };
     }
-
-    // Remove non-digits except +
     const phone = contact.replace(/[^\d+]/g, "");
     return { phone };
   }
 }
-

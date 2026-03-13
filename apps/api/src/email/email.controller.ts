@@ -5,6 +5,7 @@ import {
   Body,
   UseGuards,
   Query,
+  InternalServerErrorException,
 } from "@nestjs/common";
 import { EmailAdapter } from "../notifications/adapters/email.adapter";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
@@ -85,7 +86,7 @@ export class EmailController {
 
       return { messageId, success: true };
     } catch (error: any) {
-      throw new Error(`Failed to send email: ${error.message || "Unknown error"}`);
+      throw new InternalServerErrorException(`Failed to send email: ${error.message || "Unknown error"}`);
     }
   }
 

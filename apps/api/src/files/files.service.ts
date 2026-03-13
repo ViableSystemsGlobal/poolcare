@@ -59,7 +59,7 @@ export class FilesService {
       "text/html",
     ];
     if (!allowedTypes.includes(dto.contentType)) {
-      throw new Error(`Content type ${dto.contentType} not allowed`);
+      throw new BadRequestException(`Content type ${dto.contentType} not allowed`);
     }
 
     // Generate storage key

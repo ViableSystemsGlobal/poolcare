@@ -1,4 +1,4 @@
-import { Injectable, Logger, Inject, forwardRef } from "@nestjs/common";
+import { Injectable, Logger, Inject, forwardRef, InternalServerErrorException, ServiceUnavailableException, BadRequestException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { SettingsService } from "../../settings/settings.service";
 
@@ -97,7 +97,7 @@ export class SmsAdapter {
     
     // If no env vars, throw error
     this.logger.error("SMS provider not configured - no database settings and no environment variables");
-    throw new Error("SMS provider not configured");
+    throw new ServiceUnavailableException("SMS provider not configured");
   }
 
   async send(to: string, message: string, orgId?: string): Promise<string> {
@@ -108,7 +108,7 @@ export class SmsAdapter {
 
     if (!username || !password) {
       this.logger.error(`SMS provider not configured: username=${!!username}, password=${!!password}`);
-      throw new Error("SMS provider not configured");
+      throw new ServiceUnavailableException("SMS provider not configured");
     }
 
     if (provider === "deywuro" && username && password) {
@@ -136,17 +136,17 @@ export class SmsAdapter {
         if (!response.ok) {
           const errorText = await response.text();
           this.logger.error(`Deywuro API HTTP error: ${response.status} - ${errorText}`);
-          throw new Error(`Deywuro API HTTP error: ${response.status}`);
+          throw new InternalServerErrorException(`Deywuro API HTTP error: ${response.status}`);
         }
 
         const json = await response.json().catch((error) => {
           this.logger.error("Failed to parse Deywuro API response as JSON", error);
-          throw new Error("Invalid Deywuro API response");
+          throw new InternalServerErrorException("Invalid Deywuro API response");
         });
 
         if (!isDeywuroResponse(json)) {
           this.logger.error("Unexpected Deywuro API response shape", json);
-          throw new Error("Unexpected Deywuro API response");
+          throw new InternalServerErrorException("Unexpected Deywuro API response");
         }
 
         const data = json;
@@ -159,17 +159,17 @@ export class SmsAdapter {
           // Map response codes to meaningful errors
           switch (data.code) {
             case 401:
-              throw new Error("Invalid Deywuro credentials");
+              throw new InternalServerErrorException("Invalid Deywuro credentials");
             case 403:
-              throw new Error("Insufficient balance in Deywuro account");
+              throw new ServiceUnavailableException("Insufficient balance in Deywuro account");
             case 404:
-              throw new Error("Phone number not routable");
+              throw new BadRequestException("Phone number not routable");
             case 402:
-              throw new Error("Missing required fields");
+              throw new InternalServerErrorException("Missing required fields");
             case 500:
-              throw new Error("Deywuro server error");
+              throw new InternalServerErrorException("Deywuro server error");
             default:
-              throw new Error(errorMessage);
+              throw new InternalServerErrorException(errorMessage);
           }
         }
 
@@ -196,7 +196,7 @@ export class SmsAdapter {
       return `dev_ref_${Date.now()}`;
     }
 
-    throw new Error("SMS provider not configured");
+    throw new ServiceUnavailableException("SMS provider not configured");
   }
 
   /**
@@ -260,12 +260,12 @@ export class SmsAdapter {
         if (response.ok) {
           const json = await response.json().catch((error) => {
             this.logger.error("Failed to parse Deywuro bulk API response as JSON", error);
-            throw new Error("Invalid Deywuro API response");
+            throw new InternalServerErrorException("Invalid Deywuro API response");
           });
 
           if (!isDeywuroResponse(json)) {
             this.logger.error("Unexpected Deywuro bulk API response shape", json);
-            throw new Error("Unexpected Deywuro API response");
+            throw new InternalServerErrorException("Unexpected Deywuro API response");
           }
 
           if (json.code === 0) {

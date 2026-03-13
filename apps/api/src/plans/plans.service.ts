@@ -81,6 +81,9 @@ export class PlansService {
               version: true,
             },
           },
+          preferredCarer: {
+            select: { id: true, name: true },
+          },
         },
         orderBy: { createdAt: "desc" },
       }),
@@ -155,6 +158,7 @@ export class PlansService {
         status,
         nextVisitAt,
         notes: dto.notes,
+        preferredCarerId: dto.preferredCarerId || null,
         // Subscription fields
         billingType,
         autoRenew: dto.autoRenew || false,
@@ -169,6 +173,9 @@ export class PlansService {
             id: true,
             name: true,
           },
+        },
+        preferredCarer: {
+          select: { id: true, name: true },
         },
       },
     });
@@ -242,6 +249,7 @@ export class PlansService {
         status,
         nextVisitAt,
         notes: overrides?.notes,
+        preferredCarerId: overrides?.preferredCarerId || null,
         // Subscription fields from template
         billingType,
         autoRenew: overrides?.autoRenew ?? false,
@@ -256,6 +264,9 @@ export class PlansService {
             id: true,
             name: true,
           },
+        },
+        preferredCarer: {
+          select: { id: true, name: true },
         },
       },
     });
@@ -512,6 +523,9 @@ Thank you for choosing PoolCare!`;
             description: true,
           },
         },
+        preferredCarer: {
+          select: { id: true, name: true },
+        },
       },
     });
 
@@ -549,10 +563,14 @@ Thank you for choosing PoolCare!`;
         discountPct: dto.discountPct,
         endsOn: endsOnDate,
         notes: dto.notes,
+        ...(dto.preferredCarerId !== undefined
+          ? { preferredCarerId: dto.preferredCarerId }
+          : {}),
       },
       include: {
         pool: true,
         visitTemplate: true,
+        preferredCarer: { select: { id: true, name: true } },
       },
     });
 
@@ -1018,6 +1036,7 @@ Thank you for choosing PoolCare!`;
         templateVersion: plan.visitTemplateVersion,
         durationMin: plan.serviceDurationMin,
         slaMinutes,
+        assignedCarerId: (plan as any).preferredCarerId || null,
       });
 
       // Track the latest occurrence for nextVisitAt

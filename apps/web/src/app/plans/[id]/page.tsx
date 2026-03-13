@@ -15,6 +15,8 @@ import {
   MapPin,
   FileText,
   Activity,
+  Check,
+  X,
 } from "lucide-react";
 import {
   Table,
@@ -24,9 +26,17 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useTheme } from "@/contexts/theme-context";
 import { SkeletonMetricCard } from "@/components/ui/skeleton";
 import { formatCurrencyForDisplay } from "@/lib/utils";
+import { useToast } from "@/hooks/use-toast";
 
 interface ServicePlan {
   id: string;
@@ -58,6 +68,10 @@ interface ServicePlan {
     name: string;
     version: number;
   };
+  preferredCarer?: {
+    id: string;
+    name?: string;
+  } | null;
   _count?: {
     jobs: number;
   };
@@ -78,12 +92,16 @@ export default function ServicePlanDetailPage() {
   const params = useParams();
   const router = useRouter();
   const { getThemeClasses } = useTheme();
+  const { toast } = useToast();
   const theme = getThemeClasses();
   const planId = params.id as string;
 
   const [loading, setLoading] = useState(true);
   const [plan, setPlan] = useState<ServicePlan | null>(null);
   const [jobs, setJobs] = useState<Job[]>([]);
+  const [carers, setCarers] = useState<any[]>([]);
+  const [editingCarer, setEditingCarer] = useState(false);
+  const [selectedCarerId, setSelectedCarerId] = useState<string>("");
   const [calendarData, setCalendarData] = useState<any>(null);
   const [calendarLoading, setCalendarLoading] = useState(false);
   const [viewMode, setViewMode] = useState<"list" | "calendar">("list");
@@ -92,6 +110,7 @@ export default function ServicePlanDetailPage() {
   useEffect(() => {
     if (planId) {
       fetchPlanData();
+      fetchCarers();
     }
   }, [planId]);
 
@@ -128,6 +147,43 @@ export default function ServicePlanDetailPage() {
       console.error("Failed to fetch plan data:", error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchCarers = async () => {
+    try {
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+      const res = await fetch(`${API_URL}/carers?limit=100`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem("auth_token")}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setCarers(data.items || data || []);
+      }
+    } catch {}
+  };
+
+  const handleSavePreferredCarer = async () => {
+    try {
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+      const res = await fetch(`${API_URL}/service-plans/${planId}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
+        },
+        body: JSON.stringify({
+          preferredCarerId: selectedCarerId === "none" ? null : selectedCarerId || null,
+        }),
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        setPlan((p) => p ? { ...p, preferredCarer: updated.preferredCarer ?? null } : p);
+        setEditingCarer(false);
+        toast({ title: "Saved", description: "Preferred carer updated.", variant: "success" });
+      }
+    } catch {
+      toast({ title: "Error", description: "Failed to update preferred carer.", variant: "destructive" });
     }
   };
 
@@ -393,6 +449,53 @@ export default function ServicePlanDetailPage() {
                   </div>
                 </div>
               )}
+
+              {/* Preferred Carer */}
+              <div className="flex items-start gap-3">
+                <Users className="h-5 w-5 text-gray-400 mt-0.5" />
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-gray-900">Preferred Carer</p>
+                  {editingCarer ? (
+                    <div className="flex items-center gap-2 mt-1">
+                      <Select
+                        value={selectedCarerId}
+                        onValueChange={setSelectedCarerId}
+                      >
+                        <SelectTrigger className="h-8 text-sm">
+                          <SelectValue placeholder="No preference" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">No preference</SelectItem>
+                          {carers.map((c: any) => (
+                            <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <button onClick={handleSavePreferredCarer} className="text-green-600 hover:text-green-700">
+                        <Check className="h-4 w-4" />
+                      </button>
+                      <button onClick={() => setEditingCarer(false)} className="text-gray-400 hover:text-gray-600">
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm text-gray-600">
+                        {plan.preferredCarer?.name || "No preference"}
+                      </p>
+                      <button
+                        onClick={() => {
+                          setSelectedCarerId(plan.preferredCarer?.id || "none");
+                          setEditingCarer(true);
+                        }}
+                        className="text-gray-400 hover:text-gray-600"
+                      >
+                        <Edit className="h-3 w-3" />
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
             </CardContent>
           </Card>
 

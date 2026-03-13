@@ -81,5 +81,9 @@ export class CreatePlanDto {
   @IsOptional()
   @IsString()
   templateId?: string; // Create from subscription template
+
+  @IsOptional()
+  @IsString()
+  preferredCarerId?: string; // Preferred carer for auto-generated jobs
 }
 
