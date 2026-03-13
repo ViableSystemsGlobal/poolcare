@@ -506,6 +506,54 @@ class ApiClient {
     });
   }
 
+  // Clients
+  async searchClients(query: string) {
+    const qs = new URLSearchParams({ query, limit: "20" }).toString();
+    return this.request<{ items: any[]; total: number }>(`/clients?${qs}`);
+  }
+
+  async createClient(data: { name: string; phone?: string; email?: string; notes?: string }) {
+    return this.request<any>("/clients", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  // Pools
+  async createPool(data: {
+    clientId: string;
+    name?: string;
+    address?: string;
+    volumeL?: number;
+    surfaceType?: string;
+    poolType?: string;
+    filtrationType?: string;
+    imageUrls?: string[];
+    notes?: string;
+  }) {
+    return this.request<any>("/pools", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async uploadPoolImage(imageUri: string, fileName: string, mimeType: string) {
+    const formData = new FormData();
+    formData.append("image", { uri: imageUri, name: fileName, type: mimeType } as any);
+    const token = await this.getAuthToken();
+    const url = `${getBaseUrl()}/pools/upload-image`;
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: formData,
+    });
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ message: response.statusText }));
+      throw new Error(errorData?.message || response.statusText);
+    }
+    return response.json() as Promise<{ imageUrl: string }>;
+  }
+
   async getNotifications(params?: { limit?: number; page?: number }) {
     const query = new URLSearchParams();
     if (params?.limit != null) query.set("limit", String(params.limit));

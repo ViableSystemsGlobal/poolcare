@@ -219,6 +219,58 @@ export class SettingsController {
     }
   }
 
+  @Post("upload-request-card-image")
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "MANAGER")
+  @UseInterceptors(FileInterceptor("requestCardImage"))
+  async uploadRequestCardImage(
+    @CurrentUser() user: { org_id: string },
+    @UploadedFile(
+      new ParseFilePipe({
+        fileIsRequired: true,
+        validators: [
+          new MaxFileSizeValidator({ maxSize: 2 * 1024 * 1024 }),
+          new FileTypeValidator({ fileType: /(jpeg|jpg|png|webp)$/ }),
+        ],
+      })
+    )
+    file: Express.Multer.File
+  ) {
+    try {
+      const requestCardImageUrl = await this.filesService.uploadImage(user.org_id, file, "request_card_image", user.org_id);
+      await this.settingsService.updateOrgSettings(user.org_id, { profile: { requestCardImageUrl } });
+      return { requestCardImageUrl };
+    } catch (error: any) {
+      throw new BadRequestException(error.message || "Failed to upload request card image");
+    }
+  }
+
+  @Post("upload-chat-card-image")
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "MANAGER")
+  @UseInterceptors(FileInterceptor("chatCardImage"))
+  async uploadChatCardImage(
+    @CurrentUser() user: { org_id: string },
+    @UploadedFile(
+      new ParseFilePipe({
+        fileIsRequired: true,
+        validators: [
+          new MaxFileSizeValidator({ maxSize: 2 * 1024 * 1024 }),
+          new FileTypeValidator({ fileType: /(jpeg|jpg|png|webp)$/ }),
+        ],
+      })
+    )
+    file: Express.Multer.File
+  ) {
+    try {
+      const chatCardImageUrl = await this.filesService.uploadImage(user.org_id, file, "chat_card_image", user.org_id);
+      await this.settingsService.updateOrgSettings(user.org_id, { profile: { chatCardImageUrl } });
+      return { chatCardImageUrl };
+    } catch (error: any) {
+      throw new BadRequestException(error.message || "Failed to upload chat card image");
+    }
+  }
+
   @Post("upload-favicon")
   @UseGuards(RolesGuard)
   @Roles("ADMIN", "MANAGER")

@@ -118,6 +118,7 @@ function LayoutInner() {
         <Stack.Screen name="earnings" />
         <Stack.Screen name="notifications" />
         <Stack.Screen name="jobs/[id]" options={{ headerShown: false }} />
+        <Stack.Screen name="onboard-pool" options={{ headerShown: false }} />
       </Stack>
       {showNav && <BottomNav />}
     </View>

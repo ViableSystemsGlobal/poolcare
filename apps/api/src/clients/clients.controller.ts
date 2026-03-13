@@ -48,7 +48,7 @@ export class ClientsController {
 
   @Post()
   @UseGuards(RolesGuard)
-  @Roles("ADMIN", "MANAGER")
+  @Roles("ADMIN", "MANAGER", "CARER")
   async create(
     @CurrentUser() user: { org_id: string },
     @Body() dto: CreateClientDto

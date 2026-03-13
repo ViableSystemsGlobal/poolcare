@@ -2,6 +2,8 @@ import { useState, useEffect, useMemo } from "react";
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, RefreshControl, FlatList, Dimensions, Image, Alert, ActivityIndicator } from "react-native";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
+import * as Location from "expo-location";
 import { api } from "../src/lib/api-client";
 import { fixUrlForMobile } from "../src/lib/network-utils";
 import { useTheme } from "../src/contexts/ThemeContext";
@@ -10,7 +12,7 @@ import Loader from "../src/components/Loader";
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const POOL_CARD_WIDTH = SCREEN_WIDTH - 40;
 const POOL_CARD_WIDTH_75 = SCREEN_WIDTH * 0.75;
-const NEXT_VISIT_CARD_WIDTH = SCREEN_WIDTH * 0.85;
+const NEXT_VISIT_CARD_WIDTH = SCREEN_WIDTH - 40;
 
 const DAILY_TIPS = [
   "Keep your pump running 8h/day this week for clear water.",
@@ -32,7 +34,20 @@ function getTimeBasedGreeting(): string {
   return "Good Evening";
 }
 
-const SUCCESS_COLOR = "#16a34a"; // Green for success states
+const SUCCESS_COLOR = "#16a34a";
+
+function weatherEmoji(code: number): string {
+  if (code === 0) return "☀️";
+  if (code <= 2) return "⛅";
+  if (code <= 3) return "☁️";
+  if (code <= 48) return "🌫️";
+  if (code <= 57) return "🌦️";
+  if (code <= 67) return "🌧️";
+  if (code <= 77) return "🌨️";
+  if (code <= 82) return "🌧️";
+  if (code <= 86) return "❄️";
+  return "⛈️";
+}
 
 interface Pool {
   id: string;
@@ -95,8 +110,13 @@ export default function ClientDashboard() {
   const [currentVisitIndex, setCurrentVisitIndex] = useState(0);
   const [checkingAuth, setCheckingAuth] = useState(true);
   const [homeCardImageUrl, setHomeCardImageUrl] = useState<string | null>(null);
+  const [requestCardImageUrl, setRequestCardImageUrl] = useState<string | null>(null);
+  const [chatCardImageUrl, setChatCardImageUrl] = useState<string | null>(null);
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [userFirstName, setUserFirstName] = useState<string>("");
+  const [userInitials, setUserInitials] = useState<string>("");
+  const [userProfileImageUrl, setUserProfileImageUrl] = useState<string | null>(null);
+  const [weather, setWeather] = useState<{ temp: number; emoji: string } | null>(null);
 
   useEffect(() => {
     // Check if user is authenticated
@@ -122,6 +142,23 @@ export default function ClientDashboard() {
     checkAuth();
   }, []);
 
+  useEffect(() => {
+    (async () => {
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== "granted") return;
+        const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Low });
+        const { latitude, longitude } = loc.coords;
+        const res = await fetch(
+          `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current_weather=true&temperature_unit=celsius`
+        );
+        const data = await res.json();
+        const cw = data.current_weather;
+        setWeather({ temp: Math.round(cw.temperature), emoji: weatherEmoji(cw.weathercode) });
+      } catch {}
+    })();
+  }, []);
+
   const loadDashboard = async () => {
     try {
       setLoading(true);
@@ -137,22 +174,30 @@ export default function ClientDashboard() {
 
       const profile = (orgSettingsResponse?.profile || {}) as { homeCardImageUrl?: string | null; logoUrl?: string | null; themeColor?: string; customColorHex?: string | null };
       setThemeFromOrgProfile(profile);
-      setHomeCardImageUrl(profile.homeCardImageUrl && profile.homeCardImageUrl.trim() ? profile.homeCardImageUrl.trim() : null);
-      setLogoUrl(profile.logoUrl && profile.logoUrl.trim() ? profile.logoUrl.trim() : null);
+      setHomeCardImageUrl(profile.homeCardImageUrl?.trim() || null);
+      setRequestCardImageUrl((profile as any).requestCardImageUrl?.trim() || null);
+      setChatCardImageUrl((profile as any).chatCardImageUrl?.trim() || null);
+      setLogoUrl(profile.logoUrl?.trim() || null);
 
       // Resolve user name: start with cached value, then fetch live from API
       const storedUser = await api.getStoredUser();
-      const cachedFirst = storedUser?.name?.trim().split(/\s+/)[0] || "";
-      if (cachedFirst) setUserFirstName(cachedFirst);
+      const cachedName = storedUser?.name?.trim() || "";
+      if (cachedName) {
+        const parts = cachedName.split(/\s+/);
+        setUserFirstName(parts[0]);
+        setUserInitials((parts[0][0] + (parts[1]?.[0] || "")).toUpperCase());
+      }
       try {
         const me = await api.getMe() as any;
         const liveName = me?.user?.name || me?.name || null;
         if (liveName) {
-          const liveFirst = liveName.trim().split(/\s+/)[0];
-          setUserFirstName(liveFirst);
-          // Cache the resolved name so it's available immediately on next launch
+          const parts = liveName.trim().split(/\s+/);
+          setUserFirstName(parts[0]);
+          setUserInitials((parts[0][0] + (parts[1]?.[0] || "")).toUpperCase());
           await api.updateStoredUser({ name: liveName });
         }
+        const imageUrl = me?.user?.profileImageUrl || null;
+        if (imageUrl) setUserProfileImageUrl(fixUrlForMobile(imageUrl));
       } catch {
         // Fallback: keep cached name, don't crash dashboard load
       }
@@ -257,14 +302,7 @@ export default function ClientDashboard() {
         };
       });
 
-      setNextVisits(nextVisitsData.length > 0 ? nextVisitsData : [
-        {
-          date: "No upcoming visits",
-          time: "",
-          status: "None",
-          location: "",
-        },
-      ]);
+      setNextVisits(nextVisitsData);
 
       // Transform invoices - keep totalCents/paidCents for balance owed
       const invoicesData: Invoice[] = ((invoicesResponse as any).items || invoicesResponse || []).map((invoice: any) => {
@@ -341,83 +379,84 @@ export default function ClientDashboard() {
   };
 
 
-  const renderNextVisitCard = ({ item, index }: { item: NextVisit; index: number }) => {
+  const renderNextVisitCard = ({ item }: { item: NextVisit; index: number }) => {
     return (
-      <TouchableOpacity 
-        style={[styles.nextVisitCard, { width: NEXT_VISIT_CARD_WIDTH }]}
-        onPress={() => {
-          if (item.id) {
-            // Navigate to visit/job detail page
-            router.push(`/visits/${item.id}`);
-          }
-        }}
-        activeOpacity={0.7}
+      <TouchableOpacity
+        style={[styles.nextVisitCard, { width: NEXT_VISIT_CARD_WIDTH, borderLeftColor: themeColor }]}
+        onPress={() => { if (item.id) router.push(`/visits/${item.id}`); }}
+        activeOpacity={0.75}
       >
-        <View style={styles.nextVisitContentWrapper}>
-          <View style={styles.nextVisitContent}>
-            <View style={styles.nextVisitHeader}>
-              <View style={[styles.calendarIcon, { borderColor: themeColor }]}>
-                <Ionicons name="calendar" size={18} color={themeColor} />
-              </View>
-              <Text style={styles.nextVisitLabel}>Next Visit</Text>
-            </View>
-            <Text style={styles.nextVisitDate}>{item.date}</Text>
-            <View style={styles.nextVisitDetails}>
-              <View style={styles.detailItem}>
-                <Ionicons name="time-outline" size={14} color="#6b7280" />
-                <Text style={styles.nextVisitTime}>{item.time}</Text>
-              </View>
-              <View style={styles.detailItem}>
-                <Ionicons name="location-outline" size={14} color="#6b7280" />
-                <Text style={styles.locationText} numberOfLines={1}>{item.location}</Text>
-              </View>
-            </View>
+        <View style={styles.nextVisitTopRow}>
+          <Text style={styles.nextVisitLabel}>NEXT VISIT</Text>
+          <View style={[styles.visitStatusPill, { backgroundColor: themeColor + "20" }]}>
+            <Text style={[styles.visitStatusText, { color: themeColor }]}>{item.status}</Text>
           </View>
         </View>
-        <View style={[styles.statusButton, { backgroundColor: themeColor }]}>
-          <Text style={styles.statusButtonText}>{item.status}</Text>
-        </View>
+        <Text style={styles.nextVisitDate}>{item.date}</Text>
+        {item.time ? (
+          <View style={styles.visitDetailRow}>
+            <Ionicons name="time-outline" size={14} color="#9ca3af" />
+            <Text style={styles.visitDetailText}>{item.time}</Text>
+          </View>
+        ) : null}
+        {item.location ? (
+          <View style={styles.visitDetailRow}>
+            <Ionicons name="location-outline" size={14} color="#9ca3af" />
+            <Text style={styles.visitDetailText} numberOfLines={1}>{item.location}</Text>
+          </View>
+        ) : null}
       </TouchableOpacity>
     );
   };
 
   const renderPoolCard = ({ item, index }: { item: Pool; index: number }) => {
     const chemistry = getChemistryStatus(item.lastReading);
-    const poolImage = (item.photos && item.photos.length > 0 ? item.photos[0] : null) || 
+    const poolImage = (item.photos && item.photos.length > 0 ? item.photos[0] : null) ||
                       (item.imageUrls && item.imageUrls.length > 0 ? item.imageUrls[0] : null);
-    
+    const hasChemData = chemistry.status !== "unknown";
+
     return (
       <TouchableOpacity
         style={[styles.poolCard, { width: POOL_CARD_WIDTH_75 }]}
         onPress={() => router.push(`/pools/${item.id}`)}
-        activeOpacity={0.9}
+        activeOpacity={0.92}
       >
-        <View style={styles.poolCardImageContainer}>
-          {poolImage ? (
-            <Image
-              source={{ uri: poolImage }}
-              style={styles.poolCardBackgroundImage}
-              resizeMode="cover"
-            />
-          ) : (
-            <View style={[styles.poolCardBackgroundImage, { backgroundColor: "#e5e7eb", alignItems: "center", justifyContent: "center" }]}>
-              <Ionicons name="water" size={48} color="#9ca3af" />
-            </View>
-          )}
-          
-          <View style={styles.poolStatusBadge}>
-            <View style={[styles.poolStatusDot, { backgroundColor: chemistry.color }]} />
-            <Text style={styles.poolStatusText}>{chemistry.label}</Text>
+        {poolImage ? (
+          <Image
+            source={{ uri: poolImage }}
+            style={StyleSheet.absoluteFillObject}
+            resizeMode="cover"
+          />
+        ) : (
+          <View style={[StyleSheet.absoluteFillObject, { backgroundColor: "#c7d2dc" }]}>
+            <Ionicons name="water" size={56} color="#9ca3af" style={{ position: "absolute", bottom: 70, alignSelf: "center" }} />
           </View>
-        </View>
+        )}
 
+        {/* Strong gradient from bottom */}
+        <LinearGradient
+          colors={["transparent", "rgba(0,0,0,0.20)", "rgba(0,0,0,0.72)"]}
+          locations={[0.3, 0.55, 1]}
+          style={styles.poolCardGradient}
+        />
+
+        {/* Chemistry badge — top right, only when data exists */}
+        {hasChemData && (
+          <View style={[styles.poolStatusBadge, { borderColor: chemistry.color + "50" }]}>
+            <View style={[styles.poolStatusDot, { backgroundColor: chemistry.color }]} />
+            <Text style={[styles.poolStatusText, { color: chemistry.color }]}>{chemistry.label}</Text>
+          </View>
+        )}
+
+        {/* Name + address over gradient */}
         <View style={styles.poolCardContent}>
           <Text style={styles.poolName} numberOfLines={1}>{item.name}</Text>
           {item.address ? (
-            <Text style={styles.poolAddress} numberOfLines={1}>{item.address}</Text>
-          ) : (
-            <Text style={styles.poolAddress}>No address set</Text>
-          )}
+            <View style={styles.poolAddressRow}>
+              <Ionicons name="location-outline" size={11} color="rgba(255,255,255,0.65)" />
+              <Text style={styles.poolAddress} numberOfLines={1}>{item.address}</Text>
+            </View>
+          ) : null}
         </View>
       </TouchableOpacity>
     );
@@ -430,17 +469,24 @@ export default function ClientDashboard() {
 
   return (
     <View style={styles.container}>
-      {/* Custom Header - Logo centered (large), settings left, icons right */}
+      {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity
           style={styles.headerLeft}
           onPress={() => router.push("/settings")}
-          activeOpacity={0.7}
+          activeOpacity={0.8}
         >
-          <View style={styles.profileImage}>
-            <Ionicons name="person" size={24} color={themeColor} />
+          <View style={[styles.avatarCircle, { backgroundColor: themeColor }]}>
+            {userProfileImageUrl ? (
+              <Image source={{ uri: userProfileImageUrl }} style={styles.avatarImage} />
+            ) : userInitials ? (
+              <Text style={styles.avatarInitials}>{userInitials}</Text>
+            ) : (
+              <Ionicons name="person" size={18} color="#ffffff" />
+            )}
           </View>
         </TouchableOpacity>
+
         <View style={styles.headerCenter}>
           {logoUrl ? (
             <Image
@@ -452,11 +498,14 @@ export default function ClientDashboard() {
             <Text style={[styles.headerLogoPlaceholder, { color: themeColor }]}>PoolCare</Text>
           )}
         </View>
-        <View style={styles.headerRight}>
-          <TouchableOpacity style={styles.notificationButton} onPress={() => router.push("/notifications")}>
-            <Ionicons name="notifications-outline" size={24} color="#111827" />
-          </TouchableOpacity>
-        </View>
+
+        <TouchableOpacity
+          style={styles.notificationButton}
+          onPress={() => router.push("/notifications")}
+          activeOpacity={0.8}
+        >
+          <Ionicons name="notifications-outline" size={22} color="#374151" />
+        </TouchableOpacity>
       </View>
 
       {loading && !refreshing ? (
@@ -475,51 +524,93 @@ export default function ClientDashboard() {
         <Text style={styles.greetingAboveCard}>
           {getTimeBasedGreeting()}{userFirstName ? ` ${userFirstName}` : ""}
         </Text>
+        <View style={styles.greetingDateRow}>
+          <Text style={styles.greetingDate}>
+            Today is {new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
+          </Text>
+          {weather && (
+            <Text style={styles.weatherText}>{weather.emoji} {weather.temp}°C</Text>
+          )}
+        </View>
 
-        {/* Balance Owed card — total includes invoice balances + pending quotes */}
-        <TouchableOpacity
-          style={styles.balanceCard}
-          onPress={() => router.push("/billing")}
-          activeOpacity={0.7}
-        >
-          <View style={[styles.balanceCardContent, homeCardImageUrl ? styles.balanceCardContentWithImage : {}]}>
-            <View style={styles.financialCardHeader}>
-              <View style={styles.financialCardTitleRow}>
-                <Ionicons name="wallet-outline" size={16} color="#6b7280" />
-                <Text style={styles.financialCardTitle}>Balance Owed</Text>
+        {/* Balance Owed card */}
+        <TouchableOpacity onPress={() => router.push("/billing")} activeOpacity={0.85} style={styles.balanceCardWrapper}>
+          <LinearGradient
+            colors={[themeColor, themeColor + "bb"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.balanceCard}
+          >
+            <View style={styles.balanceDecorCircle1} />
+            <View style={styles.balanceDecorCircle2} />
+            <View style={[styles.balanceCardContent, homeCardImageUrl ? styles.balanceCardContentWithImage : {}]}>
+              <View style={styles.balanceTopRow}>
+                <View style={styles.balanceLabelRow}>
+                  <Ionicons name="wallet-outline" size={14} color="rgba(255,255,255,0.75)" />
+                  <Text style={styles.balanceLabel}>Balance Owed</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={16} color="rgba(255,255,255,0.5)" />
               </View>
+              <Text style={styles.balanceAmount}>GH₵{formatAmount(balanceOwed)}</Text>
+              <Text style={styles.balanceSub}>Tap to view billing details</Text>
             </View>
-            <Text style={styles.financialCardAmount}>GH₵{formatAmount(balanceOwed)}</Text>
-            <Text style={styles.financialCardRef}>Tap to view billing</Text>
-          </View>
-
-          {homeCardImageUrl ? (
-            <Image
-              source={{ uri: fixUrlForMobile(homeCardImageUrl) }}
-              style={styles.homeCardImage}
-              resizeMode="cover"
-            />
-          ) : null}
+            {homeCardImageUrl ? (
+              <Image
+                source={{ uri: fixUrlForMobile(homeCardImageUrl) }}
+                style={styles.homeCardImage}
+                resizeMode="cover"
+              />
+            ) : null}
+          </LinearGradient>
         </TouchableOpacity>
 
-        {/* Request or report (one screen: book a visit / report an issue) + Chat */}
-        <View style={styles.requestButtonsRow}>
-          <TouchableOpacity 
-            style={styles.requestButtonCompact}
+        {/* Quick action cards */}
+        <View style={styles.actionCardsRow}>
+          <TouchableOpacity
+            style={styles.actionCard}
             onPress={() => router.push("/book-service")}
-            activeOpacity={0.7}
+            activeOpacity={0.75}
           >
-            <Ionicons name="create-outline" size={22} color={themeColor} />
-            <Text style={styles.requestButtonCompactText} numberOfLines={2}>Request or report</Text>
-            <Text style={styles.requestButtonSubtext}>Book a visit • Report an issue</Text>
+            {requestCardImageUrl ? (
+              <>
+                <Image source={{ uri: fixUrlForMobile(requestCardImageUrl) }} style={StyleSheet.absoluteFillObject} resizeMode="cover" />
+                <LinearGradient colors={["rgba(0,0,0,0.18)", "rgba(0,0,0,0.55)"]} style={StyleSheet.absoluteFillObject} />
+                <View style={[styles.actionCardIcon, { backgroundColor: "rgba(255,255,255,0.22)" }]}>
+                  <Ionicons name="create-outline" size={26} color="#ffffff" />
+                </View>
+                <Text style={[styles.actionCardTitle, { color: "#ffffff" }]}>{"Request\nor Report"}</Text>
+              </>
+            ) : (
+              <>
+                <View style={[styles.actionCardIcon, { backgroundColor: themeColor }]}>
+                  <Ionicons name="create-outline" size={26} color="#ffffff" />
+                </View>
+                <Text style={styles.actionCardTitle}>{"Request\nor Report"}</Text>
+              </>
+            )}
           </TouchableOpacity>
-          <TouchableOpacity 
-            style={styles.requestButtonCompact}
+          <TouchableOpacity
+            style={styles.actionCard}
             onPress={() => router.push("/kwame-ai")}
-            activeOpacity={0.7}
+            activeOpacity={0.75}
           >
-            <Ionicons name="chatbubble-ellipses-outline" size={22} color={themeColor} />
-            <Text style={styles.requestButtonCompactText} numberOfLines={2}>Chat / Ask</Text>
+            {chatCardImageUrl ? (
+              <>
+                <Image source={{ uri: fixUrlForMobile(chatCardImageUrl) }} style={StyleSheet.absoluteFillObject} resizeMode="cover" />
+                <LinearGradient colors={["rgba(0,0,0,0.18)", "rgba(0,0,0,0.55)"]} style={StyleSheet.absoluteFillObject} />
+                <View style={[styles.actionCardIcon, { backgroundColor: "rgba(255,255,255,0.22)" }]}>
+                  <Ionicons name="chatbubble-ellipses-outline" size={26} color="#ffffff" />
+                </View>
+                <Text style={[styles.actionCardTitle, { color: "#ffffff" }]}>{"Chat\n/ Ask"}</Text>
+              </>
+            ) : (
+              <>
+                <View style={[styles.actionCardIcon, { backgroundColor: themeColor }]}>
+                  <Ionicons name="chatbubble-ellipses-outline" size={26} color="#ffffff" />
+                </View>
+                <Text style={styles.actionCardTitle}>{"Chat\n/ Ask"}</Text>
+              </>
+            )}
           </TouchableOpacity>
         </View>
 
@@ -556,16 +647,25 @@ export default function ClientDashboard() {
             )}
           </View>
         ) : (
-          <View style={styles.emptyState}>
-            <Ionicons name="calendar-outline" size={48} color="#d1d5db" />
-            <Text style={styles.emptyStateTitle}>No upcoming visits</Text>
-            <Text style={styles.emptyStateText}>Your next scheduled visit will appear here</Text>
+          <View style={styles.noVisitsRow}>
+            <View style={[styles.noVisitsIconBox, { backgroundColor: themeColor + "15" }]}>
+              <Ionicons name="calendar-outline" size={20} color={themeColor} />
+            </View>
+            <View style={styles.noVisitsTextBlock}>
+              <Text style={styles.noVisitsTitle}>No upcoming visits</Text>
+              <Text style={styles.noVisitsSub}>Your next service will appear here</Text>
+            </View>
           </View>
         )}
 
         {/* Swipeable Pools Card */}
         <View style={styles.poolsSection}>
-          <Text style={styles.sectionTitle}>Your Pools</Text>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Your Pools</Text>
+            <TouchableOpacity onPress={() => router.push("/pools")} activeOpacity={0.7}>
+              <Text style={[styles.sectionSeeAll, { color: themeColor }]}>See all</Text>
+            </TouchableOpacity>
+          </View>
           {pools.length > 0 ? (
             <>
               <FlatList
@@ -642,21 +742,34 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
     paddingHorizontal: 20,
-    paddingTop: 60,
-    paddingBottom: 20,
+    paddingTop: 56,
+    paddingBottom: 16,
     backgroundColor: "#ffffff",
     borderBottomWidth: 1,
     borderBottomColor: "#f3f4f6",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.03,
-    shadowRadius: 8,
-    elevation: 3,
     zIndex: 10,
   },
   headerLeft: {
-    width: 40,
+    width: 44,
     alignItems: "flex-start",
+  },
+  avatarCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  avatarImage: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+  },
+  avatarInitials: {
+    fontSize: 15,
+    fontWeight: "800",
+    color: "#ffffff",
+    letterSpacing: 0.5,
   },
   headerCenter: {
     flex: 1,
@@ -664,56 +777,20 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   headerLogo: {
-    width: 180,
-    height: 56,
+    width: 160,
+    height: 52,
   },
   headerLogoPlaceholder: {
     fontSize: 20,
     fontWeight: "700",
   },
-  profileImage: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "#ffffff",
-    justifyContent: "center",
-    alignItems: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  headerRight: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-  },
-  headerIconButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "#ffffff",
-    justifyContent: "center",
-    alignItems: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
-  },
   notificationButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "#ffffff",
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "#f3f4f6",
     justifyContent: "center",
     alignItems: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
   },
   scrollView: {
     flex: 1,
@@ -726,8 +803,24 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: "800",
     color: "#111827",
-    marginBottom: 16,
+    marginBottom: 4,
     letterSpacing: -0.5,
+  },
+  greetingDateRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 16,
+  },
+  greetingDate: {
+    fontSize: 15,
+    color: "#9ca3af",
+    fontWeight: "500",
+  },
+  weatherText: {
+    fontSize: 15,
+    color: "#6b7280",
+    fontWeight: "600",
   },
   visitsSection: {
     marginBottom: 20,
@@ -740,107 +833,124 @@ const styles = StyleSheet.create({
     backgroundColor: "#ffffff",
     borderRadius: 16,
     marginRight: 12,
-    padding: 16,
+    padding: 20,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
+    shadowOpacity: 0.08,
     shadowRadius: 12,
     elevation: 4,
+    borderLeftWidth: 4,
+  },
+  nextVisitTopRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    minHeight: 110,
-  },
-  nextVisitContentWrapper: {
-    flex: 1,
-    marginRight: 12,
-  },
-  nextVisitContent: {
-    flex: 1,
+    marginBottom: 10,
   },
   nextVisitLabel: {
-    fontSize: 13,
+    fontSize: 11,
     fontWeight: "700",
-    color: "#6b7280",
+    color: "#9ca3af",
+    textTransform: "uppercase",
+    letterSpacing: 1,
+  },
+  visitStatusPill: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 20,
+  },
+  visitStatusText: {
+    fontSize: 11,
+    fontWeight: "700",
     textTransform: "uppercase",
     letterSpacing: 0.5,
   },
   nextVisitDate: {
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: "800",
     color: "#111827",
-    marginBottom: 12,
     letterSpacing: -0.5,
+    marginBottom: 12,
   },
-  nextVisitTime: {
+  visitDetailRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+    marginTop: 5,
+  },
+  visitDetailText: {
     fontSize: 14,
-    color: "#4b5563",
-    fontWeight: "500",
-  },
-  nextVisitHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 8,
-    gap: 8,
-  },
-  calendarIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 10,
-    borderWidth: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "#ffffff",
-  },
-  nextVisitDetails: {
-    gap: 6,
-  },
-  detailItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-  locationRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginTop: 2,
-  },
-  statusButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 12,
-    alignSelf: "center",
-  },
-  statusButtonText: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: "#ffffff",
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-  },
-  locationText: {
-    fontSize: 14,
-    color: "#4b5563",
+    color: "#6b7280",
     fontWeight: "500",
     flex: 1,
   },
-  balanceCard: {
-    backgroundColor: "#ffffff",
-    borderRadius: 16,
-    overflow: "hidden",
+  balanceCardWrapper: {
     marginBottom: 16,
-    minHeight: 120,
+    borderRadius: 20,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.18,
+    shadowRadius: 16,
+    elevation: 8,
+  },
+  balanceCard: {
+    borderRadius: 20,
+    overflow: "hidden",
+    minHeight: 130,
+    justifyContent: "center",
+  },
+  balanceDecorCircle1: {
+    position: "absolute",
+    width: 180,
+    height: 180,
+    borderRadius: 90,
+    backgroundColor: "rgba(255,255,255,0.08)",
+    top: -60,
+    right: -40,
+  },
+  balanceDecorCircle2: {
+    position: "absolute",
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: "rgba(255,255,255,0.06)",
+    bottom: -50,
+    right: 80,
   },
   balanceCardContent: {
-    padding: 20,
+    padding: 24,
   },
   balanceCardContentWithImage: {
     paddingRight: 132,
+  },
+  balanceTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 10,
+  },
+  balanceLabelRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  balanceLabel: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "rgba(255,255,255,0.8)",
+    letterSpacing: 0.3,
+  },
+  balanceAmount: {
+    fontSize: 30,
+    fontWeight: "800",
+    color: "#ffffff",
+    letterSpacing: -1,
+    marginBottom: 6,
+  },
+  balanceSub: {
+    fontSize: 13,
+    color: "rgba(255,255,255,0.65)",
+    fontWeight: "500",
   },
   homeCardImage: {
     position: "absolute",
@@ -849,167 +959,93 @@ const styles = StyleSheet.create({
     bottom: 0,
     width: 120,
   },
-  financialCards: {
-    flexDirection: "row",
-    gap: 10,
-    marginBottom: 16,
-  },
-  financialCard: {
-    flex: 1,
-    backgroundColor: "#ffffff",
-    borderRadius: 16,
-    padding: 20,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 3,
-    flexDirection: "column",
-    justifyContent: "flex-start",
-    minHeight: 140,
-  },
-  financialCardUrgent: {
-    borderLeftWidth: 4,
-    borderLeftColor: "#ef4444",
-  },
-  financialCardContent: {
-    flex: 1,
-  },
-  financialCardHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "flex-start",
-    marginBottom: 16,
-  },
-  financialCardTitleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-  financialCardTitle: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: "#6b7280",
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-  },
-  financialCardAmount: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#111827",
-    marginBottom: 8,
-    letterSpacing: -0.2,
-  },
-  financialCardRef: {
-    fontSize: 13,
-    color: "#6b7280",
-    fontWeight: "500",
-  },
-  urgentBadge: {
-    backgroundColor: "#fee2e2",
-    paddingHorizontal: 6,
-    paddingVertical: 3,
-    borderRadius: 4,
-  },
-  urgentBadgeText: {
-    fontSize: 9,
-    fontWeight: "700",
-    color: "#dc2626",
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-  },
-  pendingBadge: {
-    backgroundColor: "#dbeafe",
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-    marginLeft: 6,
-  },
-  pendingBadgeText: {
-    fontSize: 9,
-    fontWeight: "700",
-    color: "#2563eb",
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-  },
-  payButton: {
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 10,
-    alignSelf: "center",
-    marginTop: 10,
-  },
-  payButtonText: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: "#ffffff",
-  },
-  requestButtonsRow: {
-    flexDirection: "row",
-    gap: 12,
-    marginBottom: 20,
-  },
-  requestButtonCompact: {
-    flex: 1,
-    flexDirection: "column",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#ffffff",
-    borderRadius: 20,
-    padding: 16,
-    height: 110,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    elevation: 4,
-    gap: 10,
-    borderWidth: 1,
-    borderColor: "#f3f4f6",
-  },
-  requestButtonCompactText: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: "#1f2937",
-    textAlign: "center",
-    lineHeight: 18,
-  },
-  requestButtonSubtext: {
-    fontSize: 11,
-    color: "#6b7280",
-    textAlign: "center",
-  },
-  requestButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#ffffff",
-    borderRadius: 16,
-    padding: 18,
-    marginBottom: 20,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 4,
-    gap: 12,
-  },
-  requestButtonText: {
-    flex: 1,
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#111827",
-  },
   poolsSection: {
     marginBottom: 20,
+  },
+  sectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 16,
   },
   sectionTitle: {
     fontSize: 18,
     fontWeight: "800",
     color: "#111827",
-    marginBottom: 16,
-    letterSpacing: -0.5,
-    textTransform: "uppercase",
-    opacity: 0.8,
+    letterSpacing: -0.3,
+  },
+  sectionSeeAll: {
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  actionCardsRow: {
+    flexDirection: "row",
+    gap: 12,
+    marginBottom: 20,
+  },
+  actionCard: {
+    flex: 1,
+    backgroundColor: "#ffffff",
+    borderRadius: 20,
+    padding: 18,
+    alignItems: "flex-start",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.07,
+    shadowRadius: 10,
+    elevation: 4,
+    gap: 14,
+    overflow: "hidden",
+    minHeight: 140,
+  },
+  actionCardIcon: {
+    width: 52,
+    height: 52,
+    borderRadius: 16,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  actionCardTitle: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#111827",
+    lineHeight: 20,
+  },
+  noVisitsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#ffffff",
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 20,
+    gap: 14,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    elevation: 2,
+    borderWidth: 1,
+    borderColor: "#f3f4f6",
+  },
+  noVisitsIconBox: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  noVisitsTextBlock: {
+    flex: 1,
+  },
+  noVisitsTitle: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#374151",
+    marginBottom: 2,
+  },
+  noVisitsSub: {
+    fontSize: 12,
+    color: "#9ca3af",
   },
   emptyState: {
     backgroundColor: "#ffffff",
@@ -1040,63 +1076,59 @@ const styles = StyleSheet.create({
     paddingRight: 20,
   },
   poolCard: {
-    backgroundColor: "#ffffff",
-    borderRadius: 24,
-    marginRight: 16,
-    height: 260, // Taller to accommodate split layout
+    borderRadius: 20,
+    marginRight: 14,
+    height: 200,
     width: POOL_CARD_WIDTH_75,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.15,
-    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.18,
+    shadowRadius: 16,
     elevation: 10,
     overflow: "hidden",
-    flexDirection: "column",
+    justifyContent: "flex-end",
   },
-  poolCardImageContainer: {
-    height: "65%",
-    width: "100%",
-    position: "relative",
-  },
-  poolCardBackgroundImage: {
-    width: "100%",
-    height: "100%",
+  poolCardGradient: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: "70%",
   },
   poolCardContent: {
-    height: "35%",
-    padding: 16,
-    backgroundColor: "#ffffff",
-    justifyContent: "center",
+    paddingHorizontal: 16,
+    paddingBottom: 16,
   },
   poolName: {
     fontSize: 18,
     fontWeight: "800",
-    color: "#111827",
-    marginBottom: 4,
-    lineHeight: 22,
+    color: "#ffffff",
+    marginBottom: 3,
+    letterSpacing: -0.3,
+  },
+  poolAddressRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
   },
   poolAddress: {
-    fontSize: 13,
-    color: "#6b7280",
+    fontSize: 12,
+    color: "rgba(255,255,255,0.7)",
     fontWeight: "500",
-    lineHeight: 18,
+    flex: 1,
   },
   poolStatusBadge: {
     position: "absolute",
     top: 12,
     right: 12,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 12,
-    backgroundColor: "rgba(255, 255, 255, 0.95)",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    borderRadius: 20,
+    backgroundColor: "rgba(255,255,255,0.90)",
+    borderWidth: 1,
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    gap: 5,
   },
   poolStatusDot: {
     width: 6,
@@ -1104,11 +1136,10 @@ const styles = StyleSheet.create({
     borderRadius: 3,
   },
   poolStatusText: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: "700",
-    color: "#374151",
     textTransform: "uppercase",
-    letterSpacing: 0.5,
+    letterSpacing: 0.4,
   },
   lastVisitStats: {
     marginBottom: 12,

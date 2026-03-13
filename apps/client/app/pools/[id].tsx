@@ -3,6 +3,7 @@ import { View, Text, ScrollView, TouchableOpacity, StyleSheet, RefreshControl, D
 import { useLocalSearchParams, router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { LinearGradient } from "expo-linear-gradient";
 import { useTheme } from "../../src/contexts/ThemeContext";
 import { api } from "../../src/lib/api-client";
 import { fixUrlForMobile } from "../../src/lib/network-utils";
@@ -25,17 +26,17 @@ export default function PoolDetailScreen() {
   const loadPool = async () => {
     try {
       setLoading(true);
-      
+
       // Fetch pool details
       const poolData = await api.getPool(id);
-      
+
       // Fix localhost URLs in image URLs
       const fixedImageUrls = (poolData.imageUrls || []).map((url: string) => fixUrlForMobile(url));
 
       // Fetch visits for this pool
       const visitsResponse = await api.getVisits({ poolId: id });
       const visits = Array.isArray(visitsResponse) ? visitsResponse : (visitsResponse.items || []);
-      
+
       // Get completed visits (for history)
       const completedVisits = visits
         .filter((v: any) => v.job?.status === "completed" || v.status === "completed")
@@ -48,7 +49,7 @@ export default function PoolDetailScreen() {
 
       // Get last visit
       const lastVisit = completedVisits.length > 0 ? completedVisits[0] : null;
-      
+
       // Get last reading from last visit
       let lastReading = null;
       if (lastVisit && lastVisit.readings && lastVisit.readings.length > 0) {
@@ -67,8 +68,8 @@ export default function PoolDetailScreen() {
 
       // Get next scheduled service
       const upcomingJobsResponse = await api.getJobs({ status: "scheduled", poolId: id });
-      const upcomingJobs = Array.isArray(upcomingJobsResponse) 
-        ? upcomingJobsResponse 
+      const upcomingJobs = Array.isArray(upcomingJobsResponse)
+        ? upcomingJobsResponse
         : (upcomingJobsResponse.items || []);
       const futureJobs = upcomingJobs
         .filter((job: any) => new Date(job.windowStart) >= new Date())
@@ -96,8 +97,8 @@ export default function PoolDetailScreen() {
       let equipment: any[] = [];
       if (poolData.equipment) {
         try {
-          equipment = typeof poolData.equipment === 'string' 
-            ? JSON.parse(poolData.equipment) 
+          equipment = typeof poolData.equipment === 'string'
+            ? JSON.parse(poolData.equipment)
             : poolData.equipment;
         } catch (e) {
           console.error("Error parsing equipment:", e);
@@ -165,7 +166,7 @@ export default function PoolDetailScreen() {
 
     const data = pool.historicalReadings.map((r: any) => r[dataKey]);
     const dates = pool.historicalReadings.map((r: any) => new Date(r.date));
-    
+
     // Calculate chart values
     const dataMin = Math.min(...data);
     const dataMax = Math.max(...data);
@@ -182,7 +183,7 @@ export default function PoolDetailScreen() {
     });
 
     // Create path for the line
-    const pathData = points.map((p: any, i: number) => 
+    const pathData = points.map((p: any, i: number) =>
       i === 0 ? `M ${p.x} ${p.y}` : `L ${p.x} ${p.y}`
     ).join(' ');
 
@@ -204,7 +205,7 @@ export default function PoolDetailScreen() {
             </Text>
           </View>
         </View>
-        
+
         <View style={styles.chartWrapper}>
           {/* Y-axis labels */}
           <View style={styles.yAxis}>
@@ -225,7 +226,7 @@ export default function PoolDetailScreen() {
                 },
               ]}
             />
-            
+
             {/* Grid lines */}
             {[0, 1, 2].map((i) => (
               <View
@@ -244,12 +245,12 @@ export default function PoolDetailScreen() {
               {points.map((point: any, index: number) => {
                 const nextPoint = points[index + 1];
                 if (!nextPoint) return null;
-                
+
                 const dx = nextPoint.x - point.x;
                 const dy = nextPoint.y - point.y;
                 const length = Math.sqrt(dx * dx + dy * dy);
                 const angle = Math.atan2(dy, dx) * (180 / Math.PI);
-                
+
                 return (
                   <View key={`line-${index}`}>
                     {/* Connecting line */}
@@ -322,7 +323,7 @@ export default function PoolDetailScreen() {
       >
         <Ionicons name="arrow-back" size={22} color="#111827" />
       </TouchableOpacity>
-      <Text style={styles.headerTitle}>Pool Details</Text>
+      <Text style={styles.headerTitle}>{pool?.name || "Pool Details"}</Text>
       <View style={styles.headerRight} />
     </View>
   );
@@ -348,7 +349,7 @@ export default function PoolDetailScreen() {
             <Ionicons name="water-outline" size={48} color={themeColor} />
           </View>
           <Text style={styles.emptyStateTitle}>Pool not found</Text>
-          <Text style={styles.emptyStateSubtitle}>We couldn’t load this pool. Check your connection and try again.</Text>
+          <Text style={styles.emptyStateSubtitle}>We couldn't load this pool. Check your connection and try again.</Text>
           <TouchableOpacity
             style={[styles.retryButton, { backgroundColor: themeColor }]}
             onPress={loadPool}
@@ -374,32 +375,56 @@ export default function PoolDetailScreen() {
         }
         showsVerticalScrollIndicator={false}
       >
-        {/* Pool Header */}
-        <View style={styles.headerCard}>
-          <View style={[styles.headerCardAccent, { backgroundColor: themeColor }]} />
-          <View style={styles.headerRow}>
-            <View style={[styles.headerIcon, { backgroundColor: themeColor + "22" }]}>
-              <Ionicons name="water" size={32} color={themeColor} />
+        {/* Hero Section */}
+        <View style={styles.heroSection}>
+          {pool?.photos && pool.photos.length > 0 ? (
+            <Image
+              source={{ uri: pool.photos[0] }}
+              style={StyleSheet.absoluteFillObject}
+              resizeMode="cover"
+            />
+          ) : (
+            <View
+              style={[
+                StyleSheet.absoluteFillObject,
+                { backgroundColor: themeColor + "18", alignItems: "center", justifyContent: "center" },
+              ]}
+            >
+              <Ionicons name="water" size={80} color={themeColor} />
             </View>
-            <View style={styles.headerText}>
-              <Text style={styles.poolName}>{pool?.name}</Text>
-              {pool?.address ? (
-                <Text style={styles.poolAddress}>{pool.address}</Text>
+          )}
+
+          {/* Gradient overlay filling bottom 60% */}
+          <LinearGradient
+            colors={["rgba(0,0,0,0)", "rgba(0,0,0,0.6)"]}
+            style={styles.heroGradient}
+          />
+
+          {/* Bottom overlay content */}
+          <View style={styles.heroContent}>
+            <Text style={styles.heroPoolName}>{pool?.name}</Text>
+            {pool?.address ? (
+              <View style={styles.heroAddressRow}>
+                <Ionicons name="location-outline" size={13} color="rgba(255,255,255,0.7)" />
+                <Text style={styles.heroAddress}>{pool.address}</Text>
+              </View>
+            ) : null}
+            <View style={styles.heroSpecsRow}>
+              {pool?.poolType ? (
+                <View style={styles.heroSpecPill}>
+                  <Text style={styles.heroSpecPillText}>{pool.poolType}</Text>
+                </View>
               ) : null}
-            </View>
-          </View>
-          <View style={styles.poolSpecs}>
-            <View style={styles.specItem}>
-              <Text style={styles.specLabel}>Type</Text>
-              <Text style={styles.specValue}>{pool?.poolType || "Standard"}</Text>
-            </View>
-            <View style={styles.specItem}>
-              <Text style={styles.specLabel}>Filtration</Text>
-              <Text style={styles.specValue}>{pool?.filtrationType || "—"}</Text>
-            </View>
-            <View style={styles.specItem}>
-              <Text style={styles.specLabel}>Volume</Text>
-              <Text style={styles.specValue}>{pool?.volumeL ? `${pool.volumeL.toLocaleString()} L` : "—"}</Text>
+              {pool?.volumeL ? (
+                <View style={styles.heroSpecPill}>
+                  <Text style={styles.heroSpecPillText}>{pool.volumeL.toLocaleString()} L</Text>
+                </View>
+              ) : null}
+              {pool?.filtrationType ? (
+                <View style={styles.heroSpecPill}>
+                  <Text style={styles.heroSpecPillText}>{pool.filtrationType}</Text>
+                </View>
+              ) : null}
             </View>
           </View>
         </View>
@@ -724,8 +749,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   content: {
-    padding: 16,
-    paddingTop: 24,
+    paddingTop: 0,
     paddingBottom: 40,
   },
   loadingContainer: {
@@ -779,77 +803,66 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "600",
   },
-  headerCard: {
-    backgroundColor: "#ffffff",
-    borderRadius: 16,
-    padding: 20,
-    marginTop: 16,
-    marginBottom: 16,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 3,
+  heroSection: {
+    height: 260,
     overflow: "hidden",
-    position: "relative",
+    borderRadius: 0,
+    marginBottom: 0,
   },
-  headerCardAccent: {
+  heroGradient: {
     position: "absolute",
     left: 0,
-    top: 0,
+    right: 0,
     bottom: 0,
-    width: 4,
+    height: "60%",
   },
-  headerRow: {
+  heroContent: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    padding: 20,
+  },
+  heroPoolName: {
+    fontSize: 26,
+    fontWeight: "800",
+    color: "#ffffff",
+    letterSpacing: -0.5,
+    marginBottom: 4,
+  },
+  heroAddressRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 16,
+    gap: 4,
+    marginBottom: 10,
   },
-  headerIcon: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    justifyContent: "center",
-    alignItems: "center",
-    marginRight: 16,
-  },
-  headerText: {
+  heroAddress: {
+    fontSize: 13,
+    color: "rgba(255,255,255,0.7)",
     flex: 1,
   },
-  poolName: {
-    fontSize: 24,
-    fontWeight: "bold",
-    color: "#111827",
-    marginBottom: 4,
-  },
-  poolAddress: {
-    fontSize: 14,
-    color: "#6b7280",
-  },
-  poolSpecs: {
+  heroSpecsRow: {
     flexDirection: "row",
-    justifyContent: "space-around",
-    paddingTop: 16,
-    borderTopWidth: 1,
-    borderTopColor: "#f3f4f6",
+    gap: 8,
+    flexWrap: "wrap",
   },
-  specItem: {
-    alignItems: "center",
+  heroSpecPill: {
+    backgroundColor: "rgba(255,255,255,0.2)",
+    borderRadius: 20,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
   },
-  specLabel: {
-    fontSize: 12,
-    color: "#6b7280",
-    marginBottom: 4,
-  },
-  specValue: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#111827",
+  heroSpecPillText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#ffffff",
   },
   quickActions: {
     flexDirection: "row",
     gap: 12,
     marginBottom: 16,
+    marginHorizontal: 16,
+    marginTop: 16,
   },
   quickActionPrimary: {
     flex: 1,
@@ -886,6 +899,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 16,
     marginBottom: 16,
+    marginHorizontal: 16,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.08,
@@ -1239,5 +1253,14 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: "#6b7280",
   },
+  poolName: {
+    fontSize: 24,
+    fontWeight: "bold",
+    color: "#111827",
+    marginBottom: 4,
+  },
+  poolAddress: {
+    fontSize: 14,
+    color: "#6b7280",
+  },
 });
-

@@ -152,6 +152,7 @@ model Carer {
   user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   assignedJobs   Job[]
   supplyRequests SupplyRequest[]
+  preferredInPlans ServicePlan[]
 
   @@index([orgId, active])
   @@index([orgId, name])
@@ -377,6 +378,7 @@ model ServicePlan {
   cancelledAt          DateTime? @db.Timestamptz(6)
   cancellationReason   String?
   paymentMethodId      String? // Reference to payment method (stored externally)
+  preferredCarerId     String?   @db.Uuid // Preferred carer for auto-generated jobs
   createdAt            DateTime  @default(now()) @db.Timestamptz(6)
   updatedAt            DateTime  @updatedAt @db.Timestamptz(6)
 
@@ -384,6 +386,7 @@ model ServicePlan {
   template        SubscriptionTemplate?       @relation(fields: [templateId], references: [id], onDelete: SetNull)
   visitTemplate   VisitTemplate?              @relation(fields: [visitTemplateId], references: [id], onDelete: SetNull)
   org             Organization                @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  preferredCarer  Carer?                      @relation(fields: [preferredCarerId], references: [id], onDelete: SetNull)
   windowOverrides ServicePlanWindowOverride[]
   jobs            Job[]
   billings        SubscriptionBilling[]

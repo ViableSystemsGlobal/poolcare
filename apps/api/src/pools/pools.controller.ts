@@ -50,7 +50,7 @@ export class PoolsController {
 
   @Post()
   @UseGuards(RolesGuard)
-  @Roles("ADMIN", "MANAGER")
+  @Roles("ADMIN", "MANAGER", "CARER")
   async create(
     @CurrentUser() user: { org_id: string },
     @Body() dto: CreatePoolDto
@@ -97,7 +97,7 @@ export class PoolsController {
 
   @Post("upload-image")
   @UseGuards(RolesGuard)
-  @Roles("ADMIN", "MANAGER")
+  @Roles("ADMIN", "MANAGER", "CARER")
   @UseInterceptors(FileInterceptor("image"))
   async uploadImage(
     @CurrentUser() user: { org_id: string },

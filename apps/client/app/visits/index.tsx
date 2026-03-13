@@ -31,7 +31,6 @@ interface Visit {
   address: string;
   carer?: string;
   type: "routine" | "emergency" | "repair";
-  canReschedule: boolean;
   canCancel: boolean;
   windowStartIso?: string;
   windowEndIso?: string;
@@ -42,11 +41,8 @@ export default function VisitsPage() {
   const [selectedTab, setSelectedTab] = useState<"upcoming" | "past">("upcoming");
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [rescheduleModalVisible, setRescheduleModalVisible] = useState(false);
   const [cancelModalVisible, setCancelModalVisible] = useState(false);
   const [selectedVisit, setSelectedVisit] = useState<Visit | null>(null);
-  const [newDate, setNewDate] = useState("");
-  const [newTime, setNewTime] = useState("");
 
   const [upcomingVisits, setUpcomingVisits] = useState<Visit[]>([]);
   const [pastVisits, setPastVisits] = useState<Visit[]>([]);
@@ -86,7 +82,6 @@ export default function VisitsPage() {
           address: pool.address || "",
           carer: job.assignedCarer?.name,
           type: jobType,
-          canReschedule: true,
           canCancel: true,
           windowStartIso: job.windowStart,
           windowEndIso: job.windowEnd,
@@ -127,7 +122,6 @@ export default function VisitsPage() {
           address: pool.address || "",
           carer: job.assignedCarer?.name,
           type: pastJobType,
-          canReschedule: false,
           canCancel: false,
         };
       });
@@ -156,53 +150,9 @@ export default function VisitsPage() {
     loadVisits();
   };
 
-  const handleReschedule = (visit: Visit) => {
-    setSelectedVisit(visit);
-    setNewDate(visit.date);
-    setNewTime(visit.time);
-    setRescheduleModalVisible(true);
-  };
-
   const handleCancel = (visit: Visit) => {
     setSelectedVisit(visit);
     setCancelModalVisible(true);
-  };
-
-  const confirmReschedule = async () => {
-    if (!selectedVisit) return;
-
-    // Parse newDate (YYYY-MM-DD) and newTime (HH:MM–HH:MM or HH:MM - HH:MM)
-    const timeParts = newTime.split(/[–\-]/).map((t) => t.trim());
-    const startTimePart = timeParts[0] || "09:00";
-    const endTimePart = timeParts[1] || "10:00";
-
-    // Build ISO timestamps — use the original window duration if time parsing fails
-    let windowStartIso: string;
-    let windowEndIso: string;
-    try {
-      windowStartIso = new Date(`${newDate}T${startTimePart}:00`).toISOString();
-      windowEndIso = new Date(`${newDate}T${endTimePart}:00`).toISOString();
-      if (isNaN(new Date(windowStartIso).getTime())) throw new Error("invalid");
-    } catch {
-      Alert.alert("Invalid date/time", "Please enter date as YYYY-MM-DD and time as HH:MM–HH:MM");
-      return;
-    }
-
-    try {
-      await api.clientRescheduleJob(selectedVisit.id, { windowStart: windowStartIso, windowEnd: windowEndIso });
-      setUpcomingVisits((prev) =>
-        prev.map((v) =>
-          v.id === selectedVisit.id
-            ? { ...v, date: newDate, time: newTime, windowStartIso, windowEndIso }
-            : v
-        )
-      );
-      setRescheduleModalVisible(false);
-      setSelectedVisit(null);
-      Alert.alert("Rescheduled", "Your visit has been rescheduled successfully.");
-    } catch (error: any) {
-      Alert.alert("Error", error.message || "Failed to reschedule visit. Please try again.");
-    }
   };
 
   const confirmCancel = async () => {
@@ -329,15 +279,6 @@ export default function VisitsPage() {
 
           {selectedTab === "upcoming" && item.status === "scheduled" && (
             <View style={styles.visitActions}>
-              {item.canReschedule && (
-                <TouchableOpacity
-                  style={[styles.actionButton, { borderColor: themeColor }]}
-                  onPress={() => handleReschedule(item)}
-                >
-                  <Ionicons name="calendar-outline" size={16} color={themeColor} />
-                  <Text style={[styles.actionButtonText, { color: themeColor }]}>Reschedule</Text>
-                </TouchableOpacity>
-              )}
               {item.canCancel && (
                 <TouchableOpacity
                   style={[styles.actionButton, styles.cancelButton]}
@@ -482,94 +423,6 @@ export default function VisitsPage() {
         />
       )}
 
-      {/* Reschedule Modal */}
-      <Modal
-        visible={rescheduleModalVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setRescheduleModalVisible(false)}
-      >
-        <KeyboardAvoidingView
-          style={styles.modalOverlay}
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
-          keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
-        >
-          <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-            <View style={styles.modalOverlay}>
-              <TouchableWithoutFeedback onPress={() => {}}>
-                <View style={styles.modalContent}>
-                  <View style={styles.modalHeader}>
-                    <Text style={styles.modalTitle}>Reschedule Visit</Text>
-                    <TouchableOpacity
-                      onPress={() => {
-                        Keyboard.dismiss();
-                        setRescheduleModalVisible(false);
-                      }}
-                    >
-                      <Ionicons name="close" size={24} color="#6b7280" />
-                    </TouchableOpacity>
-                  </View>
-
-                  <ScrollView
-                    style={styles.modalScrollView}
-                    contentContainerStyle={styles.modalScrollContent}
-                    keyboardShouldPersistTaps="handled"
-                  >
-                    <View style={styles.modalBody}>
-                      <View style={styles.inputGroup}>
-                        <Text style={styles.inputLabel}>New Date</Text>
-                        <TextInput
-                          style={styles.input}
-                          value={newDate}
-                          onChangeText={setNewDate}
-                          placeholder="YYYY-MM-DD"
-                          keyboardType="default"
-                          returnKeyType="next"
-                        />
-                      </View>
-
-                      <View style={styles.inputGroup}>
-                        <Text style={styles.inputLabel}>New Time</Text>
-                        <TextInput
-                          style={styles.input}
-                          value={newTime}
-                          onChangeText={setNewTime}
-                          placeholder="09:00–12:00"
-                          keyboardType="default"
-                          returnKeyType="done"
-                          onSubmitEditing={Keyboard.dismiss}
-                        />
-                      </View>
-                    </View>
-                  </ScrollView>
-
-                  <View style={styles.modalActions}>
-                    <TouchableOpacity
-                      style={[styles.modalButton, styles.modalButtonSecondary]}
-                      onPress={() => {
-                        Keyboard.dismiss();
-                        setRescheduleModalVisible(false);
-                      }}
-                    >
-                      <Text style={styles.modalButtonSecondaryText}>Cancel</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.modalButton, styles.modalButtonPrimary]}
-                      onPress={() => {
-                        Keyboard.dismiss();
-                        confirmReschedule();
-                      }}
-                    >
-                      <Text style={styles.modalButtonPrimaryText}>Confirm</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              </TouchableWithoutFeedback>
-            </View>
-          </TouchableWithoutFeedback>
-        </KeyboardAvoidingView>
-      </Modal>
-
       {/* Cancel Modal */}
       <Modal
         visible={cancelModalVisible}
@@ -588,8 +441,7 @@ export default function VisitsPage() {
 
             <View style={styles.modalBody}>
               <Text style={styles.modalMessage}>
-                Are you sure you want to cancel this visit? You can reschedule
-                it instead.
+                Are you sure you want to cancel this visit?
               </Text>
             </View>
 

@@ -216,15 +216,29 @@ export class AuthService {
       throw new UnauthorizedException("Too many attempts. Please request a new code");
     }
 
-    console.log('[AuthService] Comparing code...');
-    const isValid = await bcrypt.compare(dto.code, otpRequest.codeHash);
-    if (!isValid) {
-      console.log('[AuthService] Code comparison failed, incrementing attempts');
-      await prisma.otpRequest.update({
-        where: { id: otpRequest.id },
-        data: { attempts: { increment: 1 } },
-      });
-      throw new UnauthorizedException("Invalid code");
+    // Magic review bypass — allows Apple/Google reviewers to log in without a real OTP.
+    // Only active when the target matches a configured review account AND code is 000000.
+    const reviewPhones = [
+      process.env.APPLE_REVIEW_CLIENT_PHONE,
+      process.env.APPLE_REVIEW_CARER_PHONE,
+    ].filter(Boolean);
+    const isMagicBypass =
+      dto.code === "000000" &&
+      reviewPhones.some((p) => p === dto.target || p === normalizePhone(dto.target));
+
+    if (!isMagicBypass) {
+      console.log('[AuthService] Comparing code...');
+      const isValid = await bcrypt.compare(dto.code, otpRequest.codeHash);
+      if (!isValid) {
+        console.log('[AuthService] Code comparison failed, incrementing attempts');
+        await prisma.otpRequest.update({
+          where: { id: otpRequest.id },
+          data: { attempts: { increment: 1 } },
+        });
+        throw new UnauthorizedException("Invalid code");
+      }
+    } else {
+      console.log('[AuthService] Magic review bypass used for:', dto.target);
     }
 
     console.log('[AuthService] Code is valid, proceeding with login');

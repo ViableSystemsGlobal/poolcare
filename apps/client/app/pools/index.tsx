@@ -9,13 +9,17 @@ import {
   FlatList,
   Image,
   ActivityIndicator,
+  Dimensions,
 } from "react-native";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { LinearGradient } from "expo-linear-gradient";
 import { useTheme } from "../../src/contexts/ThemeContext";
 import { api } from "../../src/lib/api-client";
 import { fixUrlForMobile } from "../../src/lib/network-utils";
+
+const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
 interface Pool {
   id: string;
@@ -51,15 +55,15 @@ export default function PoolsListScreen() {
   const loadPools = async () => {
     try {
       setLoading(true);
-      
+
       // Fetch pools from API
       const poolsResponse = await api.getPools().catch(() => ({ items: [], total: 0 }));
-      
+
       // Transform pools data
       const poolsData: Pool[] = ((poolsResponse as any).items || poolsResponse || []).map((pool: any) => {
         // Fix localhost URLs in image URLs to use the mobile-accessible IP
         const fixedImageUrls = (pool.imageUrls || []).map((url: string) => fixUrlForMobile(url));
-        
+
         return {
           id: pool.id,
           name: pool.name,
@@ -77,7 +81,7 @@ export default function PoolsListScreen() {
             // Get last completed visit
             const visits = await api.getVisits({ poolId: pool.id, status: "completed" });
             const lastVisit = Array.isArray(visits) && visits.length > 0 ? visits[0] : null;
-            
+
             // Get last reading from last visit if available
             let lastReading = null;
             if (lastVisit && lastVisit.readings && lastVisit.readings.length > 0) {
@@ -92,15 +96,15 @@ export default function PoolsListScreen() {
 
             // Get next service from upcoming scheduled jobs
             const upcomingJobsResponse = await api.getJobs({ status: "scheduled", poolId: pool.id });
-            const upcomingJobs = Array.isArray(upcomingJobsResponse) 
-              ? upcomingJobsResponse 
+            const upcomingJobs = Array.isArray(upcomingJobsResponse)
+              ? upcomingJobsResponse
               : (upcomingJobsResponse.items || []);
             // Filter to only future jobs and sort by date
             const futureJobs = upcomingJobs
               .filter((job: any) => new Date(job.windowStart) >= new Date())
               .sort((a: any, b: any) => new Date(a.windowStart).getTime() - new Date(b.windowStart).getTime());
             const nextJob = futureJobs.length > 0 ? futureJobs[0] : null;
-            
+
             const nextService = nextJob ? {
               date: new Date(nextJob.windowStart).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
               time: `${new Date(nextJob.windowStart).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })} - ${new Date(nextJob.windowEnd).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}`,
@@ -156,7 +160,6 @@ export default function PoolsListScreen() {
     const chemistry = getChemistryStatus(item);
     const rawImage = item.photos && item.photos.length > 0 ? item.photos[0] : null;
     const poolImage = rawImage ? fixUrlForMobile(rawImage) : null;
-    const accentColor = chemistry.color;
 
     return (
       <TouchableOpacity
@@ -164,73 +167,66 @@ export default function PoolsListScreen() {
         onPress={() => router.push(`/pools/${item.id}`)}
         activeOpacity={0.7}
       >
-        <View style={[styles.poolCardAccent, { backgroundColor: accentColor }]} />
+        {/* Background: image or placeholder */}
         {poolImage ? (
-          <>
-            <Image source={{ uri: poolImage }} style={styles.poolCardBackgroundImage} resizeMode="cover" />
-            <View style={styles.poolCardOverlay} />
-          </>
+          <Image
+            source={{ uri: poolImage }}
+            style={StyleSheet.absoluteFillObject}
+            resizeMode="cover"
+          />
         ) : (
-          <View style={[styles.poolCardPlaceholder, { backgroundColor: themeColor + "18" }]}>
-            <Ionicons name="water" size={40} color={themeColor} />
+          <View
+            style={[
+              StyleSheet.absoluteFillObject,
+              { backgroundColor: themeColor + "20", alignItems: "center", justifyContent: "center" },
+            ]}
+          >
+            <Ionicons name="water" size={56} color={themeColor} />
           </View>
         )}
-        <View style={styles.poolCardContent}>
-          <View style={styles.poolCardHeader}>
-            <View style={styles.poolHeaderLeft}>
-              <View style={[styles.chemistryBadge, { backgroundColor: accentColor + "22" }]}>
-                <View style={[styles.chemistryDot, { backgroundColor: accentColor }]} />
-                <Text style={[styles.chemistryLabel, { color: accentColor }]}>{chemistry.label}</Text>
-              </View>
-              <View style={styles.poolInfo}>
-                <Text style={poolImage ? styles.poolNameWhite : styles.poolName}>{item.name}</Text>
-                {item.address ? (
-                  <Text style={poolImage ? styles.poolAddressWhite : styles.poolAddress} numberOfLines={1}>{item.address}</Text>
-                ) : null}
-                {item.type ? (
-                  <Text style={poolImage ? styles.poolTypeWhite : styles.poolType}>{item.type}</Text>
-                ) : null}
-              </View>
-            </View>
-            <View style={[styles.chevronWrap, poolImage && styles.chevronWrapWhite]}>
-              <Ionicons name="chevron-forward" size={20} color={poolImage ? "#fff" : "#9ca3af"} />
-            </View>
+
+        {/* Gradient overlay at bottom */}
+        <LinearGradient
+          colors={["transparent", "rgba(0,0,0,0.22)", "rgba(0,0,0,0.75)"]}
+          locations={[0.2, 0.55, 1]}
+          style={styles.poolCardGradient}
+        />
+
+        {/* Chemistry badge top-right (only when status !== "unknown") */}
+        {chemistry.status !== "unknown" && (
+          <View style={styles.chemistryBadge}>
+            <View style={[styles.chemistryDot, { backgroundColor: chemistry.color }]} />
+            <Text style={styles.chemistryLabel}>{chemistry.label}</Text>
           </View>
+        )}
 
-          {item.lastReading && (
-            <View style={[styles.quickStats, poolImage && styles.quickStatsWithImage]}>
-              <View style={styles.statItem}>
-                <Text style={poolImage ? styles.statLabelWhite : styles.statLabel}>pH</Text>
-                <Text style={poolImage ? styles.statValueWhite : styles.statValue}>{item.lastReading.ph?.toFixed(1) ?? "—"}</Text>
-              </View>
-              <View style={styles.statItem}>
-                <Text style={poolImage ? styles.statLabelWhite : styles.statLabel}>FC</Text>
-                <Text style={poolImage ? styles.statValueWhite : styles.statValue}>{item.lastReading.chlorine?.toFixed(1) ?? "—"}</Text>
-              </View>
-              <View style={styles.statItem}>
-                <Text style={poolImage ? styles.statLabelWhite : styles.statLabel}>TA</Text>
-                <Text style={poolImage ? styles.statValueWhite : styles.statValue}>{item.lastReading.alkalinity ?? "—"}</Text>
-              </View>
+        {/* Bottom content overlaid on gradient */}
+        <View style={styles.poolCardContent}>
+          {/* Pool name */}
+          <Text style={styles.poolName} numberOfLines={1}>{item.name}</Text>
+
+          {/* Address row */}
+          {item.address ? (
+            <View style={styles.addressRow}>
+              <Ionicons name="location-outline" size={12} color="rgba(255,255,255,0.7)" />
+              <Text style={styles.poolAddress} numberOfLines={1}>{item.address}</Text>
             </View>
-          )}
+          ) : null}
 
-          <View style={[styles.poolFooter, poolImage && styles.poolFooterWithImage]}>
-            {item.lastVisit && (
-              <View style={styles.footerItem}>
-                <Ionicons name="checkmark-circle-outline" size={14} color={poolImage ? "#fff" : "#6b7280"} />
-                <Text style={[styles.footerText, poolImage && styles.footerTextWhite]}>
-                  Last: {new Date(item.lastVisit.date).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-                </Text>
+          {/* Meta pills row */}
+          <View style={styles.metaRow}>
+            {item.nextService?.date ? (
+              <View style={styles.metaPill}>
+                <Ionicons name="calendar-outline" size={11} color="#fff" />
+                <Text style={styles.metaPillText}>{item.nextService.date}</Text>
               </View>
-            )}
-            {item.nextService && (
-              <View style={styles.footerItem}>
-                <Ionicons name="calendar-outline" size={14} color={poolImage ? "#fff" : themeColor} />
-                <Text style={[styles.footerText, !poolImage && { color: themeColor, fontWeight: "600" }, poolImage && styles.footerTextWhite]}>
-                  Next: {item.nextService.date} · {item.nextService.time}
-                </Text>
+            ) : null}
+            {item.lastReading?.ph != null ? (
+              <View style={styles.metaPill}>
+                <Ionicons name="water-outline" size={11} color="#fff" />
+                <Text style={styles.metaPillText}>pH {item.lastReading.ph.toFixed(1)}</Text>
               </View>
-            )}
+            ) : null}
           </View>
         </View>
       </TouchableOpacity>
@@ -372,75 +368,35 @@ const styles = StyleSheet.create({
     backgroundColor: "#f3f4f6",
   },
   poolCard: {
-    backgroundColor: "#ffffff",
-    borderRadius: 16,
-    marginBottom: 12,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 10,
-    elevation: 3,
+    width: SCREEN_WIDTH - 32,
+    height: 210,
+    borderRadius: 20,
+    marginBottom: 14,
     overflow: "hidden",
-    position: "relative",
-    minHeight: 180,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.16,
+    shadowRadius: 16,
+    elevation: 10,
+    justifyContent: "flex-end",
   },
-  poolCardAccent: {
+  poolCardGradient: {
     position: "absolute",
-    left: 0,
-    top: 0,
-    bottom: 0,
-    width: 4,
-    zIndex: 2,
-  },
-  poolCardPlaceholder: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 100,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  poolCardBackgroundImage: {
-    position: "absolute",
-    top: 0,
     left: 0,
     right: 0,
     bottom: 0,
-    width: "100%",
-    height: "100%",
-  },
-  poolCardOverlay: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: "rgba(0, 0, 0, 0.35)",
-  },
-  poolCardContent: {
-    padding: 16,
-    position: "relative",
-    zIndex: 1,
-  },
-  poolCardHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 12,
-  },
-  poolHeaderLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    flex: 1,
-    gap: 10,
+    height: "70%",
   },
   chemistryBadge: {
+    position: "absolute",
+    top: 14,
+    right: 14,
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
+    backgroundColor: "#ffffff",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 20,
     gap: 6,
   },
   chemistryDot: {
@@ -451,108 +407,46 @@ const styles = StyleSheet.create({
   chemistryLabel: {
     fontSize: 11,
     fontWeight: "600",
+    color: "#111827",
   },
-  poolInfo: {
-    flex: 1,
-    minWidth: 0,
-  },
-  chevronWrap: {
-    padding: 4,
-  },
-  chevronWrapWhite: {
-    opacity: 0.95,
+  poolCardContent: {
+    padding: 16,
   },
   poolName: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#111827",
-    marginBottom: 4,
-  },
-  poolAddress: {
-    fontSize: 13,
-    color: "#6b7280",
-    marginBottom: 2,
-  },
-  poolType: {
-    fontSize: 12,
-    color: "#9ca3af",
-  },
-  // Styles for cards with background images
-  poolNameWhite: {
-    fontSize: 18,
-    fontWeight: "700",
+    fontSize: 20,
+    fontWeight: "800",
     color: "#ffffff",
     marginBottom: 4,
   },
-  poolAddressWhite: {
-    fontSize: 13,
-    color: "#ffffff",
-    marginBottom: 2,
-    opacity: 0.9,
-  },
-  poolTypeWhite: {
-    fontSize: 12,
-    color: "#ffffff",
-    opacity: 0.85,
-  },
-  quickStats: {
-    flexDirection: "row",
-    gap: 16,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: "#f3f4f6",
-    marginBottom: 12,
-  },
-  quickStatsWithImage: {
-    borderTopColor: "rgba(255, 255, 255, 0.2)",
-  },
-  statItem: {
-    flex: 1,
-  },
-  statLabel: {
-    fontSize: 11,
-    color: "#6b7280",
-    marginBottom: 4,
-  },
-  statValue: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#111827",
-  },
-  // Styles for stats with background images
-  statLabelWhite: {
-    fontSize: 11,
-    color: "#ffffff",
-    marginBottom: 4,
-    opacity: 0.85,
-  },
-  statValueWhite: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#ffffff",
-  },
-  poolFooter: {
-    flexDirection: "row",
-    gap: 16,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: "#f3f4f6",
-  },
-  poolFooterWithImage: {
-    borderTopColor: "rgba(255, 255, 255, 0.2)",
-  },
-  footerItem: {
+  addressRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    gap: 4,
+    marginBottom: 8,
   },
-  footerText: {
+  poolAddress: {
     fontSize: 12,
-    color: "#6b7280",
+    color: "rgba(255,255,255,0.7)",
+    flex: 1,
   },
-  footerTextWhite: {
+  metaRow: {
+    flexDirection: "row",
+    gap: 8,
+    flexWrap: "wrap",
+  },
+  metaPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.2)",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 20,
+    gap: 5,
+  },
+  metaPillText: {
+    fontSize: 11,
     color: "#ffffff",
-    opacity: 0.9,
+    fontWeight: "500",
   },
   emptyState: {
     alignItems: "center",
@@ -594,4 +488,3 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
 });
-

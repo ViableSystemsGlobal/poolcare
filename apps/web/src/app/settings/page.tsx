@@ -66,6 +66,8 @@ interface OrgProfile {
   loaderLogoUrl?: string | null;
   faviconUrl?: string | null;
   homeCardImageUrl?: string | null;
+  requestCardImageUrl?: string | null;
+  chatCardImageUrl?: string | null;
   themeColor?: string;
   customColorHex?: string | null;
   timezone: string;
@@ -139,6 +141,8 @@ export default function SettingsPage() {
     loaderLogoUrl: null,
     faviconUrl: null,
     homeCardImageUrl: null,
+    requestCardImageUrl: null,
+    chatCardImageUrl: null,
     themeColor: "orange",
     timezone: "Africa/Accra",
     address: null,
@@ -155,10 +159,16 @@ export default function SettingsPage() {
   const [faviconPreview, setFaviconPreview] = useState<string | null>(null);
   const [homeCardImageFile, setHomeCardImageFile] = useState<File | null>(null);
   const [homeCardImagePreview, setHomeCardImagePreview] = useState<string | null>(null);
+  const [requestCardImageFile, setRequestCardImageFile] = useState<File | null>(null);
+  const [requestCardImagePreview, setRequestCardImagePreview] = useState<string | null>(null);
+  const [chatCardImageFile, setChatCardImageFile] = useState<File | null>(null);
+  const [chatCardImagePreview, setChatCardImagePreview] = useState<string | null>(null);
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [uploadingLoaderLogo, setUploadingLoaderLogo] = useState(false);
   const [uploadingFavicon, setUploadingFavicon] = useState(false);
   const [uploadingHomeCardImage, setUploadingHomeCardImage] = useState(false);
+  const [uploadingRequestCardImage, setUploadingRequestCardImage] = useState(false);
+  const [uploadingChatCardImage, setUploadingChatCardImage] = useState(false);
   const colorInputRef = useRef<HTMLInputElement>(null);
 
   // Tax Settings
@@ -264,6 +274,8 @@ export default function SettingsPage() {
           setLogoPreview(orgData.profile.logoUrl || null);
           setFaviconPreview(orgData.profile.faviconUrl || null);
           setHomeCardImagePreview(orgData.profile.homeCardImageUrl || null);
+          setRequestCardImagePreview(orgData.profile.requestCardImageUrl || null);
+          setChatCardImagePreview(orgData.profile.chatCardImageUrl || null);
           // Update theme context with saved values
           if (orgData.profile.themeColor) {
             setThemeColor(orgData.profile.themeColor as any);
@@ -599,6 +611,76 @@ export default function SettingsPage() {
     }
   };
 
+  const handleRequestCardImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setRequestCardImageFile(file);
+      const reader = new FileReader();
+      reader.onloadend = () => setRequestCardImagePreview(reader.result as string);
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const uploadRequestCardImage = async (): Promise<string | null> => {
+    if (!requestCardImageFile) return null;
+    try {
+      setUploadingRequestCardImage(true);
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+      const uploadFormData = new FormData();
+      uploadFormData.append("requestCardImage", requestCardImageFile);
+      const response = await fetch(`${API_URL}/settings/upload-request-card-image`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${localStorage.getItem("auth_token")}` },
+        body: uploadFormData,
+      });
+      if (!response.ok) throw new Error("Upload failed");
+      const data = await response.json();
+      setOrgProfile({ ...orgProfile, requestCardImageUrl: data.requestCardImageUrl });
+      setRequestCardImageFile(null);
+      return data.requestCardImageUrl;
+    } catch (error: any) {
+      toast({ title: "Upload failed", description: error.message, variant: "destructive" });
+      return null;
+    } finally {
+      setUploadingRequestCardImage(false);
+    }
+  };
+
+  const handleChatCardImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setChatCardImageFile(file);
+      const reader = new FileReader();
+      reader.onloadend = () => setChatCardImagePreview(reader.result as string);
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const uploadChatCardImage = async (): Promise<string | null> => {
+    if (!chatCardImageFile) return null;
+    try {
+      setUploadingChatCardImage(true);
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+      const uploadFormData = new FormData();
+      uploadFormData.append("chatCardImage", chatCardImageFile);
+      const response = await fetch(`${API_URL}/settings/upload-chat-card-image`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${localStorage.getItem("auth_token")}` },
+        body: uploadFormData,
+      });
+      if (!response.ok) throw new Error("Upload failed");
+      const data = await response.json();
+      setOrgProfile({ ...orgProfile, chatCardImageUrl: data.chatCardImageUrl });
+      setChatCardImageFile(null);
+      return data.chatCardImageUrl;
+    } catch (error: any) {
+      toast({ title: "Upload failed", description: error.message, variant: "destructive" });
+      return null;
+    } finally {
+      setUploadingChatCardImage(false);
+    }
+  };
+
   const handleSaveOrg = async () => {
     try {
       setSaving(true);
@@ -609,6 +691,8 @@ export default function SettingsPage() {
       let uploadedLoaderLogoUrl: string | null = null;
       let uploadedFaviconUrl: string | null = null;
       let uploadedHomeCardImageUrl: string | null = null;
+      let uploadedRequestCardImageUrl: string | null = null;
+      let uploadedChatCardImageUrl: string | null = null;
       if (logoFile) {
         uploadedLogoUrl = await uploadLogo();
         if (!uploadedLogoUrl) return;
@@ -625,6 +709,14 @@ export default function SettingsPage() {
         uploadedHomeCardImageUrl = await uploadHomeCardImage();
         if (!uploadedHomeCardImageUrl) return;
       }
+      if (requestCardImageFile) {
+        uploadedRequestCardImageUrl = await uploadRequestCardImage();
+        if (!uploadedRequestCardImageUrl) return;
+      }
+      if (chatCardImageFile) {
+        uploadedChatCardImageUrl = await uploadChatCardImage();
+        if (!uploadedChatCardImageUrl) return;
+      }
 
       const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
 
@@ -635,6 +727,8 @@ export default function SettingsPage() {
         ...(uploadedLoaderLogoUrl != null && { loaderLogoUrl: uploadedLoaderLogoUrl }),
         ...(uploadedFaviconUrl != null && { faviconUrl: uploadedFaviconUrl }),
         ...(uploadedHomeCardImageUrl != null && { homeCardImageUrl: uploadedHomeCardImageUrl }),
+        ...(uploadedRequestCardImageUrl != null && { requestCardImageUrl: uploadedRequestCardImageUrl }),
+        ...(uploadedChatCardImageUrl != null && { chatCardImageUrl: uploadedChatCardImageUrl }),
       };
 
       const response = await fetch(`${API_URL}/settings/org`, {
@@ -957,6 +1051,64 @@ export default function SettingsPage() {
                       {uploadingHomeCardImage && (
                         <p className="text-sm text-gray-500">Uploading home card image...</p>
                       )}
+                    </div>
+
+                    {/* Request card image */}
+                    <div className="space-y-2">
+                      <Label htmlFor="requestCardImage" className="flex items-center gap-2">
+                        <Image className="h-4 w-4" />
+                        "Request / Report" Card Image
+                      </Label>
+                      <div className="flex items-center gap-4">
+                        <div className="flex-1">
+                          <Input
+                            id="requestCardImage"
+                            type="file"
+                            accept="image/*"
+                            onChange={handleRequestCardImageChange}
+                            className="cursor-pointer"
+                          />
+                          <p className="text-xs text-gray-500 mt-1">Background image for the Request card on the client home screen (max 2MB).</p>
+                        </div>
+                        {(requestCardImagePreview || orgProfile.requestCardImageUrl) && (
+                          <img
+                            src={requestCardImagePreview || orgProfile.requestCardImageUrl || ""}
+                            alt="Request card preview"
+                            className="w-16 h-16 rounded object-cover border-2 border-gray-200"
+                            onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                          />
+                        )}
+                      </div>
+                      {uploadingRequestCardImage && <p className="text-sm text-gray-500">Uploading...</p>}
+                    </div>
+
+                    {/* Chat card image */}
+                    <div className="space-y-2">
+                      <Label htmlFor="chatCardImage" className="flex items-center gap-2">
+                        <Image className="h-4 w-4" />
+                        "Chat / Ask" Card Image
+                      </Label>
+                      <div className="flex items-center gap-4">
+                        <div className="flex-1">
+                          <Input
+                            id="chatCardImage"
+                            type="file"
+                            accept="image/*"
+                            onChange={handleChatCardImageChange}
+                            className="cursor-pointer"
+                          />
+                          <p className="text-xs text-gray-500 mt-1">Background image for the Chat card on the client home screen (max 2MB).</p>
+                        </div>
+                        {(chatCardImagePreview || orgProfile.chatCardImageUrl) && (
+                          <img
+                            src={chatCardImagePreview || orgProfile.chatCardImageUrl || ""}
+                            alt="Chat card preview"
+                            className="w-16 h-16 rounded object-cover border-2 border-gray-200"
+                            onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                          />
+                        )}
+                      </div>
+                      {uploadingChatCardImage && <p className="text-sm text-gray-500">Uploading...</p>}
                     </div>
 
                     {/* Theme Color Picker */}

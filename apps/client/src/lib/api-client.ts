@@ -341,6 +341,11 @@ class ApiClient {
     return this.request<any>(`/clients/me/notifications?page=${page}&limit=${limit}`);
   }
 
+  // Carers (for preferred carer selection)
+  async getCarers() {
+    return this.request("/carers?active=true&limit=50");
+  }
+
   // Pools
   async getPools(clientId?: string) {
     const query = clientId ? `?clientId=${clientId}` : "";
@@ -490,7 +495,7 @@ class ApiClient {
     return this.request(`/subscription-templates/${id}`);
   }
 
-  async subscribeToTemplate(templateId: string, data: { poolId: string; startsOn?: string; autoRenew?: boolean }) {
+  async subscribeToTemplate(templateId: string, data: { poolId: string; startsOn?: string; autoRenew?: boolean; preferredCarerId?: string }) {
     return this.request(`/subscription-templates/${templateId}/subscribe`, {
       method: "POST",
       body: JSON.stringify(data),

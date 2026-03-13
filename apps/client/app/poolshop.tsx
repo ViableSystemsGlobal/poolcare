@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, TextInput, ActivityIndicator, Alert } from "react-native";
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, TextInput, ActivityIndicator, Alert, Image } from "react-native";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -130,8 +130,7 @@ export default function PoolShopScreen() {
           <Ionicons name="arrow-back" size={22} color="#111827" />
         </TouchableOpacity>
         <View style={styles.headerCenter}>
-          <Text style={styles.headerTitle}>PoolShop</Text>
-          <Text style={styles.headerSubtitle}>{subtitle}</Text>
+          <Text style={styles.headerTitle}>Pool Shop</Text>
         </View>
         <View style={styles.headerRight}>
           <TouchableOpacity onPress={() => router.push("/poolshop/orders")} style={styles.myOrdersButton}>
@@ -177,6 +176,7 @@ export default function PoolShopScreen() {
               key={category.id}
               style={[
                 styles.categoryButton,
+                { borderColor: themeColor },
                 isActive && [styles.categoryButtonActive, { backgroundColor: themeColor, borderColor: themeColor }],
               ]}
               onPress={() => setSelectedCategory(category.id)}
@@ -190,7 +190,8 @@ export default function PoolShopScreen() {
               <Text
                 style={[
                   styles.categoryText,
-                  isActive ? styles.categoryTextActive : { color: themeColor },
+                  { color: themeColor },
+                  isActive && styles.categoryTextActive,
                 ]}
               >
                 {category.name}
@@ -212,7 +213,7 @@ export default function PoolShopScreen() {
             <View style={[styles.emptyStateIconWrap, { backgroundColor: themeColor + "20" }]}>
               <Ionicons name="cloud-offline-outline" size={48} color={themeColor} />
             </View>
-            <Text style={styles.emptyTitle}>Couldn’t load products</Text>
+            <Text style={styles.emptyTitle}>Couldn't load products</Text>
             <Text style={styles.emptyText}>{error}</Text>
             <TouchableOpacity style={[styles.retryButton, { backgroundColor: themeColor }]} onPress={fetchProducts}>
               <Ionicons name="refresh-outline" size={20} color="#fff" />
@@ -230,7 +231,7 @@ export default function PoolShopScreen() {
             <Text style={styles.emptyText}>
               {searchQuery || selectedCategory !== "all"
                 ? "Try a different search or category"
-                : "Products will appear here when they’re added."}
+                : "Products will appear here when they're added."}
             </Text>
             {(searchQuery || selectedCategory !== "all") && (
               <TouchableOpacity
@@ -253,8 +254,14 @@ export default function PoolShopScreen() {
                 onPress={() => router.push(`/poolshop/${product.id}`)}
                 activeOpacity={0.7}
               >
-                <View style={[styles.productImageContainer, { backgroundColor: themeColor + "12" }]}>
-                  <Ionicons name="cube-outline" size={32} color={themeColor} />
+                <View style={styles.productImageContainer}>
+                  {product.image ? (
+                    <Image source={{ uri: product.image }} style={styles.productImageFull} resizeMode="cover" />
+                  ) : (
+                    <View style={[styles.productImagePlaceholder, { backgroundColor: themeColor + "12" }]}>
+                      <Ionicons name="cube-outline" size={32} color={themeColor} />
+                    </View>
+                  )}
                   {!product.inStock && (
                     <View style={styles.outOfStockBadge}>
                       <Text style={styles.outOfStockText}>Out of stock</Text>
@@ -510,7 +517,6 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: "#14b8a6",
     gap: 6,
     alignSelf: "flex-start",
   },
@@ -521,7 +527,6 @@ const styles = StyleSheet.create({
   categoryText: {
     fontSize: 13,
     fontWeight: "600",
-    color: "#14b8a6",
   },
   categoryTextActive: {
     color: "#ffffff",
@@ -558,10 +563,19 @@ const styles = StyleSheet.create({
   },
   productImageContainer: {
     width: "100%",
-    height: 120,
+    height: 140,
+    position: "relative",
+  },
+  productImageFull: {
+    width: "100%",
+    height: "100%",
+    borderRadius: 0,
+  },
+  productImagePlaceholder: {
+    width: "100%",
+    height: "100%",
     justifyContent: "center",
     alignItems: "center",
-    position: "relative",
   },
   outOfStockBadge: {
     position: "absolute",
@@ -805,4 +819,3 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
 });
-

@@ -266,6 +266,22 @@ export default function TodayScreen() {
           </View>
         )}
 
+        {/* Quick Actions */}
+        <TouchableOpacity
+          style={[styles.quickActionBtn, { borderColor: themeColor + "40", backgroundColor: themeColor + "08" }]}
+          onPress={() => router.push("/onboard-pool")}
+          activeOpacity={0.7}
+        >
+          <View style={[styles.quickActionIcon, { backgroundColor: themeColor + "18" }]}>
+            <Ionicons name="water-outline" size={20} color={themeColor} />
+          </View>
+          <View style={styles.quickActionText}>
+            <Text style={[styles.quickActionTitle, { color: themeColor }]}>Onboard a Pool</Text>
+            <Text style={styles.quickActionSubtitle}>Register a new client pool</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={themeColor} />
+        </TouchableOpacity>
+
         {/* Today's Jobs */}
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Today's jobs</Text>
@@ -483,6 +499,33 @@ const styles = StyleSheet.create({
   },
   earningsStatLabel: {
     fontSize: 11,
+    color: "#9ca3af",
+  },
+  // Quick action
+  quickActionBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderRadius: 14,
+    borderWidth: 1,
+    padding: 14,
+    marginBottom: 20,
+    gap: 12,
+  },
+  quickActionIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  quickActionText: { flex: 1 },
+  quickActionTitle: {
+    fontSize: 15,
+    fontWeight: "700",
+    marginBottom: 2,
+  },
+  quickActionSubtitle: {
+    fontSize: 12,
     color: "#9ca3af",
   },
   // Section header

@@ -9,6 +9,7 @@
   ],
   "scripts": {
     "dev": "turbo run dev",
+    "dev:fresh": "bash -c '(lsof -ti :3002 | xargs kill -9) 2>/dev/null || true; (lsof -ti :4000 | xargs kill -9) 2>/dev/null || true; pnpm exec turbo run dev'",
     "setup": "bash scripts/dev.sh",
     "build": "turbo run build",
     "build:render": "turbo run build --filter=@poolcare/api --filter=@poolcare/web",

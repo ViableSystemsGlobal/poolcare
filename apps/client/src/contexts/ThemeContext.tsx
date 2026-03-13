@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useState, useCallback } from "react";
+import React, { createContext, useContext, useState, useCallback, useEffect } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const PRESET_HEX: Record<string, string> = {
   purple: "#9333ea",
@@ -12,6 +13,7 @@ const PRESET_HEX: Record<string, string> = {
 };
 
 const DEFAULT_THEME_HEX = "#0d9488"; // teal, match API default
+const STORAGE_KEY = "poolcare_theme_color";
 
 function themeHexFromProfile(profile: {
   themeColor?: string;
@@ -38,9 +40,18 @@ const ThemeContext = createContext<ThemeContextValue>({
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [themeColor, setThemeColor] = useState(DEFAULT_THEME_HEX);
 
+  // Restore persisted theme on first render (before API responds)
+  useEffect(() => {
+    AsyncStorage.getItem(STORAGE_KEY).then((saved) => {
+      if (saved) setThemeColor(saved);
+    }).catch(() => {});
+  }, []);
+
   const setThemeFromOrgProfile = useCallback(
     (profile: { themeColor?: string; customColorHex?: string | null }) => {
-      setThemeColor(themeHexFromProfile(profile));
+      const hex = themeHexFromProfile(profile);
+      setThemeColor(hex);
+      AsyncStorage.setItem(STORAGE_KEY, hex).catch(() => {});
     },
     []
   );
