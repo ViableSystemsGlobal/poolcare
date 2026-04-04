@@ -73,6 +73,34 @@ export class SettingsController {
     return this.settingsService.updatePolicies(user.org_id, data);
   }
 
+  @Get("daily-briefing")
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "MANAGER")
+  async getDailyBriefingSettings(@CurrentUser() user: any) {
+    return this.settingsService.getDailyBriefingSettings(user.org_id);
+  }
+
+  @Patch("daily-briefing")
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "MANAGER")
+  async updateDailyBriefingSettings(@CurrentUser() user: any, @Body() data: any) {
+    return this.settingsService.updateDailyBriefingSettings(user.org_id, data);
+  }
+
+  @Get("job-generation")
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "MANAGER")
+  async getJobGenerationSettings(@CurrentUser() user: any) {
+    return this.settingsService.getJobGenerationSettings(user.org_id);
+  }
+
+  @Patch("job-generation")
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "MANAGER")
+  async updateJobGenerationSettings(@CurrentUser() user: any, @Body() data: any) {
+    return this.settingsService.updateJobGenerationSettings(user.org_id, data);
+  }
+
   @Get("integrations/sms")
   async getSmsSettings(@CurrentUser() user: any) {
     return this.settingsService.getSmsSettings(user.org_id);

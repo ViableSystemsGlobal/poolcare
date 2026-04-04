@@ -19,6 +19,7 @@ import { PoolCoachService } from "./services/pool-coach.service";
 import { NewsletterAgentService } from "./services/newsletter-agent.service";
 import { TipSchedulerService } from "./services/tip-scheduler.service";
 import { HelpAssistantService } from "./services/help-assistant.service";
+import { DailyBriefingService } from "./services/daily-briefing.service";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { RolesGuard } from "../auth/guards/roles.guard";
 import { Roles } from "../auth/decorators/roles.decorator";
@@ -42,7 +43,8 @@ export class AiController {
     private readonly poolCoachService: PoolCoachService,
     private readonly newsletterAgentService: NewsletterAgentService,
     private readonly tipSchedulerService: TipSchedulerService,
-    private readonly helpAssistantService: HelpAssistantService
+    private readonly helpAssistantService: HelpAssistantService,
+    private readonly dailyBriefingService: DailyBriefingService
   ) {}
 
   @Get("recommendations")
@@ -349,6 +351,15 @@ export class AiController {
       body.recipientType || "all",
       body.customEmails
     );
+  }
+
+  // Daily Briefing
+  @Post("briefing/send")
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "MANAGER")
+  async sendDailyBriefing(@CurrentUser() user: { org_id: string }) {
+    await this.dailyBriefingService.generateAndSendBriefing(user.org_id);
+    return { success: true, message: "Daily briefing sent" };
   }
 }
 

@@ -756,5 +756,99 @@ export class SettingsService {
 
     return updatedPolicies;
   }
+
+  async getDailyBriefingSettings(orgId: string) {
+    const orgSetting = await this.getOrCreateOrgSetting(orgId);
+    const integrations = (orgSetting.integrations as any) || {};
+    const briefing = integrations.dailyBriefing || {};
+    const profile = (orgSetting.profile as any) || {};
+
+    // Get admins/managers for selection
+    const admins = await prisma.orgMember.findMany({
+      where: { orgId, role: { in: ["ADMIN", "MANAGER"] } },
+      include: { user: { select: { id: true, name: true, email: true } } },
+    });
+
+    return {
+      enabled: briefing.enabled || false,
+      frequency: briefing.frequency || "daily",
+      sendHour: briefing.sendHour ?? 6,
+      weeklyDay: briefing.weeklyDay ?? 1,
+      selectedAdminIds: briefing.selectedAdminIds || [],
+      customEmails: briefing.customEmails || [],
+      timezone: profile.timezone || "Africa/Accra",
+      availableAdmins: admins.map(a => ({
+        userId: a.userId,
+        name: a.user.name || a.user.email || "Unknown",
+        email: a.user.email,
+        role: a.role,
+      })),
+    };
+  }
+
+  async updateDailyBriefingSettings(orgId: string, data: any) {
+    const orgSetting = await this.getOrCreateOrgSetting(orgId);
+    const integrations = (orgSetting.integrations as any) || {};
+    const current = integrations.dailyBriefing || {};
+
+    const updated = {
+      enabled: data.enabled !== undefined ? data.enabled : (current.enabled || false),
+      frequency: data.frequency || current.frequency || "daily",
+      sendHour: data.sendHour !== undefined ? data.sendHour : (current.sendHour ?? 6),
+      weeklyDay: data.weeklyDay !== undefined ? data.weeklyDay : (current.weeklyDay ?? 1),
+      selectedAdminIds: data.selectedAdminIds !== undefined ? data.selectedAdminIds : (current.selectedAdminIds || []),
+      customEmails: data.customEmails !== undefined ? data.customEmails : (current.customEmails || []),
+    };
+
+    integrations.dailyBriefing = updated;
+
+    // Update timezone in profile if provided
+    if (data.timezone) {
+      const profile = (orgSetting.profile as any) || {};
+      profile.timezone = data.timezone;
+      await prisma.orgSetting.update({
+        where: { orgId },
+        data: { integrations, profile },
+      });
+    } else {
+      await prisma.orgSetting.update({
+        where: { orgId },
+        data: { integrations },
+      });
+    }
+
+    return updated;
+  }
+
+  async getJobGenerationSettings(orgId: string) {
+    const orgSetting = await this.getOrCreateOrgSetting(orgId);
+    const policies = (orgSetting.policies as any) || {};
+    const jobGen = policies.jobGeneration || {};
+
+    return {
+      enabled: jobGen.enabled || false,
+      horizonDays: jobGen.horizonDays || 56,
+    };
+  }
+
+  async updateJobGenerationSettings(orgId: string, data: any) {
+    const orgSetting = await this.getOrCreateOrgSetting(orgId);
+    const policies = (orgSetting.policies as any) || {};
+    const current = policies.jobGeneration || {};
+
+    const updated = {
+      enabled: data.enabled !== undefined ? data.enabled : (current.enabled || false),
+      horizonDays: data.horizonDays !== undefined ? data.horizonDays : (current.horizonDays || 56),
+    };
+
+    policies.jobGeneration = updated;
+
+    await prisma.orgSetting.update({
+      where: { orgId },
+      data: { policies },
+    });
+
+    return updated;
+  }
 }
 

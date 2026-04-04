@@ -13,7 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Settings, Building, DollarSign, Save, Globe, MapPin, Mail, Phone, CheckCircle, Image, Palette, Map, Loader2, Send, Sparkles, FileText, Lightbulb, MessageCircleQuestion } from "lucide-react";
+import { Settings, Building, DollarSign, Save, Globe, MapPin, Mail, Phone, CheckCircle, Image, Palette, Map, Loader2, Send, Sparkles, FileText, Lightbulb, MessageCircleQuestion, Calendar } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -289,6 +289,39 @@ export default function SettingsPage() {
   });
   const [savingTipSchedule, setSavingTipSchedule] = useState(false);
 
+  // Job Generation Settings
+  const [jobGeneration, setJobGeneration] = useState<{
+    enabled: boolean;
+    horizonDays: number;
+  }>({
+    enabled: false,
+    horizonDays: 56,
+  });
+  const [savingJobGeneration, setSavingJobGeneration] = useState(false);
+
+  // Daily Briefing Settings
+  const [dailyBriefing, setDailyBriefing] = useState<{
+    enabled: boolean;
+    frequency: string;
+    sendHour: number;
+    weeklyDay: number;
+    selectedAdminIds: string[];
+    customEmails: string[];
+    timezone: string;
+    availableAdmins: { userId: string; name: string; email: string; role: string }[];
+  }>({
+    enabled: false,
+    frequency: "daily",
+    sendHour: 6,
+    weeklyDay: 1,
+    selectedAdminIds: [],
+    customEmails: [],
+    timezone: "Africa/Accra",
+    availableAdmins: [],
+  });
+  const [savingDailyBriefing, setSavingDailyBriefing] = useState(false);
+  const [sendingBriefing, setSendingBriefing] = useState(false);
+
   useEffect(() => {
     fetchSettings();
   }, []);
@@ -298,7 +331,7 @@ export default function SettingsPage() {
       setLoading(true);
       const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
 
-      const [orgRes, taxRes, policiesRes, smtpRes, smsRes, googleMapsRes, llmRes, tipScheduleRes] = await Promise.all([
+      const [orgRes, taxRes, policiesRes, smtpRes, smsRes, googleMapsRes, llmRes, tipScheduleRes, jobGenRes, dailyBriefingRes] = await Promise.all([
         fetch(`${API_URL}/settings/org`, {
           headers: {
             Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
@@ -335,6 +368,16 @@ export default function SettingsPage() {
           },
         }),
         fetch(`${API_URL}/settings/tip-schedule`, {
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
+          },
+        }),
+        fetch(`${API_URL}/settings/job-generation`, {
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
+          },
+        }),
+        fetch(`${API_URL}/settings/daily-briefing`, {
           headers: {
             Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
           },
@@ -477,6 +520,32 @@ export default function SettingsPage() {
               friday: false, saturday: false, sunday: false,
             },
             lastTipIndex: tipData.lastTipIndex ?? 0,
+          });
+        }
+      }
+
+      if (jobGenRes.ok) {
+        const jobGenData = await jobGenRes.json();
+        if (jobGenData) {
+          setJobGeneration({
+            enabled: jobGenData.enabled ?? false,
+            horizonDays: jobGenData.horizonDays ?? 56,
+          });
+        }
+      }
+
+      if (dailyBriefingRes.ok) {
+        const briefingData = await dailyBriefingRes.json();
+        if (briefingData) {
+          setDailyBriefing({
+            enabled: briefingData.enabled ?? false,
+            frequency: briefingData.frequency || "daily",
+            sendHour: briefingData.sendHour ?? 6,
+            weeklyDay: briefingData.weeklyDay ?? 1,
+            selectedAdminIds: briefingData.selectedAdminIds ?? [],
+            customEmails: briefingData.customEmails ?? [],
+            timezone: briefingData.timezone || "Africa/Accra",
+            availableAdmins: briefingData.availableAdmins ?? [],
           });
         }
       }
@@ -1193,6 +1262,65 @@ export default function SettingsPage() {
       toast({ title: "Save failed", description: error.message || "Unknown error", variant: "destructive" });
     } finally {
       setSavingTipSchedule(false);
+    }
+  };
+
+  const handleSaveDailyBriefing = async () => {
+    try {
+      setSavingDailyBriefing(true);
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+      const response = await fetch(`${API_URL}/settings/daily-briefing`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
+        },
+        body: JSON.stringify(dailyBriefing),
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setDailyBriefing(prev => ({ ...prev, ...data, availableAdmins: prev.availableAdmins }));
+        toast({ title: "Saved", description: "Briefing settings updated" });
+      } else {
+        const error = await response.json().catch(() => ({ message: "Unknown error" }));
+        toast({ title: "Save failed", description: error.message, variant: "destructive" });
+      }
+    } catch (error: any) {
+      toast({ title: "Save failed", description: error.message, variant: "destructive" });
+    } finally {
+      setSavingDailyBriefing(false);
+    }
+  };
+
+  const handleSaveJobGeneration = async () => {
+    try {
+      setSavingJobGeneration(true);
+      setSaveSuccess(false);
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+
+      const response = await fetch(`${API_URL}/settings/job-generation`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
+        },
+        body: JSON.stringify(jobGeneration),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setJobGeneration(data);
+        setSaveSuccess(true);
+        toast({ title: "Saved", description: "Job generation settings updated successfully" });
+        setTimeout(() => setSaveSuccess(false), 3000);
+      } else {
+        const error = await response.json().catch(() => ({ message: "Unknown error" }));
+        toast({ title: "Save failed", description: error.message || "Unknown error", variant: "destructive" });
+      }
+    } catch (error: any) {
+      toast({ title: "Save failed", description: error.message || "Unknown error", variant: "destructive" });
+    } finally {
+      setSavingJobGeneration(false);
     }
   };
 
@@ -2174,7 +2302,7 @@ export default function SettingsPage() {
           )}
 
           {/* Policies */}
-          {activeTab === "policies" && (
+          {activeTab === "policies" && (<>
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -2256,7 +2384,70 @@ export default function SettingsPage() {
                 </div>
               </CardContent>
             </Card>
-          )}
+
+            {/* Job Generation Settings */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Calendar className="h-5 w-5" />
+                  Automatic Job Generation
+                </CardTitle>
+                <p className="text-sm text-gray-500">
+                  Automatically create jobs from active service plans daily at 2 AM
+                </p>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <Label className="text-base font-medium">Enable Auto-Generation</Label>
+                    <p className="text-sm text-gray-500">Jobs will be created automatically from your service plans</p>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={jobGeneration.enabled}
+                    onClick={() => setJobGeneration({ ...jobGeneration, enabled: !jobGeneration.enabled })}
+                    className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors ${
+                      jobGeneration.enabled ? `bg-${theme.primary}` : "bg-gray-200"
+                    }`}
+                    style={jobGeneration.enabled ? { backgroundColor: colorMap[theme.primary] || undefined } : undefined}
+                  >
+                    <span className={`inline-block h-5 w-5 rounded-full bg-white shadow-sm transform transition-transform ${
+                      jobGeneration.enabled ? "translate-x-6" : "translate-x-1"
+                    }`} />
+                  </button>
+                </div>
+
+                <div className={jobGeneration.enabled ? "" : "opacity-50 pointer-events-none"}>
+                  <Label htmlFor="horizon-days">Planning Horizon (days)</Label>
+                  <p className="text-sm text-gray-500 mb-2">How far ahead to generate jobs (default: 56 days / 8 weeks)</p>
+                  <select
+                    id="horizon-days"
+                    value={jobGeneration.horizonDays}
+                    onChange={(e) => setJobGeneration({ ...jobGeneration, horizonDays: parseInt(e.target.value, 10) })}
+                    className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                  >
+                    <option value={14}>14 days (2 weeks)</option>
+                    <option value={28}>28 days (4 weeks)</option>
+                    <option value={42}>42 days (6 weeks)</option>
+                    <option value={56}>56 days (8 weeks)</option>
+                    <option value={84}>84 days (12 weeks)</option>
+                  </select>
+                </div>
+
+                <div className="flex justify-end gap-3 pt-4 border-t">
+                  <Button
+                    onClick={handleSaveJobGeneration}
+                    disabled={savingJobGeneration}
+                    className={`bg-${theme.primary} hover:bg-${theme.primary}/90`}
+                  >
+                    <Save className="h-4 w-4 mr-2" />
+                    {savingJobGeneration ? "Saving..." : "Save Changes"}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </>)}
 
           {/* Integrations */}
           {activeTab === "integrations" && (
@@ -3089,6 +3280,199 @@ export default function SettingsPage() {
                     >
                       <Save className="h-4 w-4 mr-2" />
                       {savingLlm ? "Saving..." : "Save API LLM Settings"}
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Daily Briefing */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Mail className="h-5 w-5" />
+                    Business Briefing
+                  </CardTitle>
+                  <p className="text-sm text-gray-500">
+                    AI-generated business report sent to selected recipients. Requires LLM and SMTP to be configured.
+                  </p>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <Label className="text-base font-medium">Enable Briefing</Label>
+                      <p className="text-sm text-gray-500">Receive an AI-written summary of your business metrics</p>
+                    </div>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={dailyBriefing.enabled}
+                      onClick={() => setDailyBriefing({ ...dailyBriefing, enabled: !dailyBriefing.enabled })}
+                      className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors ${
+                        dailyBriefing.enabled ? `bg-${theme.primary}` : "bg-gray-200"
+                      }`}
+                      style={dailyBriefing.enabled ? { backgroundColor: colorMap[theme.primary] || undefined } : undefined}
+                    >
+                      <span className={`inline-block h-5 w-5 rounded-full bg-white shadow-sm transform transition-transform ${
+                        dailyBriefing.enabled ? "translate-x-6" : "translate-x-1"
+                      }`} />
+                    </button>
+                  </div>
+
+                  <div className={dailyBriefing.enabled ? "space-y-4" : "opacity-50 pointer-events-none space-y-4"}>
+                    {/* Frequency & Schedule */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div className="space-y-1">
+                        <Label>Frequency</Label>
+                        <select
+                          value={dailyBriefing.frequency}
+                          onChange={(e) => setDailyBriefing({ ...dailyBriefing, frequency: e.target.value })}
+                          className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                        >
+                          <option value="daily">Daily</option>
+                          <option value="weekly">Weekly</option>
+                        </select>
+                      </div>
+
+                      <div className="space-y-1">
+                        <Label>Send Time</Label>
+                        <select
+                          value={dailyBriefing.sendHour}
+                          onChange={(e) => setDailyBriefing({ ...dailyBriefing, sendHour: parseInt(e.target.value) })}
+                          className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                        >
+                          {Array.from({ length: 24 }, (_, i) => (
+                            <option key={i} value={i}>
+                              {i === 0 ? "12:00 AM" : i < 12 ? `${i}:00 AM` : i === 12 ? "12:00 PM" : `${i - 12}:00 PM`}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {dailyBriefing.frequency === "weekly" && (
+                        <div className="space-y-1">
+                          <Label>Day of Week</Label>
+                          <select
+                            value={dailyBriefing.weeklyDay}
+                            onChange={(e) => setDailyBriefing({ ...dailyBriefing, weeklyDay: parseInt(e.target.value) })}
+                            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                          >
+                            <option value={0}>Sunday</option>
+                            <option value={1}>Monday</option>
+                            <option value={2}>Tuesday</option>
+                            <option value={3}>Wednesday</option>
+                            <option value={4}>Thursday</option>
+                            <option value={5}>Friday</option>
+                            <option value={6}>Saturday</option>
+                          </select>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Timezone */}
+                    <div className="space-y-1">
+                      <Label>Timezone (applies to all scheduled tasks)</Label>
+                      <select
+                        value={dailyBriefing.timezone}
+                        onChange={(e) => setDailyBriefing({ ...dailyBriefing, timezone: e.target.value })}
+                        className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                      >
+                        <option value="Africa/Accra">Africa/Accra (GMT+0)</option>
+                        <option value="Africa/Lagos">Africa/Lagos (WAT, GMT+1)</option>
+                        <option value="Africa/Johannesburg">Africa/Johannesburg (SAST, GMT+2)</option>
+                        <option value="Africa/Nairobi">Africa/Nairobi (EAT, GMT+3)</option>
+                        <option value="Africa/Cairo">Africa/Cairo (EET, GMT+2)</option>
+                        <option value="Europe/London">Europe/London (GMT/BST)</option>
+                        <option value="America/New_York">America/New_York (ET)</option>
+                        <option value="America/Chicago">America/Chicago (CT)</option>
+                        <option value="America/Los_Angeles">America/Los_Angeles (PT)</option>
+                        <option value="Asia/Dubai">Asia/Dubai (GST, GMT+4)</option>
+                      </select>
+                    </div>
+
+                    {/* Admin Recipients */}
+                    <div className="space-y-2">
+                      <Label>Select Recipients</Label>
+                      <p className="text-sm text-gray-500">Choose which admins and managers receive the briefing</p>
+                      <div className="border rounded-md divide-y max-h-48 overflow-y-auto">
+                        {(dailyBriefing.availableAdmins || []).length === 0 ? (
+                          <p className="p-3 text-sm text-gray-400">No admins/managers found</p>
+                        ) : (
+                          (dailyBriefing.availableAdmins || []).map((admin) => (
+                            <label key={admin.userId} className="flex items-center gap-3 p-3 hover:bg-gray-50 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={dailyBriefing.selectedAdminIds.includes(admin.userId)}
+                                onChange={(e) => {
+                                  const ids = e.target.checked
+                                    ? [...dailyBriefing.selectedAdminIds, admin.userId]
+                                    : dailyBriefing.selectedAdminIds.filter((id: string) => id !== admin.userId);
+                                  setDailyBriefing({ ...dailyBriefing, selectedAdminIds: ids });
+                                }}
+                                className="rounded border-gray-300"
+                              />
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium text-gray-900 truncate">{admin.name}</p>
+                                <p className="text-xs text-gray-500 truncate">{admin.email || "No email"}</p>
+                              </div>
+                              <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded">{admin.role}</span>
+                            </label>
+                          ))
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Custom Emails */}
+                    <div className="space-y-2">
+                      <Label>Additional Email Recipients</Label>
+                      <p className="text-sm text-gray-500">Add custom email addresses (one per line)</p>
+                      <Textarea
+                        placeholder={"ceo@company.com\noperations@company.com"}
+                        value={(dailyBriefing.customEmails || []).join("\n")}
+                        onChange={(e) => setDailyBriefing({
+                          ...dailyBriefing,
+                          customEmails: e.target.value.split("\n").map((s: string) => s.trim()).filter((s: string) => s),
+                        })}
+                        rows={3}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex justify-between items-center gap-3 pt-4 border-t">
+                    <Button
+                      variant="outline"
+                      disabled={sendingBriefing || !dailyBriefing.enabled}
+                      onClick={async () => {
+                        setSendingBriefing(true);
+                        try {
+                          const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+                          const res = await fetch(`${API_URL}/ai/briefing/send`, {
+                            method: "POST",
+                            headers: { Authorization: `Bearer ${localStorage.getItem("auth_token")}` },
+                          });
+                          if (res.ok) {
+                            const data = await res.json();
+                            toast({ title: "Sent", description: `Briefing sent to ${data.sent} recipient(s)` });
+                          } else {
+                            const err = await res.json().catch(() => ({ message: "Failed" }));
+                            toast({ title: "Failed", description: err.message, variant: "destructive" });
+                          }
+                        } catch (e: any) {
+                          toast({ title: "Error", description: e.message, variant: "destructive" });
+                        } finally {
+                          setSendingBriefing(false);
+                        }
+                      }}
+                    >
+                      <Send className="h-4 w-4 mr-2" />
+                      {sendingBriefing ? "Sending..." : "Send Test Briefing Now"}
+                    </Button>
+                    <Button
+                      onClick={handleSaveDailyBriefing}
+                      disabled={savingDailyBriefing}
+                      className={`bg-${theme.primary} hover:bg-${theme.primary}/90`}
+                    >
+                      <Save className="h-4 w-4 mr-2" />
+                      {savingDailyBriefing ? "Saving..." : "Save Settings"}
                     </Button>
                   </div>
                 </CardContent>

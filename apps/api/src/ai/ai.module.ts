@@ -9,6 +9,7 @@ import { PoolCoachService } from "./services/pool-coach.service";
 import { NewsletterAgentService } from "./services/newsletter-agent.service";
 import { TipSchedulerService } from "./services/tip-scheduler.service";
 import { HelpAssistantService } from "./services/help-assistant.service";
+import { DailyBriefingService } from "./services/daily-briefing.service";
 import { AuthModule } from "../auth/auth.module";
 import { SettingsModule } from "../settings/settings.module";
 import { NotificationsModule } from "../notifications/notifications.module";
@@ -27,6 +28,7 @@ import { KnowledgeModule } from "../knowledge/knowledge.module";
     NewsletterAgentService,
     TipSchedulerService,
     HelpAssistantService,
+    DailyBriefingService,
   ],
   exports: [
     AiService,
@@ -38,6 +40,7 @@ import { KnowledgeModule } from "../knowledge/knowledge.module";
     NewsletterAgentService,
     TipSchedulerService,
     HelpAssistantService,
+    DailyBriefingService,
   ],
 })
 export class AiModule {}
