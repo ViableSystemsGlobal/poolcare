@@ -262,8 +262,8 @@ export class ClientsService {
     const where: any = {
       orgId,
       OR: [
-        { recipientId: userId },
-        { recipientId: client.id },
+        { recipientId: userId, recipientType: { in: ["client", "org", null] } },
+        { recipientId: client.id, recipientType: { in: ["client", "org", null] } },
         { recipientId: null, recipientType: "org" },
       ],
     };

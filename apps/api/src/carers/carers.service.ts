@@ -218,8 +218,8 @@ export class CarersService {
     const where: any = {
       orgId,
       OR: [
-        { recipientId: userId },
-        { recipientId: carer.id },
+        { recipientId: userId, recipientType: { in: ["carer", "org", null] } },
+        { recipientId: carer.id, recipientType: { in: ["carer", "org", null] } },
         { recipientId: null, recipientType: "org" },
       ],
     };
