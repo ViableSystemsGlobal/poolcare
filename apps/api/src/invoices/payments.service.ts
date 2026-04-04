@@ -16,7 +16,7 @@ export class PaymentsService {
 
   constructor(
     private readonly configService: ConfigService,
-    private readonly notificationsService: NotificationsService
+    private readonly notificationsService: NotificationsService,
   ) {
     this.minioClient = new MinIO.Client({
       endPoint: this.configService.get<string>("MINIO_ENDPOINT") || "localhost",
@@ -27,6 +27,39 @@ export class PaymentsService {
     });
 
     this.bucket = this.configService.get<string>("MINIO_BUCKET") || "poolcare";
+  }
+
+  /**
+   * Get Paystack secret key — checks env first, then org settings (encrypted).
+   */
+  private async getPaystackSecret(orgId?: string): Promise<string | null> {
+    // 1. Environment variable takes precedence
+    const envKey = this.configService.get<string>("PAYSTACK_SECRET_KEY");
+    if (envKey) return envKey;
+
+    // 2. Fall back to org settings
+    if (orgId) {
+      try {
+        const orgSetting = await prisma.orgSetting.findUnique({ where: { orgId } });
+        const integrations = (orgSetting?.integrations as any) || {};
+        const paystack = integrations.paystack;
+        if (paystack?.secretKey) {
+          // Decrypt if encrypted, or return as-is
+          const key = this.configService.get<string>("ENCRYPTION_KEY");
+          if (key && paystack.secretKey.includes(":")) {
+            try {
+              const [iv, encrypted] = paystack.secretKey.split(":");
+              const decipher = crypto.createDecipheriv("aes-256-cbc", Buffer.from(key, "hex"), Buffer.from(iv, "hex"));
+              let decrypted = decipher.update(encrypted, "hex", "utf8");
+              decrypted += decipher.final("utf8");
+              return decrypted;
+            } catch { return paystack.secretKey; }
+          }
+          return paystack.secretKey;
+        }
+      } catch {}
+    }
+    return null;
   }
 
   async init(
@@ -90,9 +123,9 @@ export class PaymentsService {
 
     // Initialize payment with Paystack
     if (dto.provider === "paystack" || !dto.provider) {
-      const paystackSecret = this.configService.get<string>("PAYSTACK_SECRET_KEY");
+      const paystackSecret = await this.getPaystackSecret(orgId);
       if (!paystackSecret) {
-        throw new BadRequestException("Payment provider not configured");
+        throw new BadRequestException("Payment provider not configured. Add your Paystack API key in Settings > Integrations.");
       }
 
       try {
@@ -160,17 +193,30 @@ export class PaymentsService {
   }
 
   async handleWebhook(body: any, signature?: string) {
-    const paystackSecret = this.configService.get<string>("PAYSTACK_SECRET_KEY");
-
-    // Always require a valid signature — reject unsigned or unverifiable requests
-    if (!paystackSecret) {
-      this.logger.error("PAYSTACK_SECRET_KEY not configured — cannot verify webhook");
-      throw new BadRequestException("Payment provider not configured");
-    }
     if (!signature) {
       this.logger.warn("Webhook received without x-paystack-signature header");
       throw new BadRequestException("Missing webhook signature");
     }
+
+    // Try env key first, then look up org-specific key from the payment reference
+    let paystackSecret = this.configService.get<string>("PAYSTACK_SECRET_KEY") || null;
+
+    if (!paystackSecret) {
+      // Try to find the org from the payment reference
+      const ref = body?.data?.reference;
+      if (ref) {
+        const payment = await prisma.payment.findUnique({ where: { id: ref }, select: { orgId: true } });
+        if (payment) {
+          paystackSecret = await this.getPaystackSecret(payment.orgId);
+        }
+      }
+    }
+
+    if (!paystackSecret) {
+      this.logger.error("PAYSTACK_SECRET_KEY not configured — cannot verify webhook");
+      throw new BadRequestException("Payment provider not configured");
+    }
+
     const hash = crypto
       .createHmac("sha512", paystackSecret)
       .update(JSON.stringify(body))
@@ -604,7 +650,7 @@ export class PaymentsService {
 
     // Process refund through payment provider (Paystack) if providerRef exists
     if (payment.providerRef && payment.provider === "paystack") {
-      const paystackSecret = this.configService.get<string>("PAYSTACK_SECRET_KEY");
+      const paystackSecret = await this.getPaystackSecret(orgId);
       if (paystackSecret) {
         try {
           // Paystack refund API: POST /refund

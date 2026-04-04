@@ -322,6 +322,14 @@ export default function SettingsPage() {
   const [savingDailyBriefing, setSavingDailyBriefing] = useState(false);
   const [sendingBriefing, setSendingBriefing] = useState(false);
 
+  // Paystack Settings
+  const [paystackSettings, setPaystackSettings] = useState({
+    secretKey: "",
+    callbackUrl: "",
+    enabled: false,
+  });
+  const [savingPaystack, setSavingPaystack] = useState(false);
+
   useEffect(() => {
     fetchSettings();
   }, []);
@@ -331,7 +339,7 @@ export default function SettingsPage() {
       setLoading(true);
       const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
 
-      const [orgRes, taxRes, policiesRes, smtpRes, smsRes, googleMapsRes, llmRes, tipScheduleRes, jobGenRes, dailyBriefingRes] = await Promise.all([
+      const [orgRes, taxRes, policiesRes, smtpRes, smsRes, googleMapsRes, llmRes, tipScheduleRes, jobGenRes, dailyBriefingRes, paystackRes] = await Promise.all([
         fetch(`${API_URL}/settings/org`, {
           headers: {
             Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
@@ -378,6 +386,11 @@ export default function SettingsPage() {
           },
         }),
         fetch(`${API_URL}/settings/daily-briefing`, {
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
+          },
+        }),
+        fetch(`${API_URL}/settings/integrations/paystack`, {
           headers: {
             Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
           },
@@ -535,6 +548,17 @@ export default function SettingsPage() {
           setJobGeneration({
             enabled: jobGenData.enabled ?? false,
             horizonDays: jobGenData.horizonDays ?? 56,
+          });
+        }
+      }
+
+      if (paystackRes.ok) {
+        const psData = await paystackRes.json();
+        if (psData) {
+          setPaystackSettings({
+            secretKey: psData.secretKey || "",
+            callbackUrl: psData.callbackUrl || "",
+            enabled: psData.enabled || false,
           });
         }
       }
@@ -3136,6 +3160,88 @@ export default function SettingsPage() {
                     >
                       <Save className="h-4 w-4 mr-2" />
                       {verifyingApiKey ? "Verifying..." : saving ? "Saving..." : "Save Google Maps Settings"}
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Paystack Configuration */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <DollarSign className="h-5 w-5" />
+                    Paystack Payments
+                  </CardTitle>
+                  <p className="text-sm text-gray-500">
+                    Configure Paystack to accept card, mobile money, and bank transfer payments from clients.
+                  </p>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {paystackSettings.enabled && (
+                    <div className="flex items-center gap-2 text-green-600 text-sm font-medium">
+                      <CheckCircle className="h-4 w-4" />
+                      Paystack is configured and active
+                    </div>
+                  )}
+
+                  <div className="space-y-2">
+                    <Label htmlFor="paystack-key">Secret Key</Label>
+                    <Input
+                      id="paystack-key"
+                      type="password"
+                      placeholder="sk_live_... or sk_test_..."
+                      value={paystackSettings.secretKey}
+                      onChange={(e) => setPaystackSettings(prev => ({ ...prev, secretKey: e.target.value }))}
+                    />
+                    <p className="text-xs text-gray-400">
+                      Get your key from <span className="font-medium">Paystack Dashboard &gt; Settings &gt; API Keys</span>. Use test key (sk_test_) for testing.
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="paystack-callback">Callback URL (optional)</Label>
+                    <Input
+                      id="paystack-callback"
+                      placeholder="https://your-app.com/payments/callback"
+                      value={paystackSettings.callbackUrl}
+                      onChange={(e) => setPaystackSettings(prev => ({ ...prev, callbackUrl: e.target.value }))}
+                    />
+                    <p className="text-xs text-gray-400">Leave blank to use the default. Only change if you have a custom payment callback page.</p>
+                  </div>
+
+                  <div className="flex justify-end pt-4 border-t">
+                    <Button
+                      disabled={savingPaystack}
+                      className={`bg-${theme.primary} hover:bg-${theme.primary}/90`}
+                      onClick={async () => {
+                        setSavingPaystack(true);
+                        try {
+                          const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+                          const res = await fetch(`${API_URL}/settings/integrations/paystack`, {
+                            method: "PATCH",
+                            headers: {
+                              "Content-Type": "application/json",
+                              Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
+                            },
+                            body: JSON.stringify(paystackSettings),
+                          });
+                          if (res.ok) {
+                            const data = await res.json();
+                            setPaystackSettings(data);
+                            toast({ title: "Saved", description: "Paystack settings updated" });
+                          } else {
+                            const err = await res.json().catch(() => ({ message: "Failed" }));
+                            toast({ title: "Save failed", description: err.message, variant: "destructive" });
+                          }
+                        } catch (e: any) {
+                          toast({ title: "Error", description: e.message, variant: "destructive" });
+                        } finally {
+                          setSavingPaystack(false);
+                        }
+                      }}
+                    >
+                      <Save className="h-4 w-4 mr-2" />
+                      {savingPaystack ? "Saving..." : "Save Paystack Settings"}
                     </Button>
                   </div>
                 </CardContent>

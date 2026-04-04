@@ -820,6 +820,62 @@ export class SettingsService {
     return updated;
   }
 
+  async getPaystackSettings(orgId: string) {
+    const orgSetting = await this.getOrCreateOrgSetting(orgId);
+    const integrations = (orgSetting.integrations as any) || {};
+    const paystack = integrations.paystack || {};
+
+    return {
+      secretKey: paystack.secretKey ? "***" : "",
+      callbackUrl: paystack.callbackUrl || "",
+      enabled: !!paystack.secretKey,
+    };
+  }
+
+  async updatePaystackSettings(orgId: string, data: any) {
+    const orgSetting = await this.getOrCreateOrgSetting(orgId);
+    const integrations = (orgSetting.integrations as any) || {};
+    const current = integrations.paystack || {};
+
+    const updated: any = { ...current };
+
+    // Only update secret key if provided and not masked
+    if (data.secretKey && data.secretKey !== "***") {
+      // Encrypt the key if encryption is available
+      const encKey = process.env.ENCRYPTION_KEY;
+      if (encKey) {
+        try {
+          const iv = crypto.randomBytes(16);
+          const cipher = crypto.createCipheriv("aes-256-cbc", Buffer.from(encKey, "hex"), iv);
+          let encrypted = cipher.update(data.secretKey, "utf8", "hex");
+          encrypted += cipher.final("hex");
+          updated.secretKey = iv.toString("hex") + ":" + encrypted;
+        } catch {
+          updated.secretKey = data.secretKey;
+        }
+      } else {
+        updated.secretKey = data.secretKey;
+      }
+    }
+
+    if (data.callbackUrl !== undefined) {
+      updated.callbackUrl = data.callbackUrl;
+    }
+
+    integrations.paystack = updated;
+
+    await prisma.orgSetting.update({
+      where: { orgId },
+      data: { integrations },
+    });
+
+    return {
+      secretKey: updated.secretKey ? "***" : "",
+      callbackUrl: updated.callbackUrl || "",
+      enabled: !!updated.secretKey,
+    };
+  }
+
   async getJobGenerationSettings(orgId: string) {
     const orgSetting = await this.getOrCreateOrgSetting(orgId);
     const policies = (orgSetting.policies as any) || {};

@@ -73,6 +73,20 @@ export class SettingsController {
     return this.settingsService.updatePolicies(user.org_id, data);
   }
 
+  @Get("integrations/paystack")
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN")
+  async getPaystackSettings(@CurrentUser() user: any) {
+    return this.settingsService.getPaystackSettings(user.org_id);
+  }
+
+  @Patch("integrations/paystack")
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN")
+  async updatePaystackSettings(@CurrentUser() user: any, @Body() data: any) {
+    return this.settingsService.updatePaystackSettings(user.org_id, data);
+  }
+
   @Get("daily-briefing")
   @UseGuards(RolesGuard)
   @Roles("ADMIN", "MANAGER")
