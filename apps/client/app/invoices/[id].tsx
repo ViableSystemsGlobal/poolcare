@@ -10,125 +10,132 @@ import {
 } from "react-native";
 import { useLocalSearchParams, router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { api } from "../../src/lib/api-client";
+import { useTheme } from "../../src/contexts/ThemeContext";
+
+interface LineItem {
+  label: string;
+  qty: number;
+  unitPrice: number;
+}
 
 interface Invoice {
   id: string;
   reference: string;
   amount: number;
   balance: number;
+  paidAmount: number;
   currency: string;
   dueDate?: string;
   status: string;
-  items?: Array<{
-    label: string;
-    qty: number;
-    unitPrice: number;
-  }>;
+  items: LineItem[];
   createdAt?: string;
+  poolName?: string;
+  clientName?: string;
+  taxCents?: number;
+}
+
+const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; icon: string }> = {
+  paid:    { label: "Paid",    color: "#059669", bg: "#d1fae5", icon: "checkmark-circle" },
+  overdue: { label: "Overdue", color: "#dc2626", bg: "#fee2e2", icon: "alert-circle" },
+  sent:    { label: "Pending", color: "#d97706", bg: "#fef3c7", icon: "time" },
+  pending: { label: "Pending", color: "#d97706", bg: "#fef3c7", icon: "time" },
+  draft:   { label: "Draft",   color: "#6b7280", bg: "#f3f4f6", icon: "document-text" },
+};
+
+function formatCurrency(amount: number) {
+  return `GH₵${amount.toFixed(2)}`;
 }
 
 export default function InvoiceDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const { themeColor } = useTheme();
+  const insets = useSafeAreaInsets();
   const [invoice, setInvoice] = useState<Invoice | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    loadInvoice();
-  }, [id]);
+  useEffect(() => { loadInvoice(); }, [id]);
 
   const loadInvoice = async () => {
     try {
       setLoading(true);
-      
-      const invoiceData = await api.getInvoice(id);
-      
-      // Transform invoice data
-      const amount = invoiceData.totalCents ? invoiceData.totalCents / 100 : (invoiceData.amount || 0);
-      const balance = invoiceData.balanceCents ? invoiceData.balanceCents / 100 : (invoiceData.balance || amount);
-      
-      // Determine status
-      let status = invoiceData.status || "pending";
-      if (invoiceData.dueDate) {
-        const dueDate = new Date(invoiceData.dueDate);
-        if (dueDate < new Date() && status !== "paid") {
-          status = "overdue";
-        }
+      const data = await api.getInvoice(id);
+
+      const totalAmount = data.totalCents ? data.totalCents / 100 : (data.amount || 0);
+      const paidAmount = data.paidCents ? data.paidCents / 100 : 0;
+      const balance = data.balanceCents ? data.balanceCents / 100 : (totalAmount - paidAmount);
+      const taxAmount = data.taxCents ? data.taxCents / 100 : 0;
+
+      let status = data.status || "pending";
+      if (data.dueDate && new Date(data.dueDate) < new Date() && status !== "paid") {
+        status = "overdue";
       }
-      
-      // Transform line items
-      const items = (invoiceData.lineItems || []).map((item: any) => ({
-        label: item.description || item.label || "Item",
+
+      const items = (data.lineItems || []).map((item: any) => ({
+        label: item.description || item.label || "Service",
         qty: item.quantity || 1,
         unitPrice: item.unitPriceCents ? item.unitPriceCents / 100 : (item.unitPrice || 0),
       }));
 
-      const transformedInvoice: Invoice = {
-        id: invoiceData.id,
-        reference: invoiceData.reference || `Invoice #${invoiceData.id.slice(0, 8)}`,
-        amount,
+      setInvoice({
+        id: data.id,
+        reference: data.reference || `INV-${data.id.slice(0, 8).toUpperCase()}`,
+        amount: totalAmount,
         balance,
-        currency: invoiceData.currency || "GHS",
-        dueDate: invoiceData.dueDate,
+        paidAmount,
+        currency: data.currency || "GHS",
+        dueDate: data.dueDate,
         status,
-        createdAt: invoiceData.createdAt,
-        items: items.length > 0 ? items : undefined,
-      };
-
-      setInvoice(transformedInvoice);
+        createdAt: data.createdAt,
+        items,
+        poolName: data.pool?.name || data.pool?.address,
+        clientName: data.client?.name,
+        taxCents: data.taxCents || 0,
+      });
     } catch (error) {
       console.error("Error loading invoice:", error);
-      Alert.alert("Error", "Failed to load invoice details. Please try again.");
-      setInvoice(null);
+      Alert.alert("Error", "Failed to load invoice details.");
     } finally {
       setLoading(false);
     }
   };
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "paid":
-        return "#16a34a";
-      case "overdue":
-        return "#ef4444";
-      case "pending":
-        return "#f59e0b";
-      default:
-        return "#6b7280";
-    }
-  };
-
   if (loading) {
     return (
-      <SafeAreaView style={styles.container} edges={["top"]}>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#14b8a6" />
+      <View style={[styles.container, { paddingTop: insets.top }]}>
+        <View style={styles.center}>
+          <ActivityIndicator size="large" color={themeColor} />
           <Text style={styles.loadingText}>Loading invoice...</Text>
         </View>
-      </SafeAreaView>
+      </View>
     );
   }
 
   if (!invoice) {
     return (
-      <SafeAreaView style={styles.container} edges={["top"]}>
-        <View style={styles.loadingContainer}>
+      <View style={[styles.container, { paddingTop: insets.top }]}>
+        <View style={styles.center}>
+          <Ionicons name="document-text-outline" size={48} color="#d1d5db" />
           <Text style={styles.loadingText}>Invoice not found</Text>
         </View>
-      </SafeAreaView>
+      </View>
     );
   }
 
+  const statusCfg = STATUS_CONFIG[invoice.status] || STATUS_CONFIG.draft;
+  const subtotal = invoice.items.reduce((sum, item) => sum + item.qty * item.unitPrice, 0);
+  const tax = invoice.taxCents ? invoice.taxCents / 100 : 0;
+
   return (
-    <SafeAreaView style={styles.container} edges={["top"]}>
+    <View style={[styles.container, { paddingTop: insets.top }]}>
       {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}>
-          <Ionicons name="arrow-back" size={24} color="#111827" />
+      <View style={[styles.header, { backgroundColor: themeColor }]}>
+        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+          <Ionicons name="arrow-back" size={22} color="#fff" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Invoice Details</Text>
-        <View style={{ width: 24 }} />
+        <View style={{ width: 36 }} />
       </View>
 
       <ScrollView
@@ -136,306 +143,268 @@ export default function InvoiceDetailScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* Invoice Header */}
+        {/* Status Banner */}
+        <View style={[styles.statusBanner, { backgroundColor: statusCfg.bg }]}>
+          <Ionicons name={statusCfg.icon as any} size={20} color={statusCfg.color} />
+          <Text style={[styles.statusBannerText, { color: statusCfg.color }]}>
+            {statusCfg.label}
+          </Text>
+          {invoice.status === "overdue" && invoice.dueDate && (
+            <Text style={[styles.statusSubtext, { color: statusCfg.color }]}>
+              Due {new Date(invoice.dueDate).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+            </Text>
+          )}
+        </View>
+
+        {/* Invoice Info Card */}
         <View style={styles.card}>
-          <View style={styles.invoiceHeader}>
+          <View style={styles.invoiceInfoRow}>
             <View>
-              <Text style={styles.invoiceReference}>{invoice.reference}</Text>
+              <Text style={styles.invoiceRef}>{invoice.reference}</Text>
               <Text style={styles.invoiceDate}>
                 {invoice.createdAt
-                  ? new Date(invoice.createdAt).toLocaleDateString("en-US", {
-                      year: "numeric",
-                      month: "long",
-                      day: "numeric",
-                    })
+                  ? new Date(invoice.createdAt).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })
                   : "N/A"}
               </Text>
             </View>
-            <View
-              style={[
-                styles.statusBadge,
-                { backgroundColor: getStatusColor(invoice.status) + "15" },
-              ]}
-            >
-              <Text
-                style={[styles.statusText, { color: getStatusColor(invoice.status) }]}
-              >
-                {invoice.status.toUpperCase()}
-              </Text>
+            <View style={styles.amountBlock}>
+              <Text style={styles.amountLabel}>Total</Text>
+              <Text style={[styles.amountValue, { color: themeColor }]}>{formatCurrency(invoice.amount)}</Text>
             </View>
           </View>
 
-          {invoice.dueDate && (
-            <View style={styles.dueDateSection}>
-              <Text style={styles.dueDateLabel}>Due Date</Text>
-              <Text style={styles.dueDateValue}>
-                {new Date(invoice.dueDate).toLocaleDateString("en-US", {
-                  year: "numeric",
-                  month: "long",
-                  day: "numeric",
-                })}
+          {(invoice.poolName || invoice.clientName) && (
+            <View style={styles.detailsRow}>
+              {invoice.clientName && (
+                <View style={styles.detailItem}>
+                  <Ionicons name="person-outline" size={14} color="#9ca3af" />
+                  <Text style={styles.detailText}>{invoice.clientName}</Text>
+                </View>
+              )}
+              {invoice.poolName && (
+                <View style={styles.detailItem}>
+                  <Ionicons name="water-outline" size={14} color="#9ca3af" />
+                  <Text style={styles.detailText}>{invoice.poolName}</Text>
+                </View>
+              )}
+            </View>
+          )}
+
+          {invoice.dueDate && invoice.status !== "paid" && (
+            <View style={styles.dueDateRow}>
+              <Ionicons name="calendar-outline" size={14} color="#9ca3af" />
+              <Text style={styles.dueDateText}>
+                Due {new Date(invoice.dueDate).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}
               </Text>
             </View>
           )}
         </View>
 
-        {/* Invoice Items */}
-        {invoice.items && invoice.items.length > 0 && (
+        {/* Line Items */}
+        {invoice.items.length > 0 && (
           <View style={styles.card}>
-            <Text style={styles.sectionTitle}>Items</Text>
+            <Text style={styles.sectionTitle}>Services</Text>
             {invoice.items.map((item, index) => (
-              <View key={index} style={styles.itemRow}>
-                <View style={styles.itemInfo}>
-                  <Text style={styles.itemLabel}>{item.label}</Text>
-                  <Text style={styles.itemQuantity}>
-                    {item.qty} × GH₵{item.unitPrice.toFixed(2)}
-                  </Text>
+              <View key={index} style={[styles.itemRow, index === invoice.items.length - 1 && { borderBottomWidth: 0 }]}>
+                <View style={styles.itemLeft}>
+                  <View style={[styles.itemDot, { backgroundColor: themeColor }]} />
+                  <View style={styles.itemInfo}>
+                    <Text style={styles.itemLabel}>{item.label}</Text>
+                    <Text style={styles.itemQty}>
+                      {item.qty} × {formatCurrency(item.unitPrice)}
+                    </Text>
+                  </View>
                 </View>
-                <Text style={styles.itemTotal}>
-                  GH₵{(item.qty * item.unitPrice).toFixed(2)}
-                </Text>
+                <Text style={styles.itemTotal}>{formatCurrency(item.qty * item.unitPrice)}</Text>
               </View>
             ))}
           </View>
         )}
 
-        {/* Invoice Summary */}
+        {/* Summary */}
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>Summary</Text>
+
           <View style={styles.summaryRow}>
             <Text style={styles.summaryLabel}>Subtotal</Text>
-            <Text style={styles.summaryValue}>
-              GH₵{invoice.amount.toFixed(2)}
-            </Text>
+            <Text style={styles.summaryValue}>{formatCurrency(subtotal || invoice.amount)}</Text>
           </View>
+
           <View style={styles.summaryRow}>
             <Text style={styles.summaryLabel}>Tax</Text>
-            <Text style={styles.summaryValue}>GH₵0.00</Text>
+            <Text style={styles.summaryValue}>{formatCurrency(tax)}</Text>
           </View>
-          <View style={[styles.summaryRow, styles.summaryTotal]}>
-            <Text style={styles.summaryTotalLabel}>Total</Text>
-            <Text style={styles.summaryTotalValue}>
-              GH₵{invoice.amount.toFixed(2)}
-            </Text>
+
+          <View style={[styles.summaryRow, styles.totalRow]}>
+            <Text style={styles.totalLabel}>Total</Text>
+            <Text style={styles.totalValue}>{formatCurrency(invoice.amount)}</Text>
           </View>
-          {invoice.balance < invoice.amount && (
+
+          {invoice.paidAmount > 0 && (
             <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>Amount Paid</Text>
-              <Text style={styles.summaryValue}>
-                GH₵{(invoice.amount - invoice.balance).toFixed(2)}
+              <View style={styles.paidRow}>
+                <Ionicons name="checkmark-circle" size={16} color="#059669" />
+                <Text style={[styles.summaryLabel, { color: "#059669", marginLeft: 6 }]}>Amount Paid</Text>
+              </View>
+              <Text style={[styles.summaryValue, { color: "#059669" }]}>
+                -{formatCurrency(invoice.paidAmount)}
               </Text>
             </View>
           )}
-          <View style={[styles.summaryRow, styles.summaryBalance]}>
-            <Text style={styles.summaryBalanceLabel}>Outstanding Balance</Text>
-            <Text style={styles.summaryBalanceValue}>
-              GH₵{invoice.balance.toFixed(2)}
+
+          <View style={[styles.balanceRow, { backgroundColor: themeColor + "0a" }]}>
+            <Text style={styles.balanceLabel}>Outstanding Balance</Text>
+            <Text style={[styles.balanceValue, { color: themeColor }]}>
+              {formatCurrency(invoice.balance)}
             </Text>
           </View>
         </View>
 
-        {/* Actions */}
-        {invoice.balance > 0 && (
+        {/* Pay Button */}
+        {invoice.balance > 0 && invoice.status !== "draft" && (
           <TouchableOpacity
-            style={styles.payButton}
+            style={[styles.payButton, { backgroundColor: themeColor }]}
             onPress={() => router.push(`/pay/${invoice.id}`)}
-            activeOpacity={0.7}
+            activeOpacity={0.8}
           >
-            <Ionicons name="card-outline" size={20} color="#ffffff" />
-            <Text style={styles.payButtonText}>
-              Pay GH₵{invoice.balance.toFixed(2)}
-            </Text>
+            <Ionicons name="card-outline" size={20} color="#fff" />
+            <Text style={styles.payButtonText}>Pay {formatCurrency(invoice.balance)}</Text>
           </TouchableOpacity>
         )}
+
+        {invoice.status === "paid" && (
+          <View style={styles.paidBanner}>
+            <Ionicons name="checkmark-circle" size={24} color="#059669" />
+            <Text style={styles.paidBannerText}>This invoice has been paid in full</Text>
+          </View>
+        )}
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#f9fafb",
-  },
+  container: { flex: 1, backgroundColor: "#f4f5f7" },
+  center: { flex: 1, justifyContent: "center", alignItems: "center", gap: 12 },
+  loadingText: { fontSize: 15, color: "#9ca3af" },
+
   header: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    backgroundColor: "#ffffff",
-    borderBottomWidth: 1,
-    borderBottomColor: "#e5e7eb",
+    paddingHorizontal: 16,
+    paddingVertical: 14,
   },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: "700",
-    color: "#111827",
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    padding: 20,
-    paddingBottom: 40,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    gap: 16,
-  },
-  loadingText: {
-    fontSize: 16,
-    color: "#6b7280",
-  },
-  card: {
-    backgroundColor: "#ffffff",
-    borderRadius: 12,
-    padding: 20,
-    marginBottom: 16,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 2,
-  },
-  invoiceHeader: {
+  backBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: "rgba(255,255,255,0.2)", alignItems: "center", justifyContent: "center" },
+  headerTitle: { fontSize: 18, fontWeight: "700", color: "#fff" },
+
+  scrollView: { flex: 1 },
+  scrollContent: { padding: 16, paddingBottom: 40 },
+
+  statusBanner: {
     flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    marginBottom: 16,
-  },
-  invoiceReference: {
-    fontSize: 24,
-    fontWeight: "700",
-    color: "#111827",
-    marginBottom: 4,
-  },
-  invoiceDate: {
-    fontSize: 14,
-    color: "#6b7280",
-  },
-  statusBadge: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     borderRadius: 12,
+    marginBottom: 12,
   },
-  statusText: {
-    fontSize: 12,
-    fontWeight: "600",
+  statusBannerText: { fontSize: 15, fontWeight: "700" },
+  statusSubtext: { fontSize: 13, marginLeft: "auto" },
+
+  card: {
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    padding: 18,
+    marginBottom: 12,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    elevation: 1,
   },
-  dueDateSection: {
-    paddingTop: 16,
-    borderTopWidth: 1,
-    borderTopColor: "#f3f4f6",
-  },
-  dueDateLabel: {
-    fontSize: 12,
-    color: "#6b7280",
-    marginBottom: 4,
-  },
-  dueDateValue: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#111827",
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#111827",
-    marginBottom: 16,
-  },
+
+  invoiceInfoRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" },
+  invoiceRef: { fontSize: 20, fontWeight: "800", color: "#111827", letterSpacing: -0.3 },
+  invoiceDate: { fontSize: 13, color: "#9ca3af", marginTop: 4 },
+  amountBlock: { alignItems: "flex-end" },
+  amountLabel: { fontSize: 12, color: "#9ca3af", marginBottom: 2 },
+  amountValue: { fontSize: 22, fontWeight: "800" },
+
+  detailsRow: { flexDirection: "row", gap: 16, marginTop: 14, paddingTop: 14, borderTopWidth: 1, borderTopColor: "#f3f4f6" },
+  detailItem: { flexDirection: "row", alignItems: "center", gap: 5 },
+  detailText: { fontSize: 13, color: "#6b7280" },
+
+  dueDateRow: { flexDirection: "row", alignItems: "center", gap: 5, marginTop: 10 },
+  dueDateText: { fontSize: 13, color: "#9ca3af" },
+
+  sectionTitle: { fontSize: 16, fontWeight: "700", color: "#111827", marginBottom: 14 },
+
   itemRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "flex-start",
+    alignItems: "center",
     paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: "#f3f4f6",
   },
-  itemInfo: {
-    flex: 1,
-    marginRight: 12,
-  },
-  itemLabel: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: "#111827",
-    marginBottom: 4,
-  },
-  itemQuantity: {
-    fontSize: 13,
-    color: "#6b7280",
-  },
-  itemTotal: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#111827",
-  },
+  itemLeft: { flexDirection: "row", alignItems: "center", flex: 1, gap: 10 },
+  itemDot: { width: 8, height: 8, borderRadius: 4 },
+  itemInfo: { flex: 1 },
+  itemLabel: { fontSize: 15, fontWeight: "600", color: "#111827" },
+  itemQty: { fontSize: 13, color: "#9ca3af", marginTop: 2 },
+  itemTotal: { fontSize: 15, fontWeight: "700", color: "#111827" },
+
   summaryRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: "#f3f4f6",
+    paddingVertical: 10,
   },
-  summaryTotal: {
-    borderBottomWidth: 2,
-    borderBottomColor: "#e5e7eb",
-    marginTop: 8,
+  summaryLabel: { fontSize: 14, color: "#6b7280" },
+  summaryValue: { fontSize: 14, fontWeight: "600", color: "#374151" },
+  totalRow: { borderTopWidth: 1, borderTopColor: "#e5e7eb", marginTop: 4, paddingTop: 14 },
+  totalLabel: { fontSize: 16, fontWeight: "700", color: "#111827" },
+  totalValue: { fontSize: 16, fontWeight: "800", color: "#111827" },
+  paidRow: { flexDirection: "row", alignItems: "center" },
+
+  balanceRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginTop: 12,
+    padding: 14,
+    borderRadius: 12,
   },
-  summaryBalance: {
-    borderBottomWidth: 0,
-    marginTop: 8,
-    paddingTop: 16,
-    borderTopWidth: 1,
-    borderTopColor: "#e5e7eb",
-  },
-  summaryLabel: {
-    fontSize: 15,
-    color: "#6b7280",
-  },
-  summaryValue: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: "#111827",
-  },
-  summaryTotalLabel: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#111827",
-  },
-  summaryTotalValue: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#111827",
-  },
-  summaryBalanceLabel: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#111827",
-  },
-  summaryBalanceValue: {
-    fontSize: 20,
-    fontWeight: "700",
-    color: "#14b8a6",
-  },
+  balanceLabel: { fontSize: 15, fontWeight: "600", color: "#374151" },
+  balanceValue: { fontSize: 20, fontWeight: "800" },
+
   payButton: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 8,
-    backgroundColor: "#14b8a6",
+    gap: 10,
     paddingVertical: 16,
-    borderRadius: 12,
-    marginTop: 8,
+    borderRadius: 14,
+    marginTop: 4,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
-  payButtonText: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#ffffff",
-  },
-});
+  payButtonText: { fontSize: 17, fontWeight: "700", color: "#fff" },
 
+  paidBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: "#d1fae5",
+    paddingVertical: 14,
+    borderRadius: 12,
+    marginTop: 4,
+  },
+  paidBannerText: { fontSize: 15, fontWeight: "600", color: "#059669" },
+});
