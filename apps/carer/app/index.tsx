@@ -227,13 +227,15 @@ export default function TodayScreen() {
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
         <View style={styles.headerLeft}>
-          {carerImageUrl ? (
-            <Image source={{ uri: carerImageUrl }} style={styles.avatarImage} />
-          ) : (
-            <View style={[styles.avatar, { backgroundColor: themeColor + "18", borderColor: themeColor + "30" }]}>
-              <Ionicons name="person" size={20} color={themeColor} />
-            </View>
-          )}
+          <TouchableOpacity onPress={() => router.push("/profile")} activeOpacity={0.7}>
+            {carerImageUrl ? (
+              <Image source={{ uri: carerImageUrl }} style={styles.avatarImage} />
+            ) : (
+              <View style={[styles.avatar, { backgroundColor: themeColor + "18", borderColor: themeColor + "30" }]}>
+                <Ionicons name="person" size={20} color={themeColor} />
+              </View>
+            )}
+          </TouchableOpacity>
           <View>
             <Text style={styles.greeting}>{getGreeting()}{carerName ? `, ${carerName}` : ""}</Text>
             <Text style={styles.dateLabel}>
