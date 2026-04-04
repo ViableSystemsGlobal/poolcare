@@ -33,6 +33,7 @@ import {
   Newspaper,
   MonitorSmartphone,
   BookOpen,
+  Shield,
 } from "lucide-react";
 
 const navigationGroups = [
@@ -69,6 +70,7 @@ const navigationGroups = [
         children: [
           { name: "Team", href: "/carers", icon: UserCheck },
           { name: "Schedule", href: "/carers/schedule", icon: Calendar },
+          { name: "Admin & Managers", href: "/team", icon: Shield },
         ],
       },
       {
