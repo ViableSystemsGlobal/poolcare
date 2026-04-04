@@ -490,7 +490,7 @@ export class TipSchedulerService {
     try {
       await this.prepareWeeklyNewsletter(orgId, weekRange);
     } catch (e) {
-      this.logger.warn(`Newsletter draft skipped for org ${orgId}: ${e.message}`);
+      this.logger.warn(`Newsletter draft skipped for org ${orgId}: ${(e as Error).message}`);
     }
   }
 

@@ -18,6 +18,7 @@
     },
     "production": {
       "distribution": "store",
+      "autoIncrement": true,
       "ios": { "resourceClass": "m1-medium" },
       "android": { "buildType": "app-bundle" },
       "env": { "EXPO_PUBLIC_API_URL": "https://api.poolcare.africa/api" }
