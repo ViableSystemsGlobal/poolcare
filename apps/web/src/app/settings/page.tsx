@@ -515,9 +515,14 @@ export default function SettingsPage() {
         if (tipData) {
           setTipSchedule({
             enabled: tipData.enabled ?? false,
-            days: tipData.days ?? {
-              monday: false, tuesday: false, wednesday: false, thursday: false,
-              friday: false, saturday: false, sunday: false,
+            days: {
+              monday: tipData.days?.monday ?? tipData.monday ?? false,
+              tuesday: tipData.days?.tuesday ?? tipData.tuesday ?? false,
+              wednesday: tipData.days?.wednesday ?? tipData.wednesday ?? false,
+              thursday: tipData.days?.thursday ?? tipData.thursday ?? false,
+              friday: tipData.days?.friday ?? tipData.friday ?? false,
+              saturday: tipData.days?.saturday ?? tipData.saturday ?? false,
+              sunday: tipData.days?.sunday ?? tipData.sunday ?? false,
             },
             lastTipIndex: tipData.lastTipIndex ?? 0,
           });
@@ -1228,7 +1233,11 @@ export default function SettingsPage() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
         },
-        body: JSON.stringify(tipSchedule),
+        body: JSON.stringify({
+          enabled: tipSchedule.enabled,
+          ...tipSchedule.days,
+          lastTipIndex: tipSchedule.lastTipIndex,
+        }),
       });
 
       const contentType = response.headers.get("content-type");
@@ -1237,7 +1246,19 @@ export default function SettingsPage() {
       if (response.ok) {
         if (isJson) {
           const data = await response.json();
-          setTipSchedule(data);
+          setTipSchedule({
+            enabled: data.enabled ?? false,
+            days: {
+              monday: data.days?.monday ?? data.monday ?? false,
+              tuesday: data.days?.tuesday ?? data.tuesday ?? false,
+              wednesday: data.days?.wednesday ?? data.wednesday ?? false,
+              thursday: data.days?.thursday ?? data.thursday ?? false,
+              friday: data.days?.friday ?? data.friday ?? false,
+              saturday: data.days?.saturday ?? data.saturday ?? false,
+              sunday: data.days?.sunday ?? data.sunday ?? false,
+            },
+            lastTipIndex: data.lastTipIndex ?? 0,
+          });
         }
         setSaveSuccess(true);
         toast({ title: "Saved", description: "Tip schedule updated successfully" });
