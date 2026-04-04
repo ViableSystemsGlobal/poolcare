@@ -119,11 +119,11 @@ export class CarersService {
 
     }
 
-    // Ensure the user has a CARER membership, but never overwrite a higher role (ADMIN/MANAGER/STAFF)
-    const existingMember = await prisma.orgMember.findUnique({
-      where: { orgId_userId: { orgId, userId: userId! } },
+    // Ensure the user has a CARER membership (multi-role: creates alongside any existing roles)
+    const existingCarerMember = await prisma.orgMember.findFirst({
+      where: { orgId, userId: userId!, role: "CARER" },
     });
-    if (!existingMember) {
+    if (!existingCarerMember) {
       await prisma.orgMember.create({
         data: { orgId, userId: userId!, role: "CARER" },
       });
@@ -202,13 +202,39 @@ export class CarersService {
     // Ensure the carer's user has a CARER membership (auto-heals missing memberships)
     if (updated.userId) {
       await prisma.orgMember.upsert({
-        where: { orgId_userId: { orgId, userId: updated.userId } },
+        where: { orgId_userId_role: { orgId, userId: updated.userId, role: "CARER" } },
         create: { orgId, userId: updated.userId, role: "CARER" },
-        update: { role: "CARER" },
+        update: {},
       });
     }
 
     return updated;
+  }
+
+  async getMyNotifications(userId: string, orgId: string, page: number, limit: number) {
+    const carer = await prisma.carer.findFirst({ where: { orgId, userId }, select: { id: true } });
+    if (!carer) throw new NotFoundException("Carer profile not found");
+
+    const where: any = {
+      orgId,
+      OR: [
+        { recipientId: userId },
+        { recipientId: carer.id },
+        { recipientId: null, recipientType: "org" },
+      ],
+    };
+
+    const [items, total] = await Promise.all([
+      prisma.notification.findMany({
+        where,
+        skip: (page - 1) * limit,
+        take: limit,
+        orderBy: { createdAt: "desc" },
+      }),
+      prisma.notification.count({ where }),
+    ]);
+
+    return { items, total, page, limit };
   }
 
   async getMyCarer(orgId: string, userId: string) {

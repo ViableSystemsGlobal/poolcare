@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException, BadRequestException } from "@nestjs/common";
+import { Injectable, UnauthorizedException, BadRequestException, Logger } from "@nestjs/common";
 
 const INVITE_ONLY_MESSAGE =
   "You don't have access yet. Contact your organization to get an invite.";
@@ -15,6 +15,8 @@ export const devOtpStore = new Map<string, { code: string; expiresAt: Date }>();
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
@@ -217,14 +219,20 @@ export class AuthService {
     }
 
     // Magic review bypass — allows Apple/Google reviewers to log in without a real OTP.
-    // Only active when the target matches a configured review account AND code is 000000.
+    // This is for app store review only. Only active when at least one review phone
+    // is configured AND the target matches a configured review account AND code is 000000.
     const reviewPhones = [
       process.env.APPLE_REVIEW_CLIENT_PHONE,
       process.env.APPLE_REVIEW_CARER_PHONE,
     ].filter(Boolean);
     const isMagicBypass =
+      reviewPhones.length > 0 &&
       dto.code === "000000" &&
       reviewPhones.some((p) => p === dto.target || p === normalizePhone(dto.target));
+
+    if (isMagicBypass) {
+      this.logger.warn(`App store review bypass used for: ${dto.target}`);
+    }
 
     if (!isMagicBypass) {
       console.log('[AuthService] Comparing code...');
@@ -269,22 +277,31 @@ export class AuthService {
           console.log('[AuthService] Invite-only: no user for', dto.target);
           throw new UnauthorizedException(INVITE_ONLY_MESSAGE);
         }
-        let membership = await prisma.orgMember.findFirst({
-          where: { userId: user.id, role: { in: ["ADMIN", "MANAGER", "STAFF"] } },
+
+        // Fetch ALL memberships for this user to build multi-role JWT
+        const allMemberships = await prisma.orgMember.findMany({
+          where: { userId: user.id },
           orderBy: { createdAt: "asc" },
           include: { org: true },
         });
+
+        // Determine which membership qualifies for this app
+        let membership: (typeof allMemberships)[0] | undefined;
         if (app === "carer") {
-          membership = await prisma.orgMember.findFirst({
-            where: { userId: user.id, role: "CARER" },
-            orderBy: { createdAt: "asc" },
-            include: { org: true },
-          });
+          membership = allMemberships.find((m) => m.role === "CARER");
+        } else {
+          membership = allMemberships.find((m) => ["ADMIN", "MANAGER", "STAFF"].includes(m.role));
         }
+
         if (!membership) {
-          console.log('[AuthService] Invite-only: no membership for user', user.id);
+          console.log('[AuthService] Invite-only: no qualifying membership for user', user.id);
           throw new UnauthorizedException(INVITE_ONLY_MESSAGE);
         }
+
+        // Collect all roles in this org
+        const orgMemberships = allMemberships.filter((m) => m.orgId === membership!.orgId);
+        const allRoles = orgMemberships.map((m) => m.role);
+        const primaryRole = this.getHighestPrivilegeRole(allRoles);
 
         // Resolve display name: User.name → Client.name → Carer.name
         const [relatedClientA, relatedCarerA] = await Promise.all([
@@ -293,13 +310,18 @@ export class AuthService {
         ]);
         const displayNameA = user.name || relatedClientA?.name || relatedCarerA?.name || null;
 
-        // Issue JWT (same as below; we'll reuse the token block)
-        const jwtSecret = this.configService.get<string>("JWT_SECRET") || "dev-secret-change-in-prod";
+        // Issue JWT with all roles
+        const jwtSecretRaw = this.configService.get<string>("JWT_SECRET");
+      if (!jwtSecretRaw && this.configService.get<string>("NODE_ENV") === "production") {
+        throw new Error("JWT_SECRET must be set in production");
+      }
+      const jwtSecret = jwtSecretRaw || "dev-secret-change-in-prod";
         const token = this.jwtService.sign(
           {
             sub: user.id,
             org_id: membership.orgId,
-            role: membership.role,
+            role: primaryRole,
+            roles: allRoles,
           },
           {
             secret: jwtSecret,
@@ -318,7 +340,8 @@ export class AuthService {
             id: membership.org.id,
             name: membership.org.name,
           },
-          role: membership.role,
+          role: primaryRole,
+          roles: allRoles,
         };
       }
 
@@ -340,24 +363,15 @@ export class AuthService {
         console.log('[AuthService] Found existing user:', user.id);
       }
 
-      // Prefer CLIENT membership so client-app users always get the right role/org
+      // Client app must always get a CLIENT-scoped token — never fall back to ADMIN/MANAGER
       let membership = await prisma.orgMember.findFirst({
         where: { userId: user.id, role: "CLIENT" },
         orderBy: { createdAt: "asc" },
         include: { org: true },
       });
 
-      // Fall back to any other membership (e.g. admin using the client app)
       if (!membership) {
-        membership = await prisma.orgMember.findFirst({
-          where: { userId: user.id },
-          orderBy: { createdAt: "asc" },
-          include: { org: true },
-        });
-      }
-
-      if (!membership) {
-        // Maybe they have a Client record but no OrgMember — repair it
+        // Maybe they have a Client record but no CLIENT OrgMember — repair it
         const clientRecord = await prisma.client.findFirst({
           where: { userId: user.id },
           select: { orgId: true },
@@ -370,35 +384,71 @@ export class AuthService {
               include: { org: true },
             });
           } catch (error: any) {
-            console.error('[AuthService] Failed to repair membership:', error);
-            throw new BadRequestException(`Failed to set up membership: ${error.message}`);
+            if (error.code === 'P2002') {
+              // Exact (orgId, userId, role=CLIENT) already exists — just fetch it
+              console.log('[AuthService] CLIENT membership already exists, fetching it');
+              membership = await prisma.orgMember.findFirst({
+                where: { userId: user.id, orgId: clientRecord.orgId, role: "CLIENT" },
+                include: { org: true },
+              });
+            } else {
+              console.error('[AuthService] Failed to repair membership:', error);
+              throw new BadRequestException(`Failed to set up membership: ${error.message}`);
+            }
           }
         } else {
-          console.log('[AuthService] Creating default org for user');
+          console.log('[AuthService] Adding new user to existing org as CLIENT');
           try {
-            const org = await prisma.organization.create({
-              data: { name: `${user.phone || user.email}'s Organization` },
+            const existingOrg = await prisma.organization.findFirst({
+              orderBy: { createdAt: "asc" },
             });
+            if (!existingOrg) {
+              throw new BadRequestException("No organization found. Please contact support.");
+            }
             membership = await prisma.orgMember.create({
-              data: { orgId: org.id, userId: user.id, role: "ADMIN" },
+              data: { orgId: existingOrg.id, userId: user.id, role: "CLIENT" },
               include: { org: true },
             });
           } catch (error: any) {
-            console.error('[AuthService] Failed to create org/membership:', error);
-            throw new BadRequestException(`Failed to create organization: ${error.message}`);
+            if (error.code === 'P2002') {
+              // Exact (orgId, userId, role=CLIENT) already exists — just fetch it
+              const existingOrg = await prisma.organization.findFirst({ orderBy: { createdAt: "asc" } });
+              if (existingOrg) {
+                membership = await prisma.orgMember.findFirst({
+                  where: { userId: user.id, orgId: existingOrg.id, role: "CLIENT" },
+                  include: { org: true },
+                });
+              }
+            } else {
+              console.error('[AuthService] Failed to create membership:', error);
+              throw new BadRequestException(`Failed to set up account: ${error.message}`);
+            }
           }
         }
       } else {
         console.log('[AuthService] Found existing membership, role:', membership.role);
       }
 
+      // Fetch all roles for this user in the org to build multi-role JWT
+      const allOrgMemberships = await prisma.orgMember.findMany({
+        where: { userId: user.id, orgId: membership.orgId },
+      });
+      const allRoles = allOrgMemberships.map((m) => m.role);
+      // For client app, always present CLIENT as the primary role
+      const primaryRole = "CLIENT";
+
       // Issue JWT
-      const jwtSecret = this.configService.get<string>("JWT_SECRET") || "dev-secret-change-in-prod";
+      const jwtSecretRaw = this.configService.get<string>("JWT_SECRET");
+      if (!jwtSecretRaw && this.configService.get<string>("NODE_ENV") === "production") {
+        throw new Error("JWT_SECRET must be set in production");
+      }
+      const jwtSecret = jwtSecretRaw || "dev-secret-change-in-prod";
       const token = this.jwtService.sign(
         {
           sub: user.id,
           org_id: membership.orgId,
-          role: membership.role,
+          role: primaryRole,
+          roles: allRoles,
         },
         {
           secret: jwtSecret,
@@ -427,7 +477,8 @@ export class AuthService {
           id: membership.org.id,
           name: membership.org.name,
         },
-        role: membership.role,
+        role: primaryRole,
+        roles: allRoles,
       };
     } catch (error: any) {
       console.error('[AuthService] Error during user/org creation:', error);
@@ -437,6 +488,15 @@ export class AuthService {
 
   private generateOtp(): string {
     return Math.floor(100000 + Math.random() * 900000).toString();
+  }
+
+  /** Return the highest-privilege role from a list (ADMIN > MANAGER > STAFF > CARER > CLIENT). */
+  private getHighestPrivilegeRole(roles: string[]): string {
+    const priority = ["ADMIN", "MANAGER", "STAFF", "CARER", "CLIENT"];
+    for (const p of priority) {
+      if (roles.includes(p)) return p;
+    }
+    return roles[0] || "CLIENT";
   }
 }
 

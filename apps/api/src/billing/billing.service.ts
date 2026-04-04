@@ -1,4 +1,5 @@
 import { Injectable, Logger, forwardRef, Inject } from "@nestjs/common";
+import { Cron } from "@nestjs/schedule";
 import { prisma } from "@poolcare/db";
 import { NotificationsService } from "../notifications/notifications.service";
 import { createEmailTemplate, getOrgEmailSettings } from "../email/email-template.util";
@@ -11,6 +12,21 @@ export class BillingService {
     @Inject(forwardRef(() => NotificationsService))
     private readonly notificationsService: NotificationsService
   ) {}
+
+  /**
+   * Cron: runs at 8 AM on the 25th of every month.
+   * Automatically processes billing for all orgs.
+   */
+  @Cron("0 8 25 * *")
+  async scheduledBilling() {
+    this.logger.log("Cron triggered: monthly billing on the 25th");
+    try {
+      const result = await this.processMonthlyBilling(undefined, true);
+      this.logger.log(`Monthly billing complete: ${JSON.stringify(result)}`);
+    } catch (err: any) {
+      this.logger.error(`Monthly billing cron failed: ${err.message}`);
+    }
+  }
 
   /**
    * Process billing for all active subscriptions on the 25th of the month

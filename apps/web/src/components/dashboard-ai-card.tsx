@@ -80,7 +80,7 @@ export function DashboardAICard({
       case "red":
         return "bg-gradient-to-br from-red-500 to-red-600";
       case "orange":
-        return "bg-gradient-to-br from-orange-500 to-orange-600";
+        return "bg-gradient-to-br from-[#397d54] to-[#2d6443]";
       case "pink":
         return "bg-gradient-to-br from-pink-500 to-pink-600";
       case "indigo":
@@ -88,7 +88,7 @@ export function DashboardAICard({
       case "teal":
         return "bg-gradient-to-br from-teal-500 to-teal-600";
       default:
-        return "bg-gradient-to-br from-orange-500 to-orange-600";
+        return "bg-gradient-to-br from-[#397d54] to-[#2d6443]";
     }
   };
 
@@ -103,7 +103,7 @@ export function DashboardAICard({
       case "red":
         return "bg-red-500";
       case "orange":
-        return "bg-orange-500";
+        return "bg-[#397d54]";
       case "pink":
         return "bg-pink-500";
       case "indigo":
@@ -111,7 +111,7 @@ export function DashboardAICard({
       case "teal":
         return "bg-teal-500";
       default:
-        return "bg-orange-500";
+        return "bg-[#397d54]";
     }
   };
 
@@ -208,7 +208,7 @@ export function DashboardAICard({
 
         {layout === "vertical" ? (
           // Vertical layout for dashboard (1 per row, max 5)
-          <div className="space-y-2">
+          <div className="space-y-1.5">
             {recommendations.length === 0 ? (
               <div className="text-center py-4 text-gray-500">
                 <Brain className="w-8 h-8 mx-auto mb-2 text-gray-300" />
@@ -227,15 +227,18 @@ export function DashboardAICard({
                     } ${rec.href ? "cursor-pointer" : ""}`}
                     onClick={() => handleRecommendationClick(rec)}
                   >
-                    <div className="flex items-start justify-between mb-1">
+                    <div className="flex items-center gap-2">
                       <span
-                        className={`px-2 py-1 rounded-full text-xs font-medium flex items-center space-x-1 ${getPriorityColor(
+                        className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium flex items-center space-x-0.5 ${getPriorityColor(
                           rec.priority
                         )}`}
                       >
                         {getPriorityIcon(rec.priority)}
                         <span className="capitalize">{rec.priority}</span>
                       </span>
+                      <h5 className="text-xs font-medium text-gray-900 flex-1 truncate">
+                        {rec.title}
+                      </h5>
                       <Button
                         variant="ghost"
                         size="sm"
@@ -246,19 +249,16 @@ export function DashboardAICard({
                           }
                         }}
                         disabled={isCompleted}
-                        className={`h-6 w-6 flex-shrink-0 ${
+                        className={`h-5 w-5 flex-shrink-0 p-0 ${
                           isCompleted
                             ? "text-green-600 bg-green-100"
                             : "text-gray-400 hover:text-green-600 hover:bg-green-50"
                         }`}
                       >
-                        <Check className="w-4 h-4" />
+                        <Check className="w-3 h-3" />
                       </Button>
                     </div>
-                    <h5 className="text-sm font-medium text-gray-900 mb-1">
-                      {rec.title}
-                    </h5>
-                    <p className="text-xs text-gray-600 leading-relaxed">
+                    <p className="text-[11px] text-gray-500 leading-snug mt-0.5">
                       {rec.description}
                     </p>
                     <ActionLink rec={rec} />

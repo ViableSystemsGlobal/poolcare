@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Plus, Search, Users, Edit, Trash2, Eye, CheckCircle, XCircle, MapPin, Phone, Mail, Calendar, Download } from "lucide-react";
+import { Plus, Search, Users, Edit, Trash2, Eye, CheckCircle, XCircle, MapPin, Phone, Mail, Calendar, Download, ChevronLeft, ChevronRight } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Table,
@@ -66,6 +66,7 @@ export default function CarersPage() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState<string>("");
+  const [page, setPage] = useState(1);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [selectedCarers, setSelectedCarers] = useState<Set<string>>(new Set());
   const [editingCarer, setEditingCarer] = useState<Carer | null>(null);
@@ -255,6 +256,13 @@ export default function CarersPage() {
         carer.user?.email?.toLowerCase().includes(searchQuery.toLowerCase())
       )
     : carers;
+
+  const PAGE_SIZE = 20;
+  const totalPages = Math.max(1, Math.ceil(filteredCarers.length / PAGE_SIZE));
+  const paginatedCarers = useMemo(
+    () => filteredCarers.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
+    [filteredCarers, page]
+  );
 
   const allSelected = filteredCarers.length > 0 && selectedCarers.size === filteredCarers.length;
 
@@ -647,7 +655,7 @@ export default function CarersPage() {
         <CardContent>
           {/* Bulk Actions Bar */}
           {selectedCarers.size > 0 && (
-            <div className="flex items-center justify-between p-4 mb-4 bg-orange-50 border border-orange-200 rounded-lg">
+            <div className="flex items-center justify-between p-4 mb-4 bg-emerald-50 border border-emerald-200 rounded-lg">
               <div className="flex items-center gap-2">
                 <span className="text-sm font-medium text-gray-900">
                   {selectedCarers.size} carer{selectedCarers.size !== 1 ? "s" : ""} selected
@@ -681,7 +689,7 @@ export default function CarersPage() {
                 <Input
                   placeholder="Search carers by name, phone, or email..."
                   value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }}
                   className="pl-10"
                 />
               </div>
@@ -741,7 +749,7 @@ export default function CarersPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredCarers.map((carer) => (
+                  {paginatedCarers.map((carer) => (
                     <TableRow
                       key={carer.id}
                       className="cursor-pointer hover:bg-gray-50"
@@ -851,6 +859,21 @@ export default function CarersPage() {
                   ))}
                 </TableBody>
               </Table>
+              {/* Pagination */}
+              <div className="flex items-center justify-between border-t px-4 py-3">
+                <p className="text-sm text-gray-500">
+                  Showing {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, filteredCarers.length)} of {filteredCarers.length} carers
+                </p>
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  <span className="text-sm text-gray-600">Page {page} of {totalPages}</span>
+                  <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
             </div>
           )}
         </CardContent>

@@ -6,6 +6,7 @@ import { JwtService } from "@nestjs/jwt";
 import { JwtModule } from "@nestjs/jwt";
 import { ConfigModule, ConfigService } from "@nestjs/config";
 import { NotificationsModule } from "../notifications/notifications.module";
+import { FilesModule } from "../files/files.module";
 import { JwtAuthGuard } from "./guards/jwt-auth.guard";
 
 @Module({
@@ -13,14 +14,21 @@ import { JwtAuthGuard } from "./guards/jwt-auth.guard";
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({
-        secret: config.get<string>("JWT_SECRET") || "dev-secret-change-in-prod",
+      useFactory: (config: ConfigService) => {
+        const secret = config.get<string>("JWT_SECRET");
+        if (!secret && config.get<string>("NODE_ENV") === "production") {
+          throw new Error("JWT_SECRET must be set in production");
+        }
+        return {
+        secret: secret || "dev-secret-change-in-prod",
         signOptions: {
           expiresIn: config.get<string>("JWT_EXPIRES_IN") || "7d",
         },
-      }),
+      };
+      },
     }),
     NotificationsModule,
+    FilesModule,
   ],
   controllers: [AuthController],
   providers: [AuthService, OtpService, JwtService, JwtAuthGuard],

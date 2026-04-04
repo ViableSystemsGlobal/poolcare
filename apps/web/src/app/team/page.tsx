@@ -55,7 +55,7 @@ const ROLE_BADGE_CLASS: Record<string, string> = {
   ADMIN:   "bg-purple-100 text-purple-800",
   MANAGER: "bg-blue-100 text-blue-800",
   CARER:   "bg-teal-100 text-teal-800",
-  CLIENT:  "bg-orange-100 text-orange-800",
+  CLIENT:  "bg-emerald-100 text-emerald-900",
 };
 
 export default function TeamPage() {

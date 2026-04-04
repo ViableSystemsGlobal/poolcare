@@ -32,8 +32,12 @@ export class JwtAuthGuard implements CanActivate {
     }
 
     try {
-      const secret = this.configService.get<string>("JWT_SECRET") || "dev-secret-change-in-prod";
-      const payload = this.jwtService.verify(token, { secret });
+      const secret = this.configService.get<string>("JWT_SECRET");
+      if (!secret && this.configService.get<string>("NODE_ENV") === "production") {
+        throw new Error("JWT_SECRET must be set in production");
+      }
+      const jwtSecret = secret || "dev-secret-change-in-prod";
+      const payload = this.jwtService.verify(token, { secret: jwtSecret });
       request.user = payload;
       return true;
     } catch (error) {

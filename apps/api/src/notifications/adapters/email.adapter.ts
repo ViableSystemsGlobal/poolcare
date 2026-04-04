@@ -3,6 +3,24 @@ import { ConfigService } from "@nestjs/config";
 import { prisma } from "@poolcare/db";
 import * as nodemailer from "nodemailer";
 import { Transporter } from "nodemailer";
+import * as crypto from 'crypto';
+
+const ENCRYPTION_KEY = process.env.SETTINGS_ENCRYPTION_KEY || 'poolcare-dev-encryption-key-32ch';
+
+function decrypt(text: string): string {
+  try {
+    const parts = text.split(':');
+    if (parts.length !== 2) return text;
+    const iv = Buffer.from(parts[0], 'hex');
+    const encrypted = Buffer.from(parts[1], 'hex');
+    const decipher = crypto.createDecipheriv('aes-256-cbc', Buffer.from(ENCRYPTION_KEY.padEnd(32).slice(0, 32)), iv);
+    let decrypted = decipher.update(encrypted);
+    decrypted = Buffer.concat([decrypted, decipher.final()]);
+    return decrypted.toString();
+  } catch {
+    return text;
+  }
+}
 
 @Injectable()
 export class EmailAdapter {
@@ -93,7 +111,7 @@ export class EmailAdapter {
               secure,
               auth: {
                 user: smtp.user,
-                pass: passwordValue,
+                pass: decrypt(passwordValue),
               },
               debug: this.configService.get<string>("NODE_ENV") === "development",
             };

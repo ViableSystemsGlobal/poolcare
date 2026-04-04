@@ -1,11 +1,11 @@
-import { IsDateString, IsOptional } from "class-validator";
+import { IsDateString, IsOptional, IsUUID } from "class-validator";
 
 export class DispatchOptimizeDto {
   @IsDateString()
   date: string;
 
   @IsOptional()
-  @IsDateString()
+  @IsUUID()
   carerId?: string;
 }
 

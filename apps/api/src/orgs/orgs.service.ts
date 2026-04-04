@@ -64,12 +64,13 @@ export class OrgsService {
       }
     }
 
-    // Upsert membership
+    // Upsert membership for the specified role
     const membership = await prisma.orgMember.upsert({
       where: {
-        orgId_userId: {
+        orgId_userId_role: {
           orgId,
           userId: user.id,
+          role: dto.role,
         },
       },
       create: {
@@ -77,9 +78,7 @@ export class OrgsService {
         userId: user.id,
         role: dto.role,
       },
-      update: {
-        role: dto.role,
-      },
+      update: {},
       include: {
         user: true,
       },
@@ -128,19 +127,18 @@ export class OrgsService {
       throw new ForbiddenException("Only ADMIN or MANAGER can remove members");
     }
 
-    const membership = await prisma.orgMember.findUnique({
-      where: {
-        orgId_userId: { orgId, userId },
-      },
+    const memberships = await prisma.orgMember.findMany({
+      where: { orgId, userId },
       include: { user: true },
     });
 
-    if (!membership) {
+    if (memberships.length === 0) {
       throw new NotFoundException("Member not found");
     }
 
     // Prevent removing the last ADMIN
-    if (membership.role === "ADMIN") {
+    const hasAdmin = memberships.some((m) => m.role === "ADMIN");
+    if (hasAdmin) {
       const adminCount = await prisma.orgMember.count({
         where: { orgId, role: "ADMIN" },
       });
@@ -149,10 +147,9 @@ export class OrgsService {
       }
     }
 
-    await prisma.orgMember.delete({
-      where: {
-        orgId_userId: { orgId, userId },
-      },
+    // Remove all memberships for this user in the org
+    await prisma.orgMember.deleteMany({
+      where: { orgId, userId },
     });
 
     return { message: "Member removed successfully" };
@@ -169,6 +166,7 @@ export class OrgsService {
         name: true,
         email: true,
         phone: true,
+        imageUrl: true,
       },
     });
 
@@ -181,7 +179,7 @@ export class OrgsService {
     ]);
 
     const resolvedName = user.name || relatedClient?.name || relatedCarer?.name || null;
-    const profileImageUrl = relatedClient?.imageUrl || relatedCarer?.imageUrl || null;
+    const profileImageUrl = user.imageUrl || relatedClient?.imageUrl || relatedCarer?.imageUrl || null;
 
     return {
       org: {
@@ -202,13 +200,8 @@ export class OrgsService {
       throw new ForbiddenException("Only ADMIN or MANAGER can update roles");
     }
 
-    const membership = await prisma.orgMember.findUnique({
-      where: {
-        orgId_userId: {
-          orgId,
-          userId,
-        },
-      },
+    const membership = await prisma.orgMember.findFirst({
+      where: { orgId, userId },
     });
 
     if (!membership) {
@@ -216,12 +209,7 @@ export class OrgsService {
     }
 
     const updated = await prisma.orgMember.update({
-      where: {
-        orgId_userId: {
-          orgId,
-          userId,
-        },
-      },
+      where: { id: membership.id },
       data: dto.role ? { role: dto.role } : {},
       include: {
         user: true,

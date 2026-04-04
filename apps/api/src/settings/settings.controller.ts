@@ -29,8 +29,24 @@ export class SettingsController {
   }
 
   @Patch("org")
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "MANAGER")
   async updateOrgSettings(@CurrentUser() user: any, @Body() data: any) {
     return this.settingsService.updateOrgSettings(user.org_id, data);
+  }
+
+  @Get("tip-schedule")
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "MANAGER")
+  async getTipSchedule(@CurrentUser() user: any) {
+    return this.settingsService.getTipSchedule(user.org_id);
+  }
+
+  @Patch("tip-schedule")
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "MANAGER")
+  async updateTipSchedule(@CurrentUser() user: any, @Body() data: any) {
+    return this.settingsService.updateTipSchedule(user.org_id, data);
   }
 
   @Get("tax")
@@ -45,12 +61,26 @@ export class SettingsController {
     return this.settingsService.updateTaxSettings(user.org_id, data);
   }
 
+  @Get("policies")
+  async getPolicies(@CurrentUser() user: any) {
+    return this.settingsService.getPolicies(user.org_id);
+  }
+
+  @Patch("policies")
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "MANAGER")
+  async updatePolicies(@CurrentUser() user: any, @Body() data: any) {
+    return this.settingsService.updatePolicies(user.org_id, data);
+  }
+
   @Get("integrations/sms")
   async getSmsSettings(@CurrentUser() user: any) {
     return this.settingsService.getSmsSettings(user.org_id);
   }
 
   @Patch("integrations/sms")
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "MANAGER")
   async updateSmsSettings(@CurrentUser() user: any, @Body() data: any) {
     return this.settingsService.updateSmsSettings(user.org_id, data);
   }
@@ -61,6 +91,8 @@ export class SettingsController {
   }
 
   @Patch("integrations/smtp")
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "MANAGER")
   async updateSmtpSettings(@CurrentUser() user: any, @Body() data: any) {
     return this.settingsService.updateSmtpSettings(user.org_id, data);
   }
@@ -309,6 +341,128 @@ export class SettingsController {
     } catch (error: any) {
       console.error("Favicon upload error:", error);
       throw new BadRequestException(error.message || "Failed to upload favicon");
+    }
+  }
+
+  @Post("upload-help-assistant-image")
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "MANAGER")
+  @UseInterceptors(FileInterceptor("helpAssistantImage"))
+  async uploadHelpAssistantImage(
+    @CurrentUser() user: { org_id: string },
+    @UploadedFile(
+      new ParseFilePipe({
+        fileIsRequired: true,
+        validators: [
+          new MaxFileSizeValidator({ maxSize: 2 * 1024 * 1024 }), // 2MB
+          new FileTypeValidator({ fileType: /(jpeg|jpg|png|webp)$/ }),
+        ],
+      })
+    )
+    file: Express.Multer.File
+  ) {
+    if (!file) {
+      throw new BadRequestException("No file uploaded");
+    }
+
+    try {
+      const helpAssistantImageUrl = await this.filesService.uploadImage(
+        user.org_id,
+        file,
+        "help_assistant_image",
+        user.org_id
+      );
+
+      await this.settingsService.updateOrgSettings(user.org_id, {
+        profile: { helpAssistantImageUrl },
+      });
+
+      return { helpAssistantImageUrl };
+    } catch (error: any) {
+      console.error("Help assistant image upload error:", error);
+      throw new BadRequestException(error.message || "Failed to upload help assistant image");
+    }
+  }
+
+  @Post("upload-login-background")
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "MANAGER")
+  @UseInterceptors(FileInterceptor("loginBackground"))
+  async uploadLoginBackground(
+    @CurrentUser() user: { org_id: string },
+    @UploadedFile(
+      new ParseFilePipe({
+        fileIsRequired: true,
+        validators: [
+          new MaxFileSizeValidator({ maxSize: 10 * 1024 * 1024 }), // 10MB
+          new FileTypeValidator({ fileType: /(jpeg|jpg|png|webp|mp4|webm)$/ }),
+        ],
+      })
+    )
+    file: Express.Multer.File
+  ) {
+    if (!file) {
+      throw new BadRequestException("No file uploaded");
+    }
+
+    try {
+      const loginBackgroundUrl = await this.filesService.uploadMedia(
+        user.org_id,
+        file,
+        "login_background",
+        user.org_id
+      );
+
+      const loginBackgroundType = file.mimetype.startsWith("video/") ? "video" : "image";
+
+      await this.settingsService.updateOrgSettings(user.org_id, {
+        profile: { loginBackgroundUrl, loginBackgroundType },
+      });
+
+      return { loginBackgroundUrl, loginBackgroundType };
+    } catch (error: any) {
+      console.error("Login background upload error:", error);
+      throw new BadRequestException(error.message || "Failed to upload login background");
+    }
+  }
+
+  @Post("upload-splash-image")
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "MANAGER")
+  @UseInterceptors(FileInterceptor("splashImage"))
+  async uploadSplashImage(
+    @CurrentUser() user: { org_id: string },
+    @UploadedFile(
+      new ParseFilePipe({
+        fileIsRequired: true,
+        validators: [
+          new MaxFileSizeValidator({ maxSize: 5 * 1024 * 1024 }), // 5MB
+          new FileTypeValidator({ fileType: /(jpeg|jpg|png|webp)$/ }),
+        ],
+      })
+    )
+    file: Express.Multer.File
+  ) {
+    if (!file) {
+      throw new BadRequestException("No file uploaded");
+    }
+
+    try {
+      const splashImageUrl = await this.filesService.uploadImage(
+        user.org_id,
+        file,
+        "app_splash",
+        user.org_id
+      );
+
+      await this.settingsService.updateOrgSettings(user.org_id, {
+        profile: { splashImageUrl },
+      });
+
+      return { splashImageUrl };
+    } catch (error: any) {
+      console.error("Splash image upload error:", error);
+      throw new BadRequestException(error.message || "Failed to upload splash image");
     }
   }
 }

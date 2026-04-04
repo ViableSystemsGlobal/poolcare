@@ -346,9 +346,9 @@ export default function FilesPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-600">Images</p>
-                <p className="text-2xl font-bold text-orange-600">{metrics.images}</p>
+                <p className="text-2xl font-bold text-emerald-700">{metrics.images}</p>
               </div>
-              <Image className="h-8 w-8 text-orange-400" />
+              <Image className="h-8 w-8 text-emerald-400" />
             </div>
           </Card>
 
@@ -376,9 +376,9 @@ export default function FilesPage() {
 
       {/* Bulk Actions Bar */}
       {selectedFiles.size > 0 && (
-        <Card className="p-4 bg-orange-50 border-orange-200">
+        <Card className="p-4 bg-emerald-50 border-emerald-200">
           <div className="flex items-center justify-between">
-            <span className="text-sm font-medium text-orange-900">
+            <span className="text-sm font-medium text-emerald-950">
               {selectedFiles.size} file(s) selected
             </span>
             <div className="flex gap-2">
@@ -622,7 +622,7 @@ export default function FilesPage() {
                   <div className="mt-4">
                     <div className="w-full bg-gray-200 rounded-full h-2">
                       <div
-                        className="bg-orange-600 h-2 rounded-full transition-all"
+                        className="bg-emerald-700 h-2 rounded-full transition-all"
                         style={{ width: `${uploadProgress}%` }}
                       />
                     </div>

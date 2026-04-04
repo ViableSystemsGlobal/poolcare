@@ -57,13 +57,13 @@ export default function EmailPage() {
       "purple-600": "bg-purple-600",
       "blue-600": "bg-blue-600",
       "green-600": "bg-green-600",
-      "orange-600": "bg-orange-600",
+      "orange-600": "bg-emerald-700",
       "red-600": "bg-red-600",
       "indigo-600": "bg-indigo-600",
       "pink-600": "bg-pink-600",
       "teal-600": "bg-teal-600",
     };
-    return colorMap[theme.primary] || "bg-orange-600";
+    return colorMap[theme.primary] || "bg-emerald-700";
   };
 
   const getTextClasses = () => {
@@ -71,13 +71,13 @@ export default function EmailPage() {
       "purple-600": "text-purple-600",
       "blue-600": "text-blue-600",
       "green-600": "text-green-600",
-      "orange-600": "text-orange-600",
+      "orange-600": "text-emerald-700",
       "red-600": "text-red-600",
       "indigo-600": "text-indigo-600",
       "pink-600": "text-pink-600",
       "teal-600": "text-teal-600",
     };
-    return colorMap[theme.primary] || "text-orange-600";
+    return colorMap[theme.primary] || "text-emerald-700";
   };
 
   const getBackgroundLightClasses = () => {
@@ -85,13 +85,13 @@ export default function EmailPage() {
       "purple-600": "bg-purple-100",
       "blue-600": "bg-blue-100",
       "green-600": "bg-green-100",
-      "orange-600": "bg-orange-100",
+      "orange-600": "bg-emerald-100",
       "red-600": "bg-red-100",
       "indigo-600": "bg-indigo-100",
       "pink-600": "bg-pink-100",
       "teal-600": "bg-teal-100",
     };
-    return colorMap[theme.primary] || "bg-orange-100";
+    return colorMap[theme.primary] || "bg-emerald-100";
   };
 
   const [loading, setLoading] = useState(true);

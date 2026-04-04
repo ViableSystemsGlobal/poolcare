@@ -1,12 +1,12 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Plus, Search, FileText, Edit, Trash2, Eye, CheckCircle, XCircle, DollarSign, Download, AlertCircle, Clock } from "lucide-react";
+import { Plus, Search, FileText, Edit, Trash2, Eye, CheckCircle, XCircle, DollarSign, Download, AlertCircle, Clock, ChevronLeft, ChevronRight } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Table,
@@ -99,6 +99,7 @@ export default function QuotesPage() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("");
+  const [page, setPage] = useState(1);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [selectedQuotes, setSelectedQuotes] = useState<Set<string>>(new Set());
   const [editingQuote, setEditingQuote] = useState<Quote | null>(null);
@@ -225,6 +226,13 @@ export default function QuotesPage() {
         quote.issue?.type?.toLowerCase().includes(searchQuery.toLowerCase())
       )
     : quotes;
+
+  const PAGE_SIZE = 20;
+  const totalPages = Math.max(1, Math.ceil(filteredQuotes.length / PAGE_SIZE));
+  const paginatedQuotes = useMemo(
+    () => filteredQuotes.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
+    [filteredQuotes, page]
+  );
 
   const allSelected = filteredQuotes.length > 0 && selectedQuotes.size === filteredQuotes.length;
 
@@ -600,12 +608,12 @@ export default function QuotesPage() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm font-medium text-gray-600">Total Value</p>
-                    <p className="text-2xl font-bold text-orange-600">
+                    <p className="text-2xl font-bold text-emerald-700">
                       {metrics.totalValue.toFixed(0)}
                     </p>
                     <p className="text-xs text-gray-500">{formatCurrencyForDisplay(formData.currency)}</p>
                   </div>
-                  <DollarSign className="h-8 w-8 text-orange-400" />
+                  <DollarSign className="h-8 w-8 text-emerald-400" />
                 </div>
               </Card>
             </>
@@ -622,7 +630,7 @@ export default function QuotesPage() {
         <CardContent>
           {/* Bulk Actions Bar */}
           {selectedQuotes.size > 0 && (
-            <div className="flex items-center justify-between p-4 mb-4 bg-orange-50 border border-orange-200 rounded-lg">
+            <div className="flex items-center justify-between p-4 mb-4 bg-emerald-50 border border-emerald-200 rounded-lg">
               <div className="flex items-center gap-2">
                 <span className="text-sm font-medium text-gray-900">
                   {selectedQuotes.size} quote{selectedQuotes.size !== 1 ? "s" : ""} selected
@@ -656,14 +664,14 @@ export default function QuotesPage() {
                 <Input
                   placeholder="Search quotes by pool, client, or issue..."
                   value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }}
                   className="pl-10"
                 />
               </div>
             </div>
             <Select
               value={statusFilter || "__all__"}
-              onValueChange={(value) => setStatusFilter(value === "__all__" ? "" : value)}
+              onValueChange={(value) => { setStatusFilter(value === "__all__" ? "" : value); setPage(1); }}
             >
               <SelectTrigger className="w-[180px]">
                 <SelectValue placeholder="Filter by status" />
@@ -718,7 +726,7 @@ export default function QuotesPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredQuotes.map((quote) => (
+                  {paginatedQuotes.map((quote) => (
                     <TableRow
                       key={quote.id}
                       className="cursor-pointer hover:bg-gray-50"
@@ -815,6 +823,21 @@ export default function QuotesPage() {
                   ))}
                 </TableBody>
               </Table>
+              {/* Pagination */}
+              <div className="flex items-center justify-between border-t px-4 py-3">
+                <p className="text-sm text-gray-500">
+                  Showing {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, filteredQuotes.length)} of {filteredQuotes.length} quotes
+                </p>
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  <span className="text-sm text-gray-600">Page {page} of {totalPages}</span>
+                  <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
             </div>
           )}
         </CardContent>

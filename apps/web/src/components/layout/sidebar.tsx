@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { useState, useEffect } from "react";
 import { useTheme } from "@/contexts/theme-context";
+import { useHelpDialog } from "@/contexts/help-dialog-context";
 import {
   LayoutDashboard,
   Users,
@@ -24,13 +25,14 @@ import {
   DollarSign,
   BarChart3,
   FolderOpen,
-  Phone,
-  Mail,
   Package,
   Warehouse,
   Truck,
   Sparkles,
   ShoppingCart,
+  Newspaper,
+  MonitorSmartphone,
+  BookOpen,
 } from "lucide-react";
 
 const navigationGroups = [
@@ -54,6 +56,10 @@ const navigationGroups = [
         href: "/visits",
         icon: ClipboardCheck,
         module: "visits",
+        children: [
+          { name: "All Visits", href: "/visits", icon: ClipboardCheck },
+          { name: "Templates", href: "/visit-templates", icon: FileText },
+        ],
       },
       {
         name: "Carers",
@@ -64,12 +70,6 @@ const navigationGroups = [
           { name: "Team", href: "/carers", icon: UserCheck },
           { name: "Schedule", href: "/carers/schedule", icon: Calendar },
         ],
-      },
-      {
-        name: "Supplies",
-        href: "/supplies",
-        icon: Package,
-        module: "supplies",
       },
       {
         name: "Inventory",
@@ -83,13 +83,8 @@ const navigationGroups = [
           { name: "Movements", href: "/inventory/movements", icon: Truck },
           { name: "Warehouses", href: "/inventory/warehouses", icon: Warehouse },
           { name: "Suppliers", href: "/inventory/suppliers", icon: Users },
+          { name: "Supplies", href: "/supplies", icon: Package },
         ],
-      },
-      {
-        name: "Visit Templates",
-        href: "/visit-templates",
-        icon: ClipboardCheck,
-        module: "visit-templates",
       },
     ],
   },
@@ -112,15 +107,9 @@ const navigationGroups = [
         icon: FileText,
         module: "plans",
         children: [
-          { name: "Plans", href: "/plans", icon: FileText },
-          { name: "Templates", href: "/subscription-templates", icon: FileText },
+          { name: "Active Service Plans", href: "/plans", icon: FileText },
+          { name: "PoolCare Plans", href: "/subscription-templates", icon: FileText },
         ],
-      },
-      {
-        name: "Shop Orders",
-        href: "/orders",
-        icon: ShoppingCart,
-        module: "orders",
       },
       {
         name: "Financial",
@@ -130,11 +119,16 @@ const navigationGroups = [
         children: [
           { name: "Quotes", href: "/quotes", icon: FileText },
           { name: "Invoices", href: "/invoices", icon: Receipt },
-          { name: "Subscription Billing", href: "/billing", icon: Calendar },
           { name: "Payments", href: "/payments", icon: DollarSign },
           { name: "Receipts", href: "/receipts", icon: Receipt },
           { name: "Credit Notes", href: "/credit-notes", icon: FileText },
         ],
+      },
+      {
+        name: "Shop Orders",
+        href: "/orders",
+        icon: ShoppingCart,
+        module: "orders",
       },
       {
         name: "Issues",
@@ -154,16 +148,16 @@ const navigationGroups = [
         module: "inbox",
       },
       {
-        name: "SMS",
-        href: "/sms",
-        icon: Phone,
-        module: "sms",
+        name: "Notifications",
+        href: "/notifications",
+        icon: Bell,
+        module: "notifications",
       },
       {
-        name: "Email",
-        href: "/email",
-        icon: Mail,
-        module: "email",
+        name: "Newsletter",
+        href: "/newsletter",
+        icon: Newspaper,
+        module: "newsletter",
       },
     ],
   },
@@ -171,13 +165,25 @@ const navigationGroups = [
     label: "Management",
     items: [
       {
-        name: "AI Business Partner",
+        name: "AI Partner",
         href: "/ai-partner",
         icon: Sparkles,
         module: "ai-partner",
       },
       {
-        name: "Reports & Data",
+        name: "Knowledge Base",
+        href: "/knowledge",
+        icon: BookOpen,
+        module: "knowledge",
+      },
+      {
+        name: "App Users",
+        href: "/users",
+        icon: MonitorSmartphone,
+        module: "users",
+      },
+      {
+        name: "Reports",
         href: "/analytics",
         icon: BarChart3,
         module: "reports",
@@ -185,12 +191,6 @@ const navigationGroups = [
           { name: "Analytics", href: "/analytics", icon: BarChart3 },
           { name: "Files", href: "/files", icon: FolderOpen },
         ],
-      },
-      {
-        name: "Team",
-        href: "/team",
-        icon: Users,
-        module: "team",
       },
       {
         name: "Settings",
@@ -208,11 +208,16 @@ export default function Sidebar() {
   const [collapsed, setCollapsed] = useState(false);
   const [logoError, setLogoError] = useState(false);
   const { getThemeClasses, customLogo, getThemeColor } = useTheme();
+  const { setHelpOpen } = useHelpDialog();
 
   useEffect(() => { setLogoError(false); }, [customLogo]);
 
-  const isActive = (href: string) => {
+  const isActive = (href: string, isChild = false) => {
+    // Exact match always counts
     if (pathname === href) return true;
+    // For child items, only exact match (prevents /carers matching when on /carers/schedule)
+    if (isChild) return false;
+    // For top-level items, check if pathname starts with href
     if (pathname.startsWith(href + "/")) {
       const remainingPath = pathname.slice(href.length + 1);
       return !remainingPath.includes("/");
@@ -225,7 +230,7 @@ export default function Sidebar() {
     navigationGroups.forEach((group) => {
       group.items.forEach((section) => {
         if (section.children) {
-          const hasActiveChild = section.children.some((child) => isActive(child.href));
+          const hasActiveChild = section.children.some((child) => isActive(child.href, true));
           if (hasActiveChild) {
             shouldExpandSections.push(section.name);
           }
@@ -302,7 +307,7 @@ export default function Sidebar() {
                 const isExpanded = expandedSections.includes(item.name);
                 const isActiveItem =
                   (item.href && isActive(item.href)) ||
-                  (hasChildren && item.children!.some((child) => isActive(child.href)));
+                  (hasChildren && item.children!.some((child) => isActive(child.href, true)));
 
                 return (
                   <div key={item.name}>
@@ -354,7 +359,7 @@ export default function Sidebar() {
                             key={child.name}
                             href={child.href}
                             className="group flex items-center rounded-lg px-3 py-2 text-sm font-medium transition-colors w-full text-left text-gray-600 hover:text-gray-900"
-                            style={isActive(child.href) ? { color: themeHex, fontWeight: 500 } : undefined}
+                            style={isActive(child.href, true) ? { color: themeHex, fontWeight: 500 } : undefined}
                           >
                             <child.icon className="mr-3 h-4 w-4 flex-shrink-0" />
                             {child.name}
@@ -374,10 +379,8 @@ export default function Sidebar() {
       <div className="border-t border-gray-200 p-4">
         {!collapsed && (
           <button
-            className="flex items-center w-full text-sm text-gray-500 transition-colors hover:text-orange-600"
-            onClick={() => {
-              alert("Help & Keyboard shortcuts coming soon!");
-            }}
+            className="flex items-center w-full text-sm text-gray-500 transition-colors hover:text-[#397d54]"
+            onClick={() => setHelpOpen(true)}
           >
             <HelpCircle className="mr-2 h-4 w-4" />
             Help & Keyboard shortcuts

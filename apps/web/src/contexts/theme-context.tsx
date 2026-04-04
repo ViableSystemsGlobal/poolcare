@@ -105,7 +105,7 @@ const colorMap: { [key: string]: string } = {
   'purple-600': '#9333ea',
   'blue-600': '#2563eb',
   'green-600': '#16a34a',
-  'orange-600': '#ea580c',
+  'orange-600': '#397d54',
   'red-600': '#dc2626',
   'indigo-600': '#4f46e5',
   'pink-600': '#db2777',
@@ -136,7 +136,7 @@ function darken(hex: string, amount: number): string {
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const { token } = useAuth();
-  const [themeColor, setThemeColorState] = useState<ThemeColor>('orange');
+  const [themeColor, setThemeColorState] = useState<ThemeColor>('green');
   const [customColorHex, setCustomColorHexState] = useState<string | null>(null);
   const [customLogo, setCustomLogo] = useState<string | null>(null);
 
@@ -144,7 +144,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     if (!token) {
       // Logged out: reset to defaults and clear branding from localStorage
       // so the next user doesn't see stale org branding on shared computers
-      setThemeColorState('orange');
+      setThemeColorState('green');
       setCustomColorHexState(null);
       setCustomLogo(null);
       if (typeof window !== 'undefined') {
@@ -224,12 +224,12 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     // Return exact custom color if set, otherwise the preset hex
     if (customColorHex) return customColorHex;
     const classes = themeConfig[themeColor];
-    return colorMap[classes.primary] || colorMap['orange-600'];
+    return colorMap[classes.primary] || '#397d54';
   };
 
   // Apply CSS custom properties so components can use var(--theme-color)
   useEffect(() => {
-    const hex = customColorHex || colorMap[themeConfig[themeColor].primary] || '#ea580c';
+    const hex = customColorHex || colorMap[themeConfig[themeColor].primary] || '#397d54';
     document.documentElement.style.setProperty('--theme-color', hex);
     document.documentElement.style.setProperty('--theme-color-light', lighten(hex, 0.4));
     document.documentElement.style.setProperty('--theme-color-lighter', lighten(hex, 0.85));

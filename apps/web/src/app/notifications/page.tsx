@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -18,6 +18,8 @@ import {
   Megaphone,
   Users,
   Loader2,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
@@ -72,6 +74,7 @@ export default function NotificationsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string | undefined>(undefined);
   const [channelFilter, setChannelFilter] = useState<string | undefined>(undefined);
+  const [page, setPage] = useState(1);
   const [selectedNotifications, setSelectedNotifications] = useState<Set<string>>(new Set());
 
   const [metrics, setMetrics] = useState({
@@ -145,6 +148,13 @@ export default function NotificationsPage() {
     }
     return true;
   });
+
+  const PAGE_SIZE = 20;
+  const totalPages = Math.max(1, Math.ceil(filteredNotifications.length / PAGE_SIZE));
+  const paginatedNotifications = useMemo(
+    () => filteredNotifications.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
+    [filteredNotifications, page]
+  );
 
   const handleSelectAll = () => {
     if (selectedNotifications.size === filteredNotifications.length) {
@@ -248,7 +258,7 @@ export default function NotificationsPage() {
       case "email":
         return "bg-purple-100 text-purple-700";
       case "push":
-        return "bg-orange-100 text-orange-700";
+        return "bg-emerald-100 text-emerald-800";
       default:
         return "bg-gray-100 text-gray-700";
     }
@@ -337,7 +347,7 @@ export default function NotificationsPage() {
           <Button
             variant="outline"
             onClick={() => router.push("/notifications/templates")}
-            className="border-orange-600 text-orange-600 hover:bg-orange-50"
+            className="border-emerald-700 text-emerald-700 hover:bg-emerald-50"
           >
             <Send className="h-4 w-4 mr-2" />
             Templates
@@ -435,7 +445,7 @@ export default function NotificationsPage() {
                     className="text-white min-w-[120px]"
                   >
                     {broadcasting ? (
-                      <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Sending…</>
+                      <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Sending...</>
                     ) : (
                       <><Send className="h-4 w-4 mr-2" />Send Now</>
                     )}
@@ -507,7 +517,7 @@ export default function NotificationsPage() {
                   variant="outline"
                   size="sm"
                   onClick={handleBulkResend}
-                  className="border-orange-600 text-orange-600 hover:bg-orange-50"
+                  className="border-emerald-700 text-emerald-700 hover:bg-emerald-50"
                 >
                   <RefreshCw className="h-4 w-4 mr-2" />
                   Resend Failed
@@ -529,10 +539,36 @@ export default function NotificationsPage() {
             <Button
               variant="outline"
               onClick={() => {
-                // Export functionality
-                alert("Export CSV coming soon!");
+                if (filteredNotifications.length === 0) {
+                  alert("No notifications to export.");
+                  return;
+                }
+                const headers = ["Date", "Recipient", "Channel", "Subject", "Status"];
+                const escapeField = (value: string) => {
+                  if (value.includes(",") || value.includes('"') || value.includes("\n")) {
+                    return '"' + value.replace(/"/g, '""') + '"';
+                  }
+                  return value;
+                };
+                const rows = filteredNotifications.map((n) => [
+                  escapeField(n.sentAt ? new Date(n.sentAt).toLocaleString() : n.createdAt ? new Date(n.createdAt).toLocaleString() : ""),
+                  escapeField(n.recipient?.name || n.recipient?.email || n.recipientType || ""),
+                  escapeField(n.channel || ""),
+                  escapeField(n.subject || n.template || ""),
+                  escapeField(n.status || ""),
+                ]);
+                const csv = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
+                const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement("a");
+                link.href = url;
+                link.download = `notifications-${new Date().toISOString().slice(0, 10)}.csv`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                URL.revokeObjectURL(url);
               }}
-              className="border-orange-600 text-orange-600 hover:bg-orange-50"
+              className="border-emerald-700 text-emerald-700 hover:bg-emerald-50"
             >
               <Download className="h-4 w-4 mr-2" />
               Export CSV
@@ -546,7 +582,7 @@ export default function NotificationsPage() {
               <Input
                 placeholder="Search by recipient, template, or content..."
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }}
                 className="pl-10"
               />
             </div>
@@ -582,6 +618,7 @@ export default function NotificationsPage() {
           ) : filteredNotifications.length === 0 ? (
             <div className="text-center py-8 text-gray-500">No notifications found</div>
           ) : (
+            <>
             <Table>
               <TableHeader>
                 <TableRow>
@@ -600,7 +637,7 @@ export default function NotificationsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredNotifications.map((notification) => (
+                {paginatedNotifications.map((notification) => (
                   <TableRow key={notification.id}>
                     <TableCell>
                       <Checkbox
@@ -648,7 +685,7 @@ export default function NotificationsPage() {
                             variant="ghost"
                             size="sm"
                             onClick={() => handleResend(notification.id)}
-                            className="text-orange-600 hover:text-orange-700"
+                            className="text-emerald-700 hover:text-emerald-800"
                           >
                             <RefreshCw className="h-4 w-4" />
                           </Button>
@@ -669,6 +706,22 @@ export default function NotificationsPage() {
                 ))}
               </TableBody>
             </Table>
+            {/* Pagination */}
+            <div className="flex items-center justify-between border-t px-4 py-3">
+              <p className="text-sm text-gray-500">
+                Showing {(page - 1) * PAGE_SIZE + 1} - {Math.min(page * PAGE_SIZE, filteredNotifications.length)} of {filteredNotifications.length} notifications
+              </p>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <span className="text-sm text-gray-600">Page {page} of {totalPages}</span>
+                <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+            </>
           )}
         </CardContent>
       </Card>

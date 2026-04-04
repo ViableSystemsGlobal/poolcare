@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Plus, Search, Edit, Trash2, PlayCircle, Pause, FileText } from "lucide-react";
+import { Plus, Search, Edit, Trash2, PlayCircle, Pause, FileText, ChevronLeft, ChevronRight } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -43,6 +43,7 @@ export default function SubscriptionTemplatesPage() {
   const [templates, setTemplates] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [page, setPage] = useState(1);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<any>(null);
@@ -316,6 +317,13 @@ export default function SubscriptionTemplatesPage() {
     template.description?.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  const PAGE_SIZE = 20;
+  const totalPages = Math.max(1, Math.ceil(filteredTemplates.length / PAGE_SIZE));
+  const paginatedTemplates = useMemo(
+    () => filteredTemplates.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
+    [filteredTemplates, page]
+  );
+
   const renderForm = () => (
     <div className="space-y-4">
       <div className="grid gap-2">
@@ -483,8 +491,8 @@ export default function SubscriptionTemplatesPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Subscription Templates</h1>
-          <p className="text-gray-600 mt-1">Create and manage subscription plan templates</p>
+          <h1 className="text-2xl font-bold text-gray-900">PoolCare Plans</h1>
+          <p className="text-gray-600 mt-1">Create and manage your service plan offerings</p>
         </div>
         <Button
           onClick={() => {
@@ -505,7 +513,7 @@ export default function SubscriptionTemplatesPage() {
             <Input
               placeholder="Search templates..."
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }}
               className="pl-10"
             />
           </div>
@@ -551,7 +559,7 @@ export default function SubscriptionTemplatesPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredTemplates.map((template) => (
+                  {paginatedTemplates.map((template) => (
                     <TableRow key={template.id}>
                       <TableCell>
                         <div>
@@ -614,6 +622,21 @@ export default function SubscriptionTemplatesPage() {
                   ))}
                 </TableBody>
               </Table>
+              {/* Pagination */}
+              <div className="flex items-center justify-between border-t px-4 py-3">
+                <p className="text-sm text-gray-500">
+                  Showing {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, filteredTemplates.length)} of {filteredTemplates.length} templates
+                </p>
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  <span className="text-sm text-gray-600">Page {page} of {totalPages}</span>
+                  <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
             </div>
           )}
         </CardContent>

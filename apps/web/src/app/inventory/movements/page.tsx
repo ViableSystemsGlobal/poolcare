@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,6 +17,8 @@ import {
   FileText,
   TrendingUp,
   TrendingDown,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import {
   Table,
@@ -105,7 +107,7 @@ const MOVEMENT_TYPES = [
   { value: "SALE", label: "Sale", icon: TrendingUp, color: "text-emerald-600" },
   { value: "ADJUSTMENT", label: "Adjustment", icon: RotateCcw, color: "text-blue-600" },
   { value: "TRANSFER_IN", label: "Transfer In", icon: ArrowRightLeft, color: "text-purple-600" },
-  { value: "TRANSFER_OUT", label: "Transfer Out", icon: ArrowRightLeft, color: "text-orange-600" },
+  { value: "TRANSFER_OUT", label: "Transfer Out", icon: ArrowRightLeft, color: "text-emerald-700" },
   { value: "RETURN", label: "Return", icon: ArrowUp, color: "text-cyan-600" },
   { value: "DAMAGE", label: "Damage", icon: AlertTriangle, color: "text-red-600" },
   { value: "EXPIRY", label: "Expiry", icon: Calendar, color: "text-yellow-600" },
@@ -123,6 +125,7 @@ export default function StockMovementsPage() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState<string>("all");
+  const [page, setPage] = useState(1);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [formData, setFormData] = useState({
     productId: "",
@@ -295,6 +298,13 @@ export default function StockMovementsPage() {
     );
   });
 
+  const PAGE_SIZE = 20;
+  const totalPages = Math.max(1, Math.ceil(filteredMovements.length / PAGE_SIZE));
+  const paginatedMovements = useMemo(
+    () => filteredMovements.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
+    [filteredMovements, page]
+  );
+
   const getMovementTypeInfo = (type: string) => {
     return MOVEMENT_TYPES.find((t) => t.value === type) || MOVEMENT_TYPES[0];
   };
@@ -384,7 +394,7 @@ export default function StockMovementsPage() {
                 <Input
                   placeholder="Search by product or reference..."
                   value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }}
                   className="pl-10"
                 />
               </div>
@@ -418,6 +428,7 @@ export default function StockMovementsPage() {
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-600"></div>
             </div>
           ) : (
+            <>
             <Table>
               <TableHeader>
                 <TableRow>
@@ -431,7 +442,7 @@ export default function StockMovementsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredMovements.map((movement) => {
+                {paginatedMovements.map((movement) => {
                   const typeInfo = getMovementTypeInfo(movement.type);
                   const TypeIcon = typeInfo.icon;
                   return (
@@ -513,6 +524,22 @@ export default function StockMovementsPage() {
                 )}
               </TableBody>
             </Table>
+            {/* Pagination */}
+            <div className="flex items-center justify-between border-t px-4 py-3">
+              <p className="text-sm text-gray-500">
+                Showing {(page - 1) * PAGE_SIZE + 1} - {Math.min(page * PAGE_SIZE, filteredMovements.length)} of {filteredMovements.length} movements
+              </p>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <span className="text-sm text-gray-600">Page {page} of {totalPages}</span>
+                <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+            </>
           )}
         </CardContent>
       </Card>

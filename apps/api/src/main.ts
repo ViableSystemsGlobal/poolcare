@@ -36,44 +36,66 @@ async function bootstrap() {
     app.useGlobalFilters(new HttpExceptionFilter());
 
     app.setGlobalPrefix("api");
+
+    const isProduction = process.env.NODE_ENV === 'production';
+
     app.enableCors({
       origin: (origin, callback) => {
         // Allow requests with no origin (mobile apps, Postman, etc.)
         if (!origin) {
           return callback(null, true);
         }
-        
+
+        if (isProduction) {
+          // Production: strict whitelist only
+          const allowedOrigins = [
+            'https://poolcare.africa',
+            'https://www.poolcare.africa',
+            'https://admin.poolcare.africa',
+            'https://api.poolcare.africa',
+            process.env.WEB_URL,
+            process.env.CLIENT_URL,
+            process.env.PRODUCTION_WEB_URL,
+            process.env.RENDER_EXTERNAL_URL,
+            // Explicit Render domains
+            'https://poolcare-web.onrender.com',
+            'https://poolcare.onrender.com',
+          ].filter(Boolean);
+
+          if (allowedOrigins.includes(origin)) {
+            return callback(null, true);
+          }
+          return callback(new Error('CORS not allowed'));
+        }
+
+        // Development: permissive config
         const allowedOrigins = [
-        process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000",
-        "http://localhost:3001",
-        "http://localhost:3000",
-        "http://localhost:3002",
-        // Add production domains
-        process.env.PRODUCTION_WEB_URL,
-        process.env.RENDER_EXTERNAL_URL,
-        // Explicit Render domains
-        "https://poolcare-web.onrender.com",
-        "https://poolcare.onrender.com",
-        // Custom domains
-        "https://admin.poolcare.africa",
-        "https://poolcare.africa",
-        "https://www.poolcare.africa",
+          process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000",
+          "http://localhost:3001",
+          "http://localhost:3000",
+          "http://localhost:3002",
+          process.env.PRODUCTION_WEB_URL,
+          process.env.RENDER_EXTERNAL_URL,
+          "https://poolcare-web.onrender.com",
+          "https://poolcare.onrender.com",
+          "https://admin.poolcare.africa",
+          "https://poolcare.africa",
+          "https://www.poolcare.africa",
         ].filter(Boolean);
-        
-        // Allow localhost, network IPs for development, Render domains, and custom domains
+
         if (
           origin.includes("localhost") ||
           origin.startsWith("http://127.0.0.1:") ||
           origin.match(/^http:\/\/192\.168\.\d+\.\d+/) ||
           origin.match(/^http:\/\/172\.\d+\.\d+\.\d+/) ||
           origin.match(/^http:\/\/10\.\d+\.\d+\.\d+/) ||
-          origin.includes(".onrender.com") ||  // Allow all Render subdomains
-          origin.includes("poolcare.africa") ||  // Allow all poolcare.africa subdomains
+          origin.includes(".onrender.com") ||
+          origin.includes("poolcare.africa") ||
           allowedOrigins.includes(origin)
         ) {
           return callback(null, true);
         }
-        
+
         callback(new Error("Not allowed by CORS"));
       },
       credentials: true,

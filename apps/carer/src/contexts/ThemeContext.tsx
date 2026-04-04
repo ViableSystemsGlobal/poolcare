@@ -9,7 +9,7 @@ interface ThemeContextValue {
   homeCardImageUrl: string | null;
 }
 
-const DEFAULT_COLOR = "#14b8a6";
+const DEFAULT_COLOR = "#397d54";
 const STORAGE_KEY = "poolcare_carer_theme";
 
 const ThemeContext = createContext<ThemeContextValue>({

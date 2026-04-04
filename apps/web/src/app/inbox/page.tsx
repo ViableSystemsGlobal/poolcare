@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -17,6 +17,7 @@ import {
   User,
   Link as LinkIcon,
   MoreVertical,
+  ChevronLeft,
   ChevronRight,
   Droplet,
   Receipt,
@@ -24,6 +25,8 @@ import {
   Calendar,
   ExternalLink,
   Plus,
+  X,
+  File,
 } from "lucide-react";
 import { useTheme } from "@/contexts/theme-context";
 import { cn } from "@/lib/utils";
@@ -74,6 +77,7 @@ export default function InboxPage() {
   const [loading, setLoading] = useState(true);
   const [selectedFolder, setSelectedFolder] = useState("inbox");
   const [searchQuery, setSearchQuery] = useState("");
+  const [page, setPage] = useState(1);
   const [messageText, setMessageText] = useState("");
   const [suggestions, setSuggestions] = useState<any[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -81,6 +85,10 @@ export default function InboxPage() {
   const [showLinkDialog, setShowLinkDialog] = useState(false);
   const [linkType, setLinkType] = useState<string>("");
   const [linkId, setLinkId] = useState<string>("");
+  const [attachments, setAttachments] = useState<
+    { file: globalThis.File; preview?: string; uploading?: boolean; uploaded?: boolean; key?: string; url?: string }[]
+  >([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
 
@@ -237,10 +245,120 @@ export default function InboxPage() {
     }
   };
 
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    const newAttachments = Array.from(files).map((file) => {
+      const preview = file.type.startsWith("image/")
+        ? URL.createObjectURL(file)
+        : undefined;
+      return { file, preview };
+    });
+
+    setAttachments((prev) => [...prev, ...newAttachments]);
+    // Reset the input so the same file can be selected again
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const handleRemoveAttachment = (index: number) => {
+    setAttachments((prev) => {
+      const removed = prev[index];
+      if (removed.preview) URL.revokeObjectURL(removed.preview);
+      return prev.filter((_, i) => i !== index);
+    });
+  };
+
+  const uploadAttachment = async (
+    attachment: { file: globalThis.File; preview?: string },
+    threadId: string
+  ): Promise<{ url: string; key: string; contentType: string; fileName: string } | null> => {
+    try {
+      // Step 1: Get presigned upload URL
+      const presignRes = await fetch(`${API_URL}/files/presign`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
+        },
+        body: JSON.stringify({
+          scope: "inbox",
+          refId: threadId,
+          contentType: attachment.file.type,
+          fileName: attachment.file.name,
+          sizeBytes: attachment.file.size,
+        }),
+      });
+
+      if (!presignRes.ok) {
+        console.error("Presign failed:", await presignRes.text());
+        return null;
+      }
+
+      const { uploadUrl, key } = await presignRes.json();
+
+      // Step 2: Upload file to presigned URL
+      const uploadRes = await fetch(uploadUrl, {
+        method: "PUT",
+        headers: { "Content-Type": attachment.file.type },
+        body: attachment.file,
+      });
+
+      if (!uploadRes.ok) {
+        console.error("Upload failed:", uploadRes.statusText);
+        return null;
+      }
+
+      // Step 3: Commit the file
+      const commitRes = await fetch(`${API_URL}/files/commit`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
+        },
+        body: JSON.stringify({ key, scope: "inbox", refId: threadId }),
+      });
+
+      if (!commitRes.ok) {
+        console.error("Commit failed:", await commitRes.text());
+        return null;
+      }
+
+      await commitRes.json();
+
+      return {
+        url: key,
+        key,
+        contentType: attachment.file.type,
+        fileName: attachment.file.name,
+      };
+    } catch (error) {
+      console.error("File upload error:", error);
+      return null;
+    }
+  };
+
   const handleSendMessage = async () => {
-    if (!messageText.trim() || !selectedThread) return;
+    if (!messageText.trim() && attachments.length === 0) return;
+    if (!selectedThread) return;
 
     try {
+      // Upload any pending attachments
+      let uploadedAttachments: { url: string; key: string; contentType: string; fileName: string }[] = [];
+      if (attachments.length > 0) {
+        const results = await Promise.all(
+          attachments.map((att) => uploadAttachment(att, selectedThread.id))
+        );
+        uploadedAttachments = results.filter(Boolean) as typeof uploadedAttachments;
+
+        if (uploadedAttachments.length !== attachments.length) {
+          const failed = attachments.length - uploadedAttachments.length;
+          if (!confirm(`${failed} file(s) failed to upload. Send message anyway?`)) {
+            return;
+          }
+        }
+      }
+
       const response = await fetch(`${API_URL}/threads/${selectedThread.id}/messages`, {
         method: "POST",
         headers: {
@@ -248,14 +366,20 @@ export default function InboxPage() {
           Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
         },
         body: JSON.stringify({
-          text: messageText,
+          text: messageText || undefined,
           channel: "inapp",
           senderRole: "manager",
+          ...(uploadedAttachments.length > 0 && { attachments: uploadedAttachments }),
         }),
       });
 
       if (response.ok) {
         setMessageText("");
+        // Clean up attachment previews
+        attachments.forEach((att) => {
+          if (att.preview) URL.revokeObjectURL(att.preview);
+        });
+        setAttachments([]);
         setShowSuggestions(false);
         await fetchThreadDetails(selectedThread.id);
         await fetchThreads();
@@ -328,6 +452,13 @@ export default function InboxPage() {
     );
   });
 
+  const PAGE_SIZE = 20;
+  const totalPages = Math.max(1, Math.ceil(filteredThreads.length / PAGE_SIZE));
+  const paginatedThreads = useMemo(
+    () => filteredThreads.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
+    [filteredThreads, page]
+  );
+
   const unreadCount = threads.reduce((sum, t) => sum + t.unreadCount, 0);
 
   return (
@@ -345,7 +476,7 @@ export default function InboxPage() {
             className={cn(
               "w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors mb-1",
               selectedFolder === "inbox"
-                ? `${getThemeClasses().primary === "orange" ? "bg-orange-50 text-orange-700" : "bg-blue-50 text-blue-700"}`
+                ? `${getThemeClasses().primary === "orange" ? "bg-emerald-50 text-emerald-800" : "bg-blue-50 text-blue-700"}`
                 : "text-gray-700 hover:bg-gray-100"
             )}
           >
@@ -363,7 +494,7 @@ export default function InboxPage() {
             className={cn(
               "w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors mb-1",
               selectedFolder === "unread"
-                ? `${getThemeClasses().primary === "orange" ? "bg-orange-50 text-orange-700" : "bg-blue-50 text-blue-700"}`
+                ? `${getThemeClasses().primary === "orange" ? "bg-emerald-50 text-emerald-800" : "bg-blue-50 text-blue-700"}`
                 : "text-gray-700 hover:bg-gray-100"
             )}
           >
@@ -376,7 +507,7 @@ export default function InboxPage() {
             className={cn(
               "w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors mb-1",
               selectedFolder === "archived"
-                ? `${getThemeClasses().primary === "orange" ? "bg-orange-50 text-orange-700" : "bg-blue-50 text-blue-700"}`
+                ? `${getThemeClasses().primary === "orange" ? "bg-emerald-50 text-emerald-800" : "bg-blue-50 text-blue-700"}`
                 : "text-gray-700 hover:bg-gray-100"
             )}
           >
@@ -394,7 +525,7 @@ export default function InboxPage() {
             <Input
               placeholder="Search threads..."
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }}
               className="pl-10"
             />
           </div>
@@ -406,7 +537,7 @@ export default function InboxPage() {
           ) : filteredThreads.length === 0 ? (
             <div className="p-4 text-center text-gray-500">No threads found</div>
           ) : (
-            filteredThreads.map((thread) => (
+            paginatedThreads.map((thread) => (
               <button
                 key={thread.id}
                 onClick={() => setSelectedThread(thread)}
@@ -449,6 +580,20 @@ export default function InboxPage() {
                 </div>
               </button>
             ))
+          )}
+          {/* Pagination */}
+          {filteredThreads.length > PAGE_SIZE && (
+            <div className="flex items-center justify-between border-t px-3 py-2">
+              <span className="text-xs text-gray-500">Page {page}/{totalPages}</span>
+              <div className="flex items-center gap-1">
+                <Button variant="ghost" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
+                  <ChevronLeft className="h-3 w-3" />
+                </Button>
+                <Button variant="ghost" size="sm" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>
+                  <ChevronRight className="h-3 w-3" />
+                </Button>
+              </div>
+            </div>
           )}
         </div>
       </div>
@@ -521,7 +666,45 @@ export default function InboxPage() {
                             : "bg-gray-100 text-gray-900"
                         )}
                       >
-                        <p className="text-sm">{message.text}</p>
+                        {message.text && <p className="text-sm">{message.text}</p>}
+                        {message.attachments &&
+                          Array.isArray(message.attachments) &&
+                          message.attachments.length > 0 && (
+                            <div className="mt-1 space-y-1">
+                              {message.attachments.map((att: any, i: number) => (
+                                <div key={i}>
+                                  {att.contentType?.startsWith("image/") ? (
+                                    <a
+                                      href={att.url || att.key}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                    >
+                                      <img
+                                        src={att.url || att.key}
+                                        alt={att.fileName || "attachment"}
+                                        className="max-w-[200px] max-h-[150px] rounded mt-1 object-cover"
+                                      />
+                                    </a>
+                                  ) : (
+                                    <a
+                                      href={att.url || att.key}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className={cn(
+                                        "flex items-center gap-1 text-xs underline mt-1",
+                                        message.senderRole === "manager"
+                                          ? "text-blue-100"
+                                          : "text-blue-600"
+                                      )}
+                                    >
+                                      <Paperclip className="h-3 w-3" />
+                                      {att.fileName || "Attachment"}
+                                    </a>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          )}
                         <p className="text-xs opacity-70 mt-1">
                           {new Date(message.createdAt).toLocaleTimeString([], {
                             hour: "2-digit",
@@ -573,11 +756,58 @@ export default function InboxPage() {
                     <Sparkles className="h-4 w-4 mr-2" />
                     AI Reply
                   </Button>
-                  <Button variant="outline" size="sm">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => fileInputRef.current?.click()}
+                  >
                     <Paperclip className="h-4 w-4 mr-2" />
                     Attach
                   </Button>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    className="hidden"
+                    accept="image/jpeg,image/png,image/webp,application/pdf"
+                    multiple
+                    onChange={handleFileSelect}
+                  />
                 </div>
+
+                {/* Attachment Previews */}
+                {attachments.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mb-2">
+                    {attachments.map((att, index) => (
+                      <div
+                        key={index}
+                        className="relative group flex items-center gap-2 bg-gray-100 rounded-lg px-3 py-2 text-sm border border-gray-200"
+                      >
+                        {att.preview ? (
+                          <img
+                            src={att.preview}
+                            alt={att.file.name}
+                            className="h-8 w-8 rounded object-cover"
+                          />
+                        ) : (
+                          <File className="h-4 w-4 text-gray-500" />
+                        )}
+                        <span className="text-gray-700 max-w-[120px] truncate">
+                          {att.file.name}
+                        </span>
+                        <span className="text-gray-400 text-xs">
+                          {(att.file.size / 1024).toFixed(0)}KB
+                        </span>
+                        <button
+                          onClick={() => handleRemoveAttachment(index)}
+                          className="ml-1 text-gray-400 hover:text-red-500 transition-colors"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
                 <div className="flex gap-2">
                   <Textarea
                     value={messageText}
@@ -591,7 +821,10 @@ export default function InboxPage() {
                       }
                     }}
                   />
-                  <Button onClick={handleSendMessage} disabled={!messageText.trim()}>
+                  <Button
+                    onClick={handleSendMessage}
+                    disabled={!messageText.trim() && attachments.length === 0}
+                  >
                     <Send className="h-4 w-4" />
                   </Button>
                 </div>

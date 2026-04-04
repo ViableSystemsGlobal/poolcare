@@ -559,7 +559,7 @@ class ApiClient {
     if (params?.limit != null) query.set("limit", String(params.limit));
     if (params?.page != null) query.set("page", String(params.page));
     const qs = query.toString();
-    return this.request(`/notifications${qs ? `?${qs}` : ""}`);
+    return this.request(`/carers/me/notifications${qs ? `?${qs}` : ""}`);
   }
 }
 

@@ -1,6 +1,24 @@
 import { Injectable, Logger, Inject, forwardRef, InternalServerErrorException, ServiceUnavailableException, BadRequestException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { SettingsService } from "../../settings/settings.service";
+import * as crypto from 'crypto';
+
+const ENCRYPTION_KEY = process.env.SETTINGS_ENCRYPTION_KEY || 'poolcare-dev-encryption-key-32ch';
+
+function decrypt(text: string): string {
+  try {
+    const parts = text.split(':');
+    if (parts.length !== 2) return text;
+    const iv = Buffer.from(parts[0], 'hex');
+    const encrypted = Buffer.from(parts[1], 'hex');
+    const decipher = crypto.createDecipheriv('aes-256-cbc', Buffer.from(ENCRYPTION_KEY.padEnd(32).slice(0, 32)), iv);
+    let decrypted = decipher.update(encrypted);
+    decrypted = Buffer.concat([decrypted, decipher.final()]);
+    return decrypted.toString();
+  } catch {
+    return text;
+  }
+}
 
 interface DeywuroResponse {
   code: number;
@@ -63,7 +81,7 @@ export class SmsAdapter {
             return {
               provider: (sms.provider || "Deywuro")?.toLowerCase() || "deywuro",
               username,
-              password: passwordValue,
+              password: decrypt(passwordValue),
               source: (sms.senderId && sms.senderId !== "undefined" ? sms.senderId : "PoolCare") as string,
               apiUrl: (sms.apiEndpoint && sms.apiEndpoint !== "undefined" ? sms.apiEndpoint : "https://deywuro.com/api/sms") as string,
             };

@@ -5,6 +5,9 @@ import { useEffect } from "react";
 import { MainLayout } from "./main-layout";
 import { useAuth } from "@/contexts/auth-context";
 import { TopLoadingBar } from "@/components/ui/top-loading-bar";
+import { HelpChat } from "@/components/help-chat";
+import { HelpDialogProvider } from "@/contexts/help-dialog-context";
+import { HelpDialog } from "@/components/layout/help-dialog";
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -56,7 +59,7 @@ export function AppLayout({ children }: AppLayoutProps) {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-600"></div>
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2" style={{ borderColor: '#397d54' }}></div>
       </div>
     );
   }
@@ -67,10 +70,12 @@ export function AppLayout({ children }: AppLayoutProps) {
   }
 
   return (
-    <>
+    <HelpDialogProvider>
       <TopLoadingBar />
       <MainLayout>{children}</MainLayout>
-    </>
+      <HelpDialog />
+      <HelpChat />
+    </HelpDialogProvider>
   );
 }
 

@@ -51,6 +51,10 @@ secrets/
 *.pem
 *.key
 
+# Credentials
+apps/carer/credentials.json
+apps/carer/credentials/
+
 # Uploaded files (stored on server, not in git)
 apps/api/uploads/
 

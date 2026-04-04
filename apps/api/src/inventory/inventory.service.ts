@@ -30,6 +30,23 @@ export class InventoryService {
   // PRODUCTS
   // =====================
 
+  /** Returns the first org_id for public/guest product browsing. */
+  async getDefaultOrgId(): Promise<string | null> {
+    const setting = await prisma.orgSetting.findFirst({
+      where: {
+        OR: [
+          { profile: { path: ["logoUrl"], not: null } },
+          { profile: { path: ["themeColor"], not: "orange" } },
+        ],
+      },
+      orderBy: { updatedAt: "desc" },
+      select: { orgId: true },
+    });
+    if (setting) return setting.orgId;
+    const org = await prisma.organization.findFirst({ orderBy: { createdAt: "asc" }, select: { id: true } });
+    return org?.id ?? null;
+  }
+
   async listProducts(orgId: string, query: ListProductsQuery) {
     const page = parseInt(query.page || "1");
     const limit = parseInt(query.limit || "20");

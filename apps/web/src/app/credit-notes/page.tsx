@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,8 @@ import {
   Download,
   Trash2,
   ArrowRight,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -75,6 +77,7 @@ export default function CreditNotesPage() {
   const [invoices, setInvoices] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
+  const [page, setPage] = useState(1);
   const [selectedCreditNotes, setSelectedCreditNotes] = useState<Set<string>>(new Set());
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [formData, setFormData] = useState({
@@ -202,6 +205,13 @@ export default function CreditNotesPage() {
     cn.reason?.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  const PAGE_SIZE = 20;
+  const totalPages = Math.max(1, Math.ceil(filteredCreditNotes.length / PAGE_SIZE));
+  const paginatedCreditNotes = useMemo(
+    () => filteredCreditNotes.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
+    [filteredCreditNotes, page]
+  );
+
   const allSelected = filteredCreditNotes.length > 0 && selectedCreditNotes.size === filteredCreditNotes.length;
 
   const handleSelectAll = () => {
@@ -325,9 +335,9 @@ export default function CreditNotesPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-600">Pending</p>
-                <p className="text-2xl font-bold text-orange-600">{metrics.pending}</p>
+                <p className="text-2xl font-bold text-emerald-700">{metrics.pending}</p>
               </div>
-              <Clock className="h-8 w-8 text-orange-400" />
+              <Clock className="h-8 w-8 text-emerald-400" />
             </div>
           </Card>
 
@@ -355,9 +365,9 @@ export default function CreditNotesPage() {
 
       {/* Bulk Actions Bar */}
       {selectedCreditNotes.size > 0 && (
-        <Card className="p-4 bg-orange-50 border-orange-200">
+        <Card className="p-4 bg-emerald-50 border-emerald-200">
           <div className="flex items-center justify-between">
-            <span className="text-sm font-medium text-orange-900">
+            <span className="text-sm font-medium text-emerald-950">
               {selectedCreditNotes.size} credit note(s) selected
             </span>
             <div className="flex gap-2">
@@ -384,7 +394,7 @@ export default function CreditNotesPage() {
                 <Input
                   placeholder="Search by client, invoice, or reason..."
                   value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }}
                   className="pl-10 w-64"
                 />
               </div>
@@ -426,7 +436,7 @@ export default function CreditNotesPage() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filteredCreditNotes.map((creditNote) => (
+                  paginatedCreditNotes.map((creditNote) => (
                     <TableRow
                       key={creditNote.id}
                       className="cursor-pointer hover:bg-gray-50"
@@ -474,7 +484,7 @@ export default function CreditNotesPage() {
                             Applied
                           </span>
                         ) : (
-                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-orange-100 text-orange-700">
+                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800">
                             <Clock className="h-3 w-3 mr-1" />
                             Pending
                           </span>
@@ -514,6 +524,21 @@ export default function CreditNotesPage() {
                 )}
               </TableBody>
             </Table>
+            {/* Pagination */}
+            <div className="flex items-center justify-between border-t px-4 py-3">
+              <p className="text-sm text-gray-500">
+                Showing {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, filteredCreditNotes.length)} of {filteredCreditNotes.length} credit notes
+              </p>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <span className="text-sm text-gray-600">Page {page} of {totalPages}</span>
+                <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
           </div>
         </CardContent>
       </Card>

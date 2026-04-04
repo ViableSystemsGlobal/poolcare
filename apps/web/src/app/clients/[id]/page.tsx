@@ -609,7 +609,7 @@ export default function ClientDetailPage() {
                 <p className="text-sm font-medium text-gray-600">Quotes</p>
                 <p className="text-2xl font-bold text-gray-900">{client._count?.quotes || 0}</p>
               </div>
-              <FileText className="h-8 w-8 text-orange-400" />
+              <FileText className="h-8 w-8 text-emerald-400" />
             </div>
           </CardContent>
         </Card>

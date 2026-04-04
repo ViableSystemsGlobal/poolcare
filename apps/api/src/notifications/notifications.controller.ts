@@ -12,6 +12,7 @@ import { RolesGuard } from "../auth/guards/roles.guard";
 import { Roles } from "../auth/decorators/roles.decorator";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { SendNotificationDto } from "./dto";
+import { prisma } from "@poolcare/db";
 
 @Controller("notifications")
 @UseGuards(JwtAuthGuard)
@@ -36,6 +37,19 @@ export class NotificationsController {
       page: page ? parseInt(page) : 1,
       limit: limit ? parseInt(limit) : 50,
     });
+  }
+
+  @Get("device-tokens")
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "MANAGER")
+  async deviceTokens(
+    @CurrentUser() user: { org_id: string }
+  ) {
+    const tokens = await prisma.deviceToken.findMany({
+      where: { orgId: user.org_id },
+      select: { userId: true, platform: true, createdAt: true },
+    });
+    return { items: tokens };
   }
 
   @Post("send")

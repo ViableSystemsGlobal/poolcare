@@ -258,7 +258,7 @@ export default function PoolDetailPage() {
       case "critical":
         return "bg-red-100 text-red-700";
       case "high":
-        return "bg-orange-100 text-orange-700";
+        return "bg-emerald-100 text-emerald-800";
       case "medium":
         return "bg-yellow-100 text-yellow-700";
       case "low":
@@ -406,7 +406,7 @@ export default function PoolDetailPage() {
                     .length}
                 </p>
               </div>
-              <AlertCircle className="h-8 w-8 text-orange-400" />
+              <AlertCircle className="h-8 w-8 text-emerald-400" />
             </div>
           </CardContent>
         </Card>
@@ -589,7 +589,7 @@ export default function PoolDetailPage() {
                           key={index}
                           className={`h-2 rounded-full transition-all ${
                             index === currentImageIndex
-                              ? "w-8 bg-orange-500"
+                              ? "w-8 bg-emerald-600"
                               : "w-2 bg-gray-300"
                           }`}
                           onClick={() => setCurrentImageIndex(index)}

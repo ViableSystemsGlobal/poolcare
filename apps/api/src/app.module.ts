@@ -31,6 +31,7 @@ import { MapsModule } from "./maps/maps.module";
 import { BillingModule } from "./billing/billing.module";
 import { InventoryModule } from "./inventory/inventory.module";
 import { OrdersModule } from "./orders/orders.module";
+import { KnowledgeModule } from "./knowledge/knowledge.module";
 import { RlsInterceptor } from "./core/rls.interceptor";
 
 @Module({
@@ -71,6 +72,7 @@ import { RlsInterceptor } from "./core/rls.interceptor";
     BillingModule,
     InventoryModule,
     OrdersModule,
+    KnowledgeModule,
   ],
   controllers: [AppController],
   providers: [

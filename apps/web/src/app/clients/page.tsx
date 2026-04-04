@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Plus, Search, Users, Edit, Trash2, Eye, Mail, Phone, MapPin, MessageSquare, Droplet, FileText, Download } from "lucide-react";
+import { Plus, Search, Users, Edit, Trash2, Eye, Mail, Phone, MapPin, MessageSquare, Droplet, FileText, Download, ChevronLeft, ChevronRight } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { DashboardAICard } from "@/components/dashboard-ai-card";
 import { useToast } from "@/hooks/use-toast";
@@ -51,12 +51,15 @@ interface Client {
   };
 }
 
+const PAGE_SIZE = 20;
+
 export default function ClientsPage() {
   const router = useRouter();
   const { toast } = useToast();
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
+  const [page, setPage] = useState(1);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [editingClient, setEditingClient] = useState<Client | null>(null);
   const [selectedClients, setSelectedClients] = useState<Set<string>>(new Set());
@@ -85,7 +88,15 @@ export default function ClientsPage() {
 
   useEffect(() => {
     fetchClients();
+    setPage(1);
   }, [searchQuery]);
+
+  // Pagination
+  const totalPages = Math.max(1, Math.ceil(clients.length / PAGE_SIZE));
+  const paginatedClients = useMemo(
+    () => clients.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
+    [clients, page]
+  );
 
   // Selection handlers
   const handleSelectAll = (checked: boolean) => {
@@ -731,7 +742,7 @@ export default function ClientsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {clients.map((client) => (
+                  {paginatedClients.map((client) => (
                     <TableRow
                       key={client.id}
                       className="cursor-pointer hover:bg-gray-50"
@@ -849,6 +860,21 @@ export default function ClientsPage() {
                   ))}
                 </TableBody>
               </Table>
+              {/* Pagination */}
+              <div className="flex items-center justify-between border-t px-4 py-3">
+                <p className="text-sm text-gray-500">
+                  Showing {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, clients.length)} of {clients.length} clients
+                </p>
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  <span className="text-sm text-gray-600">Page {page} of {totalPages}</span>
+                  <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
             </div>
           )}
         </CardContent>

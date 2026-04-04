@@ -190,7 +190,7 @@ class ApiClient {
         }
 
         const errorMessage = errorData?.message || errorData?.error || response.statusText;
-        if (__DEV__ && response.status !== 404) {
+        if (__DEV__ && response.status !== 404 && response.status !== 401) {
           console.error("API Error Response:", { status: response.status, url, errorData });
         }
         throw new Error(errorMessage);
@@ -244,7 +244,7 @@ class ApiClient {
   ): Promise<AuthResult> {
     const result = await this.request<AuthResult>("/auth/otp/verify", {
       method: "POST",
-      body: JSON.stringify({ channel, target, code }),
+      body: JSON.stringify({ channel, target, code, app: "client" }),
       requireAuth: false,
     });
 
@@ -579,6 +579,17 @@ class ApiClient {
     const query = new URLSearchParams(params as any).toString();
     const res = await this.request<{ items: any[]; pagination?: any }>(`/products${query ? `?${query}` : ""}`);
     return Array.isArray(res) ? { items: res } : res;
+  }
+
+  /** Browse products without authentication (guest mode) */
+  async getPublicProducts(params?: { search?: string; category?: string; isActive?: string; limit?: string; page?: string }) {
+    const query = new URLSearchParams(params as any).toString();
+    const res = await this.request<{ items: any[]; pagination?: any }>(`/products/browse${query ? `?${query}` : ""}`, { requireAuth: false });
+    return Array.isArray(res) ? { items: res } : res;
+  }
+
+  async getPublicProduct(id: string) {
+    return this.request<any>(`/products/browse/${id}`, { requireAuth: false });
   }
 
   async getProduct(id: string) {

@@ -126,7 +126,7 @@ export default function InventoryPage() {
       icon: Building2,
       href: "/inventory/warehouses",
       stats: `${stats.activeWarehouses} active`,
-      color: "bg-orange-100 text-orange-600",
+      color: "bg-emerald-100 text-emerald-700",
     },
     {
       title: "Suppliers",

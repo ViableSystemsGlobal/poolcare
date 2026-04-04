@@ -320,6 +320,7 @@ export class JobsService {
             select: {
               id: true,
               name: true,
+              imageUrl: true,
             },
           },
           plan: {
@@ -379,7 +380,11 @@ export class JobsService {
             },
           },
         },
-        plan: true,
+        plan: {
+          include: {
+            visitTemplate: true,
+          },
+        },
       },
     });
 
@@ -975,6 +980,11 @@ export class JobsService {
             name: true,
           },
         },
+        plan: {
+          include: {
+            visitTemplate: true,
+          },
+        },
       },
     });
 
@@ -1001,7 +1011,7 @@ export class JobsService {
     today.setHours(0, 0, 0, 0);
     const jobDate = new Date(job.windowStart);
     jobDate.setHours(0, 0, 0, 0);
-    
+
     if (jobDate.getTime() !== today.getTime()) {
       const jobDateStr = jobDate.toLocaleDateString();
       const todayStr = today.toLocaleDateString();
@@ -1067,6 +1077,32 @@ export class JobsService {
 
     const arrivedAt = dto.occurredAt ? new Date(dto.occurredAt) : new Date();
 
+    // Resolve visit template checklist from the job's template or the plan's template
+    const visitTemplate = (job as any).plan?.visitTemplate || null;
+    const templateId = job.templateId || visitTemplate?.id || null;
+    const templateVersion = job.templateVersion || visitTemplate?.version || null;
+    // Build initial checklist from template: mark all items as not-completed
+    let initialChecklist: any[] | undefined;
+    if (visitTemplate?.checklist) {
+      const rawChecklist = Array.isArray(visitTemplate.checklist)
+        ? visitTemplate.checklist
+        : typeof visitTemplate.checklist === "string"
+        ? JSON.parse(visitTemplate.checklist)
+        : [];
+      if (rawChecklist.length > 0) {
+        initialChecklist = rawChecklist.map((item: any, idx: number) => ({
+          id: item.id || `step_${idx}`,
+          task: item.task || item.label || item.name || `Step ${idx + 1}`,
+          completed: false,
+          required: item.required !== false, // default to required
+          category: item.category || "general",
+          allowsPhoto: item.allowsPhoto || false,
+          allowsNotApplicable: item.allowsNotApplicable || false,
+          requiresPhoto: item.requiresPhoto || false,
+        }));
+      }
+    }
+
     // Create or update VisitEntry
     await prisma.visitEntry.upsert({
       where: { jobId },
@@ -1074,6 +1110,9 @@ export class JobsService {
         orgId,
         jobId,
         arrivedAt,
+        ...(templateId && { templateId }),
+        ...(templateVersion && { templateVersion }),
+        ...(initialChecklist && { checklist: initialChecklist }),
       },
       update: {
         arrivedAt,
@@ -1122,7 +1161,12 @@ export class JobsService {
       },
     });
 
-    // TODO: VisitEntry.completedAt will be set in Visits module
+    // Set completedAt on the associated VisitEntry
+    await prisma.visitEntry.updateMany({
+      where: { jobId, orgId },
+      data: { completedAt: new Date() },
+    });
+
     // Update ServicePlan.lastVisitAt
     if (job.planId) {
       await prisma.servicePlan.update({

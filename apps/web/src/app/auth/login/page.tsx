@@ -14,6 +14,72 @@ interface Branding {
   logoUrl: string | null;
   themeColor: string;
   primaryColorHex?: string;
+  loginBackgroundUrl?: string | null;
+  loginBackgroundType?: "image" | "video" | "youtube" | null;
+}
+
+function extractYouTubeId(url: string): string | null {
+  const match = url.match(
+    /(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|shorts\/))([a-zA-Z0-9_-]{11})/
+  );
+  return match ? match[1] : null;
+}
+
+function LoginBackground({ branding }: { branding: Branding | null }) {
+  const bgUrl = branding?.loginBackgroundUrl;
+  const bgType = branding?.loginBackgroundType;
+
+  if (!bgUrl || !bgType) return null;
+
+  if (bgType === "image") {
+    return (
+      <>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={bgUrl}
+          alt=""
+          className="absolute inset-0 w-full h-full object-cover"
+        />
+        <div className="absolute inset-0 bg-black/40" />
+      </>
+    );
+  }
+
+  if (bgType === "video") {
+    return (
+      <>
+        <video
+          src={bgUrl}
+          autoPlay
+          muted
+          loop
+          playsInline
+          className="absolute inset-0 w-full h-full object-cover"
+        />
+        <div className="absolute inset-0 bg-black/40" />
+      </>
+    );
+  }
+
+  if (bgType === "youtube") {
+    const videoId = extractYouTubeId(bgUrl);
+    if (!videoId) return null;
+    return (
+      <>
+        <iframe
+          src={`https://www.youtube.com/embed/${videoId}?autoplay=1&mute=1&loop=1&controls=0&showinfo=0&playlist=${videoId}&modestbranding=1&rel=0`}
+          allow="autoplay; encrypted-media"
+          allowFullScreen
+          className="absolute inset-0 w-full h-full border-0 pointer-events-none"
+          style={{ objectFit: "cover", transform: "scale(1.2)" }}
+          title=""
+        />
+        <div className="absolute inset-0 bg-black/40" />
+      </>
+    );
+  }
+
+  return null;
 }
 
 export default function LoginPage() {
@@ -98,7 +164,7 @@ export default function LoginPage() {
   };
 
   const logoUrl = branding?.logoUrl ?? null;
-  const primaryHex = branding?.primaryColorHex ?? "#6b7280";
+  const primaryHex = branding?.primaryColorHex ?? "#397d54";
 
   if (entering) {
     return (
@@ -123,9 +189,12 @@ export default function LoginPage() {
     );
   }
 
+  const hasBg = !!(branding?.loginBackgroundUrl && branding?.loginBackgroundType);
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
-      <Card className="w-full max-w-md">
+    <div className="relative min-h-screen flex items-center justify-center bg-gray-50 px-4 overflow-hidden">
+      <LoginBackground branding={branding} />
+      <Card className={`w-full max-w-md ${hasBg ? "relative z-10 bg-white shadow-xl" : ""}`}>
         <CardHeader className="space-y-1 text-center">
           {logoUrl && (
             <div className="flex justify-center mb-2">
@@ -252,10 +321,10 @@ export default function LoginPage() {
                   Code sent to {target}
                 </p>
                 {devOtpCode && (
-                  <div className="bg-orange-50 border-2 border-orange-300 rounded-lg p-3 text-center">
-                    <p className="text-xs text-orange-700 font-semibold mb-1">🔐 Development OTP Code:</p>
-                    <p className="text-2xl font-mono font-bold text-orange-900 tracking-widest">{devOtpCode}</p>
-                    <p className="text-xs text-orange-600 mt-1">Use this code to log in</p>
+                  <div className="bg-emerald-50 border-2 border-emerald-300 rounded-lg p-3 text-center">
+                    <p className="text-xs text-emerald-700 font-semibold mb-1">🔐 Development OTP Code:</p>
+                    <p className="text-2xl font-mono font-bold text-emerald-900 tracking-widest">{devOtpCode}</p>
+                    <p className="text-xs text-emerald-600 mt-1">Use this code to log in</p>
                   </div>
                 )}
               </div>

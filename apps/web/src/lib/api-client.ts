@@ -54,9 +54,9 @@ class ApiClient {
 
   private async request<T>(
     endpoint: string,
-    options: RequestOptions = {}
+    options: RequestOptions & { timeout?: number } = {}
   ): Promise<T> {
-    const { requireAuth = true, headers = {}, ...restOptions } = options;
+    const { requireAuth = true, headers = {}, timeout, ...restOptions } = options;
 
     const url = endpoint.startsWith("http") ? endpoint : `${API_URL}${endpoint}`;
 
@@ -74,10 +74,10 @@ class ApiClient {
 
     try {
       console.log("API Request:", url, { method: restOptions.method, headers: requestHeaders });
-      
-      // Add timeout to prevent hanging
+
+      // Add timeout to prevent hanging (longer for AI endpoints)
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+      const timeoutId = setTimeout(() => controller.abort(), timeout || 10000);
       
       const response = await fetch(url, {
         ...restOptions,
@@ -281,6 +281,213 @@ class ApiClient {
       method: "POST",
       body: JSON.stringify(data),
     });
+  }
+
+  // Tip Schedule
+  async getTipSchedule() {
+    return this.request<{
+      enabled: boolean;
+      days: {
+        monday: boolean;
+        tuesday: boolean;
+        wednesday: boolean;
+        thursday: boolean;
+        friday: boolean;
+        saturday: boolean;
+        sunday: boolean;
+      };
+      lastTipIndex: number;
+    }>("/settings/tip-schedule");
+  }
+
+  async updateTipSchedule(schedule: {
+    enabled: boolean;
+    days: {
+      monday: boolean;
+      tuesday: boolean;
+      wednesday: boolean;
+      thursday: boolean;
+      friday: boolean;
+      saturday: boolean;
+      sunday: boolean;
+    };
+    lastTipIndex?: number;
+  }) {
+    return this.request("/settings/tip-schedule", {
+      method: "PATCH",
+      body: JSON.stringify(schedule),
+    });
+  }
+  // Weekly Tips Queue
+  async getWeeklyTipsQueue() {
+    return this.request("/ai/tips/weekly-queue");
+  }
+
+  async approveWeeklyTips() {
+    return this.request("/ai/tips/weekly-queue/approve", { method: "POST" });
+  }
+
+  async updateWeeklyTip(index: number, tip: string) {
+    return this.request(`/ai/tips/weekly-queue/${index}`, {
+      method: "PATCH",
+      body: JSON.stringify({ tip }),
+    });
+  }
+
+  async prepareWeeklyContent() {
+    return this.request("/ai/tips/prepare-weekly", {
+      method: "POST",
+      timeout: 120000,
+    });
+  }
+
+  // Newsletter
+  async generateNewsletter(topic?: string, tone?: string) {
+    return this.request("/ai/newsletter/generate", {
+      method: "POST",
+      body: JSON.stringify({ topic, tone }),
+      timeout: 120000,
+    });
+  }
+
+  async previewNewsletter(topic?: string, tone?: string) {
+    return this.request("/ai/newsletter/preview", {
+      method: "POST",
+      body: JSON.stringify({ topic, tone }),
+    });
+  }
+
+  async sendNewsletter(
+    subject: string,
+    htmlBody: string,
+    recipientType: string,
+    customEmails?: string
+  ) {
+    return this.request("/ai/newsletter/send", {
+      method: "POST",
+      body: JSON.stringify({ subject, htmlBody, recipientType, customEmails }),
+      timeout: 60000,
+    });
+  }
+
+  async getNewsletterHistory() {
+    return this.request("/ai/newsletter/history");
+  }
+
+  async getNewsletterById(id: string) {
+    return this.request(`/ai/newsletter/history/${id}`);
+  }
+
+  async getTipHistory() {
+    return this.request("/ai/tips/history");
+  }
+
+  async sendTip(tip: string, testPhone?: string) {
+    return this.request("/ai/tips/send-manual", {
+      method: "POST",
+      body: JSON.stringify({ tip, testPhone: testPhone || undefined }),
+      timeout: 30000,
+    });
+  }
+
+  async getNewsletterDrafts() {
+    return this.request("/ai/newsletter/drafts");
+  }
+
+  async approveNewsletterDraft(id: string) {
+    return this.request(`/ai/newsletter/drafts/${id}/approve`, { method: "POST" });
+  }
+
+  async sendNewsletterDraft(id: string, recipientType = "all", customEmails?: string) {
+    return this.request(`/ai/newsletter/drafts/${id}/send`, {
+      method: "POST",
+      body: JSON.stringify({ recipientType, customEmails }),
+    });
+  }
+
+  // Settings
+  async getOrgSettings() {
+    return this.request<{ profile: any }>("/settings/org");
+  }
+
+  // Help Assistant (ephemeral chat)
+  async chatWithHelpAssistant(messages: { role: string; content: string }[]) {
+    return this.request<{ message: string }>("/ai/help/chat", {
+      method: "POST",
+      body: JSON.stringify({ messages }),
+      timeout: 60000,
+    });
+  }
+
+  // App Users (combines clients + carers)
+  async getAppUsers() {
+    const [clients, carers] = await Promise.all([
+      this.request<{ items: any[]; total: number }>("/clients?limit=500"),
+      this.request<{ items: any[]; total: number }>("/carers?limit=500"),
+    ]);
+    return { clients: clients.items || [], carers: carers.items || [] };
+  }
+
+  // Push notifications
+  async broadcastNotification(dto: {
+    title: string;
+    body: string;
+    audience: "all" | "clients" | "carers";
+  }) {
+    return this.request("/notifications/broadcast", {
+      method: "POST",
+      body: JSON.stringify(dto),
+    });
+  }
+
+  async sendPushNotification(dto: {
+    recipientId: string;
+    recipientType: string;
+    subject: string;
+    body: string;
+  }) {
+    return this.request("/notifications/send", {
+      method: "POST",
+      body: JSON.stringify({
+        ...dto,
+        channel: "push",
+        to: "",
+      }),
+    });
+  }
+  // Knowledge Base
+  async uploadKnowledgeDoc(
+    file: File,
+    name: string,
+    description: string,
+    category: string,
+  ) {
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("name", name);
+    formData.append("description", description);
+    formData.append("category", category);
+
+    const token = this.getAuthToken();
+    const res = await fetch(`${API_URL}/knowledge/upload`, {
+      method: "POST",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: formData,
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ message: res.statusText }));
+      throw new Error(err.message || "Upload failed");
+    }
+    return res.json();
+  }
+
+  async getKnowledgeDocs() {
+    return this.request("/knowledge");
+  }
+
+  async deleteKnowledgeDoc(id: string) {
+    return this.request(`/knowledge/${id}`, { method: "DELETE" });
   }
 }
 

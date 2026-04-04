@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   View,
   Text,
@@ -7,15 +7,18 @@ import {
   StyleSheet,
   RefreshControl,
   ActivityIndicator,
-  Image,
+  AppState,
 } from "react-native";
-import { router } from "expo-router";
+import { Image } from "expo-image";
+import { router, usePathname } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { api, getApiUrl } from "../src/lib/api-client";
 import { fixUrlForMobile } from "../src/lib/network-utils";
 import { useTheme } from "../src/contexts/ThemeContext";
 import Loader from "../src/components/Loader";
+
+const localHomeCard = require("../assets/poolcare.png");
 
 interface Job {
   id: string;
@@ -76,6 +79,27 @@ export default function TodayScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [checkingAuth, setCheckingAuth] = useState(true);
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  const fetchUnreadCount = useCallback(async () => {
+    try {
+      const token = await api.getAuthToken();
+      if (!token) return;
+      const res: any = await api.getNotifications({ limit: 50 });
+      const items: any[] = Array.isArray(res) ? res : (res?.items || res?.data || []);
+      setUnreadCount(items.filter((n: any) => !n.read).length);
+    } catch { /* silent */ }
+  }, []);
+
+  const pathname = usePathname();
+  useEffect(() => { fetchUnreadCount(); }, [fetchUnreadCount, pathname]);
+
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state === "active") fetchUnreadCount();
+    });
+    return () => sub.remove();
+  }, [fetchUnreadCount]);
 
   const fetchData = async () => {
     try {
@@ -223,6 +247,11 @@ export default function TodayScreen() {
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
         >
           <Ionicons name="notifications-outline" size={22} color="#374151" />
+          {unreadCount > 0 && (
+            <View style={[styles.notifBadge, { backgroundColor: themeColor }]}>
+              <Text style={styles.notifBadgeText}>{unreadCount > 99 ? "99+" : unreadCount}</Text>
+            </View>
+          )}
         </TouchableOpacity>
       </View>
 
@@ -241,13 +270,12 @@ export default function TodayScreen() {
                 <Text style={styles.earningsLabel}>Earnings this month</Text>
                 <Text style={styles.earningsValue}>{formatCurrency(earnings.monthlyEarningsCents)}</Text>
               </View>
-              {homeCardImageUrl ? (
-                <Image
-                  source={{ uri: homeCardImageUrl }}
-                  style={styles.homeCardImage}
-                  resizeMode="contain"
-                />
-              ) : null}
+              <Image
+                source={homeCardImageUrl ? { uri: homeCardImageUrl } : localHomeCard}
+                style={styles.homeCardImage}
+                contentFit="contain"
+                cachePolicy="disk"
+              />
             </View>
             {/* Divider */}
             <View style={styles.earningsDivider} />
@@ -427,6 +455,24 @@ const styles = StyleSheet.create({
     backgroundColor: "#f3f4f6",
     justifyContent: "center",
     alignItems: "center",
+  },
+  notifBadge: {
+    position: "absolute",
+    top: -4,
+    right: -4,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 4,
+    borderWidth: 2,
+    borderColor: "#ffffff",
+  },
+  notifBadgeText: {
+    fontSize: 10,
+    fontWeight: "700",
+    color: "#ffffff",
   },
   scrollView: { flex: 1 },
   content: {

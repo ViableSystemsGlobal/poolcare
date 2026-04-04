@@ -4,7 +4,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 const PRESET_HEX: Record<string, string> = {
   purple: "#9333ea",
   blue: "#2563eb",
-  green: "#16a34a",
+  green: "#397d54",
   orange: "#ea580c",
   red: "#dc2626",
   indigo: "#4f46e5",
@@ -12,7 +12,7 @@ const PRESET_HEX: Record<string, string> = {
   teal: "#0d9488",
 };
 
-const DEFAULT_THEME_HEX = "#0d9488"; // teal, match API default
+const DEFAULT_THEME_HEX = "#397d54";
 const STORAGE_KEY = "poolcare_theme_color";
 
 function themeHexFromProfile(profile: {

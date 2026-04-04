@@ -64,6 +64,42 @@ export class MobileService {
             },
           });
         }
+      } else if (role === "CLIENT") {
+        const client = await prisma.client.findFirst({
+          where: { orgId, userId },
+        });
+
+        if (client) {
+          const clientPools = await prisma.pool.findMany({
+            where: { orgId, clientId: client.id },
+            select: { id: true },
+          });
+          const poolIds = clientPools.map((p) => p.id);
+
+          if (poolIds.length > 0) {
+            result.jobs = await prisma.job.findMany({
+              where: {
+                orgId,
+                poolId: { in: poolIds },
+              },
+              include: {
+                pool: {
+                  select: {
+                    id: true,
+                    name: true,
+                    address: true,
+                  },
+                },
+                plan: {
+                  select: {
+                    id: true,
+                    visitTemplateId: true,
+                  },
+                },
+              },
+            });
+          }
+        }
       } else {
         // For managers/admins, return all jobs
         const todayStart = new Date();
@@ -117,12 +153,12 @@ export class MobileService {
     // Get recent visits
     if (shapes.includes("visits")) {
       const jobIds = result.jobs.map((j: any) => j.id);
-      if (jobIds.length > 0 || role !== "CARER") {
+      if (jobIds.length > 0 || (role !== "CARER" && role !== "CLIENT")) {
         const where: any = {
           orgId,
         };
 
-        if (role === "CARER") {
+        if (role === "CARER" || role === "CLIENT") {
           where.jobId = { in: jobIds };
         }
 
@@ -173,10 +209,33 @@ export class MobileService {
       });
     }
 
-    // Get van stock for CARER
+    // Get van stock for CARER – return all org stock items with product info
     if (shapes.includes("vanStock") && role === "CARER") {
-      // TODO: Implement inventory/van stock sync
-      result.vanStock = [];
+      result.vanStock = await prisma.stockItem.findMany({
+        where: {
+          orgId,
+          product: { isActive: true },
+        },
+        include: {
+          product: {
+            select: {
+              id: true,
+              name: true,
+              sku: true,
+              category: true,
+              uom: true,
+              imageUrl: true,
+            },
+          },
+          warehouse: {
+            select: {
+              id: true,
+              name: true,
+              code: true,
+            },
+          },
+        },
+      });
     }
 
     return result;

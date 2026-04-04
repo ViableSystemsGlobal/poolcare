@@ -6,12 +6,12 @@ import {
   TouchableOpacity,
   StyleSheet,
   Alert,
-  Image,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
   ActivityIndicator,
 } from "react-native";
+import { Image } from "expo-image";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -19,7 +19,9 @@ import { api } from "../../src/lib/api-client";
 import { useTheme } from "../../src/contexts/ThemeContext";
 import { fixUrlForMobile } from "../../src/lib/network-utils";
 
-const BRAND_COLOR = "#14b8a6";
+const BRAND_COLOR = "#397d54";
+const loginBg = require("../../assets/login-bg.png");
+const localLogo = require("../../assets/poolcare.png");
 
 export default function LoginScreen() {
   const insets = useSafeAreaInsets();
@@ -85,6 +87,8 @@ export default function LoginScreen() {
   const activeColor = themeColor || BRAND_COLOR;
 
   return (
+    <View style={styles.root}>
+      <Image source={loginBg} style={StyleSheet.absoluteFill} contentFit="cover" priority="high" />
     <KeyboardAvoidingView
       style={styles.root}
       behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -94,25 +98,21 @@ export default function LoginScreen() {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        {/* Top branding area */}
-        <View style={[styles.brandSection, { paddingTop: insets.top + 130 }]}>
-          <View style={styles.logoWrap}>
-            {orgLogoUrl ? (
-              <Image source={{ uri: orgLogoUrl }} style={styles.logo} resizeMode="contain" />
-            ) : (
-              <View style={[styles.logoFallback, { backgroundColor: `${activeColor}18` }]}>
-                <Ionicons name="water" size={36} color={activeColor} />
-              </View>
-            )}
-          </View>
-          <Text style={[styles.appTag, { color: activeColor }]}>CLIENT PORTAL</Text>
-        </View>
+        {/* Spacer */}
+        <View style={{ paddingTop: insets.top + 130 }} />
 
         {/* Form card */}
         <View style={styles.card}>
+          <View style={styles.cardLogoWrap}>
+            {orgLogoUrl ? (
+              <Image source={{ uri: orgLogoUrl }} style={styles.cardLogo} contentFit="contain" cachePolicy="disk" />
+            ) : (
+              <Image source={localLogo} style={styles.cardLogo} contentFit="contain" />
+            )}
+          </View>
+          <Text style={[styles.appTag, { color: activeColor }]}>CLIENT PORTAL</Text>
           {step === "phone" ? (
             <>
-              <Text style={styles.formTitle}>Welcome back</Text>
               <Text style={styles.formSubtitle}>Enter your phone number to sign in</Text>
 
               <View style={styles.inputGroup}>
@@ -210,42 +210,39 @@ export default function LoginScreen() {
           )}
         </View>
 
+        <TouchableOpacity
+          style={styles.guestShopBtn}
+          onPress={() => router.replace("/poolshop")}
+          activeOpacity={0.75}
+        >
+          <Ionicons name="storefront-outline" size={16} color="#ffffff" />
+          <Text style={styles.guestShopText}>Browse pool shop as guest</Text>
+          <Ionicons name="arrow-forward" size={14} color="#ffffff" />
+        </TouchableOpacity>
+
         <Text style={styles.footer}>Powered by PoolCare</Text>
       </ScrollView>
     </KeyboardAvoidingView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "#f8fafc" },
+  root: { flex: 1 },
   scroll: { flexGrow: 1 },
-  brandSection: {
-    alignItems: "center",
-    paddingBottom: 32,
-    backgroundColor: "#f8fafc",
-  },
-  logoWrap: { marginBottom: 16 },
-  logo: { width: 120, height: 72 },
-  logoFallback: {
-    width: 72,
-    height: 72,
-    borderRadius: 20,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  orgName: {
-    fontSize: 26,
-    fontWeight: "800",
-    color: "#111827",
-    letterSpacing: 0.3,
-    marginBottom: 4,
-  },
   appTag: {
     fontSize: 13,
     fontWeight: "600",
     letterSpacing: 1,
     textTransform: "uppercase",
+    textAlign: "center",
+    marginBottom: 16,
   },
+  cardLogoWrap: {
+    alignItems: "center",
+    marginBottom: 20,
+  },
+  cardLogo: { width: 120, height: 72 },
   card: {
     backgroundColor: "#ffffff",
     borderRadius: 28,
@@ -323,11 +320,28 @@ const styles = StyleSheet.create({
     borderColor: "#fbbf24",
   },
   devText: { color: "#92400e", fontSize: 13, fontWeight: "600" },
+  guestShopBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    marginTop: 24,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    backgroundColor: "rgba(255,255,255,0.15)",
+    marginHorizontal: 20,
+  },
+  guestShopText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#ffffff",
+  },
   footer: {
     textAlign: "center",
     fontSize: 12,
-    color: "#d1d5db",
-    marginTop: 24,
+    color: "rgba(255,255,255,0.7)",
+    marginTop: 16,
     marginBottom: 8,
   },
 });

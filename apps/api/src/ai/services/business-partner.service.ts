@@ -1,6 +1,7 @@
 import { Injectable, BadRequestException, NotFoundException } from "@nestjs/common";
 import { prisma } from "@poolcare/db";
 import { SettingsService } from "../../settings/settings.service";
+import { KnowledgeService } from "../../knowledge/knowledge.service";
 
 const SYSTEM_PERSONA = `You are the AI Business Partner for a pool care company. You have the strategic acumen and decision-making clarity of the world's top business leaders (think Buffett, Musk, Bezos, Gates, Arnault, etc.). You are direct, concise, and actionable. You focus on:
 - Revenue and cash flow
@@ -18,7 +19,10 @@ export interface ChatMessage {
 
 @Injectable()
 export class BusinessPartnerService {
-  constructor(private readonly settingsService: SettingsService) {}
+  constructor(
+    private readonly settingsService: SettingsService,
+    private readonly knowledgeService: KnowledgeService,
+  ) {}
 
   /**
    * Build a text summary of the organization's current business state for the LLM.
@@ -154,6 +158,12 @@ export class BusinessPartnerService {
           `- ${q.pool?.name || "Pool"} / ${q.client?.name || "Client"}: ${(q.totalCents / 100).toFixed(2)}, status: ${q.status}, created ${new Date(q.createdAt).toLocaleDateString()}`
         );
       }
+    }
+
+    // Append knowledge base context if available
+    const knowledgeContext = await this.knowledgeService.getKnowledgeContext(orgId);
+    if (knowledgeContext) {
+      lines.push(knowledgeContext);
     }
 
     return lines.join("\n");

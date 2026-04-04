@@ -3,6 +3,7 @@ import {
   Post,
   Get,
   Delete,
+  Patch,
   Body,
   Param,
   Query,
@@ -15,6 +16,9 @@ import { SmartRepliesService } from "./services/smart-replies.service";
 import { RecommendationsService } from "./services/recommendations.service";
 import { BusinessPartnerService } from "./services/business-partner.service";
 import { PoolCoachService } from "./services/pool-coach.service";
+import { NewsletterAgentService } from "./services/newsletter-agent.service";
+import { TipSchedulerService } from "./services/tip-scheduler.service";
+import { HelpAssistantService } from "./services/help-assistant.service";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { RolesGuard } from "../auth/guards/roles.guard";
 import { Roles } from "../auth/decorators/roles.decorator";
@@ -35,7 +39,10 @@ export class AiController {
     private readonly smartRepliesService: SmartRepliesService,
     private readonly recommendationsService: RecommendationsService,
     private readonly businessPartnerService: BusinessPartnerService,
-    private readonly poolCoachService: PoolCoachService
+    private readonly poolCoachService: PoolCoachService,
+    private readonly newsletterAgentService: NewsletterAgentService,
+    private readonly tipSchedulerService: TipSchedulerService,
+    private readonly helpAssistantService: HelpAssistantService
   ) {}
 
   @Get("recommendations")
@@ -128,6 +135,15 @@ export class AiController {
     return this.businessPartnerService.deleteChat(user.org_id, user.sub, id);
   }
 
+  /** Help assistant — ephemeral chat for admin system guidance, all authenticated users */
+  @Post("help/chat")
+  async helpChat(
+    @CurrentUser() user: { org_id: string },
+    @Body() dto: BusinessPartnerChatDto
+  ) {
+    return this.helpAssistantService.chat(user.org_id, dto.messages);
+  }
+
   /** Client-facing pool care assistant — available to all authenticated roles */
   @Post("pool-coach/chat")
   async poolCoachChat(
@@ -160,6 +176,179 @@ export class AiController {
     @Param("id") id: string
   ) {
     return this.poolCoachService.deleteChat(user.org_id, user.sub, id);
+  }
+
+  /* ─── Weekly Tips Queue ─── */
+
+  @Get("tips/weekly-queue")
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "MANAGER")
+  async getWeeklyTipsQueue(@CurrentUser() user: { org_id: string }) {
+    const queue = await this.tipSchedulerService.getWeeklyQueue(user.org_id);
+    return { items: queue };
+  }
+
+  @Post("tips/weekly-queue/approve")
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "MANAGER")
+  async approveWeeklyTips(@CurrentUser() user: { org_id: string }) {
+    const queue = await this.tipSchedulerService.approveWeeklyTips(user.org_id);
+    return { items: queue };
+  }
+
+  @Patch("tips/weekly-queue/:index")
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "MANAGER")
+  async updateWeeklyTip(
+    @CurrentUser() user: { org_id: string },
+    @Param("index") index: string,
+    @Body() body: { tip: string }
+  ) {
+    const queue = await this.tipSchedulerService.updateWeeklyTip(
+      user.org_id,
+      parseInt(index, 10),
+      body.tip
+    );
+    return { items: queue };
+  }
+
+  @Get("tips/history")
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "MANAGER")
+  async getTipHistory(@CurrentUser() user: { org_id: string }) {
+    return this.tipSchedulerService.getTipHistory(user.org_id);
+  }
+
+  @Post("tips/send-manual")
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "MANAGER")
+  async sendManualTip(
+    @CurrentUser() user: { org_id: string },
+    @Body() body: { tip: string; testPhone?: string }
+  ) {
+    const result = await this.tipSchedulerService.sendManualTip(
+      user.org_id,
+      body.tip,
+      body.testPhone,
+    );
+    return result;
+  }
+
+  @Post("tips/prepare-weekly")
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "MANAGER")
+  async prepareWeeklyContent(@CurrentUser() user: { org_id: string }) {
+    await this.tipSchedulerService.prepareWeeklyContentForOrg(user.org_id);
+    const queue = await this.tipSchedulerService.getWeeklyQueue(user.org_id);
+    return { items: queue, message: "Weekly content prepared" };
+  }
+
+  /* ─── Newsletter AI Agent ─── */
+
+  @Post("newsletter/generate")
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "MANAGER")
+  async generateNewsletter(
+    @CurrentUser() user: { org_id: string },
+    @Body() body: { topic?: string; tone?: string }
+  ) {
+    return this.newsletterAgentService.generateNewsletter(
+      user.org_id,
+      body.topic,
+      body.tone
+    );
+  }
+
+  @Post("newsletter/preview")
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "MANAGER")
+  async previewNewsletter(
+    @CurrentUser() user: { org_id: string },
+    @Body() body: { topic?: string; tone?: string }
+  ) {
+    return this.newsletterAgentService.previewNewsletter(
+      user.org_id,
+      body.topic,
+      body.tone
+    );
+  }
+
+  @Post("newsletter/send")
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "MANAGER")
+  async sendNewsletter(
+    @CurrentUser() user: { org_id: string },
+    @Body()
+    body: {
+      subject: string;
+      htmlBody: string;
+      recipientType: "all" | "active" | "custom";
+      customEmails?: string[];
+    }
+  ) {
+    return this.newsletterAgentService.sendNewsletter(
+      user.org_id,
+      body.subject,
+      body.htmlBody,
+      body.recipientType,
+      body.customEmails
+    );
+  }
+
+  @Get("newsletter/history")
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "MANAGER")
+  async getNewsletterHistory(@CurrentUser() user: { org_id: string }) {
+    return this.newsletterAgentService.getNewsletterHistory(user.org_id);
+  }
+
+  @Get("newsletter/history/:id")
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "MANAGER")
+  async getNewsletterById(
+    @CurrentUser() user: { org_id: string },
+    @Param("id") id: string
+  ) {
+    return this.newsletterAgentService.getNewsletterById(user.org_id, id);
+  }
+
+  /* ─── Newsletter Drafts ─── */
+
+  @Get("newsletter/drafts")
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "MANAGER")
+  async getNewsletterDrafts(@CurrentUser() user: { org_id: string }) {
+    return this.newsletterAgentService.getDrafts(user.org_id);
+  }
+
+  @Post("newsletter/drafts/:id/approve")
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "MANAGER")
+  async approveNewsletterDraft(
+    @CurrentUser() user: { org_id: string },
+    @Param("id") id: string
+  ) {
+    return this.newsletterAgentService.approveDraft(user.org_id, id);
+  }
+
+  @Post("newsletter/drafts/:id/send")
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "MANAGER")
+  async sendNewsletterDraft(
+    @CurrentUser() user: { org_id: string },
+    @Param("id") id: string,
+    @Body()
+    body: {
+      recipientType?: "all" | "active" | "custom";
+      customEmails?: string[];
+    }
+  ) {
+    return this.newsletterAgentService.sendApprovedDraft(
+      user.org_id,
+      id,
+      body.recipientType || "all",
+      body.customEmails
+    );
   }
 }
 

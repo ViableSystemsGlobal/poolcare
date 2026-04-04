@@ -1258,7 +1258,7 @@ export default function JobsPage() {
         <CardContent>
           {/* Bulk Actions Bar */}
           {selectedJobs.size > 0 && (
-            <div className="flex items-center justify-between p-4 mb-4 bg-orange-50 border border-orange-200 rounded-lg">
+            <div className="flex items-center justify-between p-4 mb-4 bg-emerald-50 border border-emerald-200 rounded-lg">
               <div className="flex items-center gap-2">
                 <span className="text-sm font-medium text-gray-900">
                   {selectedJobs.size} job{selectedJobs.size !== 1 ? "s" : ""} selected

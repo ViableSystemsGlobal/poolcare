@@ -323,7 +323,7 @@ export class InboxService {
         found = !!(await prisma.job.findFirst({ where: { id: targetId, orgId } }));
         break;
       case "visit":
-        found = !!(await prisma.visit.findFirst({ where: { id: targetId, orgId } }));
+        found = !!(await prisma.visitEntry.findFirst({ where: { id: targetId, orgId } }));
         break;
       case "invoice":
         found = !!(await prisma.invoice.findFirst({ where: { id: targetId, orgId } }));
@@ -383,13 +383,13 @@ export class InboxService {
         case "job":
           entity = await prisma.job.findUnique({
             where: { id: link.targetId },
-            select: { id: true, scheduledDate: true, status: true },
+            select: { id: true, windowStart: true, status: true },
           });
           break;
         case "visit":
-          entity = await prisma.visit.findUnique({
+          entity = await prisma.visitEntry.findUnique({
             where: { id: link.targetId },
-            select: { id: true, visitedAt: true, status: true },
+            select: { id: true, arrivedAt: true, paymentStatus: true },
           });
           break;
         case "invoice":

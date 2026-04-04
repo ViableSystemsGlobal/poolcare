@@ -50,7 +50,7 @@ module.exports = {
         background: "var(--background)",
         foreground: "var(--foreground)",
         primary: {
-          DEFAULT: "#ea580c", // Orange-600
+          DEFAULT: "#397d54",
           foreground: "#ffffff",
         },
         secondary: {
@@ -59,7 +59,7 @@ module.exports = {
         },
         border: "#e5e7eb",
         input: "#e5e7eb",
-        ring: "#ea580c",
+        ring: "#397d54",
       },
       borderRadius: {
         lg: "0.5rem",

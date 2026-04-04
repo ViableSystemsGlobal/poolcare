@@ -121,7 +121,7 @@ export default function IssueDetailPage() {
       case "critical":
         return "bg-red-100 text-red-700";
       case "high":
-        return "bg-orange-100 text-orange-700";
+        return "bg-emerald-100 text-emerald-800";
       case "medium":
         return "bg-yellow-100 text-yellow-700";
       case "low":

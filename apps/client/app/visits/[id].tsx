@@ -5,7 +5,6 @@ import {
   ScrollView,
   TouchableOpacity,
   StyleSheet,
-  Image,
   Linking,
   TextInput,
   Alert,
@@ -14,6 +13,7 @@ import {
   Platform,
   ActivityIndicator,
 } from "react-native";
+import { Image } from "expo-image";
 import { router, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -31,10 +31,12 @@ interface VisitDetail {
     name: string;
     address: string;
     type: string;
+    image?: string | null;
   };
   carer?: {
     name: string;
     phone: string;
+    imageUrl?: string | null;
   };
   type: "routine" | "emergency" | "repair";
   readings?: {
@@ -160,10 +162,12 @@ export default function VisitDetailPage() {
           name: pool.name || "Unknown Pool",
           address: pool.address || "",
           type: pool.surfaceType || pool.type || "",
+          image: pool.photos?.[0]?.url || pool.photos?.[0] || pool.imageUrls?.[0] || null,
         },
         carer: job.assignedCarer ? {
           name: job.assignedCarer.name || "Unknown Carer",
           phone: job.assignedCarer.phone || "",
+          imageUrl: job.assignedCarer.imageUrl || null,
         } : undefined,
         type: visitType,
         readings,
@@ -356,7 +360,18 @@ export default function VisitDetailPage() {
 
         {/* ── Hero Status Card ── */}
         <View style={styles.heroCard}>
-          <View style={[styles.heroAccent, { backgroundColor: statusColor }]} />
+          {/* Date block */}
+          {(() => {
+            const parts = formatDate(visit.date).split(" ");
+            const month = (parts[1] || parts[0] || "").slice(0, 3).toUpperCase();
+            const day = parts[2]?.replace(",", "") || parts[1]?.replace(",", "") || "";
+            return (
+              <View style={[styles.heroDateBlock, { backgroundColor: statusColor }]}>
+                <Text style={styles.heroDateBlockMonth}>{month}</Text>
+                <Text style={styles.heroDateBlockDay}>{day}</Text>
+              </View>
+            );
+          })()}
           <View style={styles.heroInner}>
             <View style={styles.heroTopRow}>
               <View style={[styles.statusPill, { backgroundColor: statusColor + "18" }]}>
@@ -383,9 +398,18 @@ export default function VisitDetailPage() {
         <View style={styles.card}>
           {/* Pool row */}
           <View style={styles.cardSection}>
-            <View style={[styles.cardIconWrap, { backgroundColor: themeColor + "15" }]}>
-              <Ionicons name="water" size={20} color={themeColor} />
-            </View>
+            {visit.pool.image ? (
+              <Image
+                source={{ uri: fixUrlForMobile(visit.pool.image) }}
+                style={styles.cardIconWrap}
+                contentFit="cover"
+                cachePolicy="disk"
+              />
+            ) : (
+              <View style={[styles.cardIconWrap, { backgroundColor: themeColor + "15" }]}>
+                <Ionicons name="water" size={20} color={themeColor} />
+              </View>
+            )}
             <View style={styles.cardSectionBody}>
               <Text style={styles.cardSectionLabel}>Pool</Text>
               <Text style={styles.cardSectionValue}>{visit.pool.name}</Text>
@@ -405,9 +429,18 @@ export default function VisitDetailPage() {
               <View style={styles.cardDivider} />
               {/* Technician row */}
               <View style={styles.cardSection}>
-                <View style={[styles.avatarCircle, { backgroundColor: themeColor }]}>
-                  <Text style={styles.avatarInitials}>{initials}</Text>
-                </View>
+                {visit.carer.imageUrl ? (
+                  <Image
+                    source={{ uri: fixUrlForMobile(visit.carer.imageUrl) }}
+                    style={styles.avatarCircle}
+                    contentFit="cover"
+                    cachePolicy="disk"
+                  />
+                ) : (
+                  <View style={[styles.avatarCircle, { backgroundColor: themeColor }]}>
+                    <Text style={styles.avatarInitials}>{initials}</Text>
+                  </View>
+                )}
                 <View style={styles.cardSectionBody}>
                   <Text style={styles.cardSectionLabel}>Technician</Text>
                   <Text style={styles.cardSectionValue}>{visit.carer.name}</Text>
@@ -432,7 +465,7 @@ export default function VisitDetailPage() {
 
         {/* ── Upcoming / In-progress banner ── */}
         {(visit.status === "scheduled" || visit.status === "in-progress") && (
-          <View style={[styles.upcomingBanner, { borderLeftColor: themeColor, backgroundColor: themeColor + "08" }]}>
+          <View style={[styles.upcomingBanner, { backgroundColor: themeColor + "08" }]}>
             <Ionicons
               name={visit.status === "scheduled" ? "calendar-outline" : "radio-outline"}
               size={20}
@@ -554,7 +587,7 @@ export default function VisitDetailPage() {
             <Text style={styles.sectionTitle}>Photos</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.photosRow}>
               {visit.photos.map((photo, i) => (
-                <Image key={i} source={{ uri: photo }} style={styles.photo} />
+                <Image key={i} source={{ uri: photo }} style={styles.photo} cachePolicy="disk" />
               ))}
             </ScrollView>
           </View>
@@ -744,7 +777,26 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     elevation: 3,
   },
-  heroAccent: { width: 5 },
+  heroDateBlock: {
+    width: 56,
+    borderTopLeftRadius: 18,
+    borderBottomLeftRadius: 18,
+    justifyContent: "center",
+    alignItems: "center",
+    overflow: "hidden",
+  },
+  heroDateBlockMonth: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "rgba(255,255,255,0.85)",
+    letterSpacing: 0.5,
+  },
+  heroDateBlockDay: {
+    fontSize: 24,
+    fontWeight: "800",
+    color: "#ffffff",
+    lineHeight: 28,
+  },
   heroInner: { flex: 1, padding: 20 },
   heroTopRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 14 },
   statusPill: {
@@ -779,8 +831,8 @@ const styles = StyleSheet.create({
 
   // Card section (pool / technician rows)
   cardSection: { flexDirection: "row", alignItems: "flex-start", gap: 12 },
-  cardIconWrap: { width: 42, height: 42, borderRadius: 21, alignItems: "center", justifyContent: "center" },
-  avatarCircle: { width: 42, height: 42, borderRadius: 21, alignItems: "center", justifyContent: "center" },
+  cardIconWrap: { width: 42, height: 42, borderRadius: 21, alignItems: "center", justifyContent: "center", overflow: "hidden" },
+  avatarCircle: { width: 42, height: 42, borderRadius: 21, alignItems: "center", justifyContent: "center", overflow: "hidden" },
   avatarInitials: { color: "#fff", fontSize: 15, fontWeight: "700" },
   cardSectionBody: { flex: 1 },
   cardSectionLabel: { fontSize: 11, fontWeight: "600", color: "#9ca3af", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 3 },
@@ -797,7 +849,6 @@ const styles = StyleSheet.create({
     gap: 12,
     padding: 16,
     borderRadius: 14,
-    borderLeftWidth: 4,
     marginBottom: 12,
   },
   upcomingBannerBody: { flex: 1 },

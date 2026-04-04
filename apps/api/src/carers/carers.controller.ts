@@ -85,6 +85,20 @@ export class CarersController {
     return this.carersService.registerDeviceToken(user.org_id, user.sub, carerId, dto);
   }
 
+  @Get("me/notifications")
+  async getMyNotifications(
+    @CurrentUser() user: { org_id: string; sub: string },
+    @Query("page") page?: string,
+    @Query("limit") limit?: string
+  ) {
+    return this.carersService.getMyNotifications(
+      user.sub,
+      user.org_id,
+      page ? parseInt(page) : 1,
+      limit ? parseInt(limit) : 30
+    );
+  }
+
   @Get("me/carer")
   async getMyCarer(@CurrentUser() user: { org_id: string; sub: string }) {
     return this.carersService.getMyCarer(user.org_id, user.sub);
@@ -177,11 +191,17 @@ export class CarersController {
   @UseInterceptors(FileInterceptor("image"))
   async uploadImage(
     @CurrentUser() user: { org_id: string },
-    @UploadedFile() file: Express.Multer.File
+    @UploadedFile(
+      new ParseFilePipe({
+        fileIsRequired: true,
+        validators: [
+          new MaxFileSizeValidator({ maxSize: 2 * 1024 * 1024 }), // 2MB
+          new FileTypeValidator({ fileType: /(jpeg|jpg|png|webp)$/ }),
+        ],
+      })
+    )
+    file: Express.Multer.File
   ) {
-    if (!file) {
-      throw new BadRequestException("No file uploaded");
-    }
 
     try {
       const imageUrl = await this.filesService.uploadImage(

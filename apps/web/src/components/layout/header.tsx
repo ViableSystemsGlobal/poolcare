@@ -1,17 +1,21 @@
 "use client";
 
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useTheme } from "@/contexts/theme-context";
 import { useAuth } from "@/contexts/auth-context";
 import { Search, Bell, HelpCircle, User, LogOut } from "lucide-react";
+import { useHelpDialog } from "@/contexts/help-dialog-context";
 
 export function Header() {
   const router = useRouter();
   const { getThemeColor } = useTheme();
   const themeHex = getThemeColor();
   const { user, org, logout } = useAuth();
+  const { setHelpOpen } = useHelpDialog();
+  const [profileOpen, setProfileOpen] = useState(false);
 
   // Hover helpers using the exact custom hex
   const hoverHandlers = (type: "text" | "bg") => ({
@@ -49,35 +53,74 @@ export function Header() {
           <Bell className="h-4 w-4" />
         </Button>
 
-        <Button variant="ghost" size="icon" className="h-9 w-9 text-gray-500" {...hoverHandlers("text")}>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-9 w-9 text-gray-500"
+          onClick={() => setHelpOpen(true)}
+          title="Help & Keyboard shortcuts"
+          {...hoverHandlers("text")}
+        >
           <HelpCircle className="h-4 w-4" />
         </Button>
 
-        <div className="flex items-center space-x-3 pl-3 border-l border-gray-200">
-          <div className="flex items-center space-x-3">
-            <div
-              className="w-8 h-8 rounded-full flex items-center justify-center"
-              style={{ background: `linear-gradient(to bottom right, var(--theme-color-light, ${themeHex}), ${themeHex})` }}
-            >
-              <User className="h-4 w-4 text-white" />
-            </div>
+        <div className="relative pl-3 border-l border-gray-200">
+          <button
+            onClick={() => setProfileOpen((p) => !p)}
+            className="flex items-center space-x-3 hover:opacity-80 transition-opacity"
+          >
+            {user?.imageUrl ? (
+              <img src={user.imageUrl} alt="" className="w-8 h-8 rounded-full object-cover" />
+            ) : (
+              <div
+                className="w-8 h-8 rounded-full flex items-center justify-center"
+                style={{ background: `linear-gradient(to bottom right, var(--theme-color-light, ${themeHex}), ${themeHex})` }}
+              >
+                <User className="h-4 w-4 text-white" />
+              </div>
+            )}
             <div className="text-right">
               <p className="text-sm font-medium text-gray-900">
                 {user?.name || user?.email || user?.phone || "User"}
               </p>
               <p className="text-xs text-gray-500">{org?.name || ""}</p>
             </div>
-          </div>
+          </button>
 
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8 text-gray-500"
-            onClick={logout}
-            {...hoverHandlers("text")}
-          >
-            <LogOut className="h-4 w-4" />
-          </Button>
+          {profileOpen && (
+            <>
+              <div className="fixed inset-0 z-40" onClick={() => setProfileOpen(false)} />
+              <div className="absolute right-0 top-full mt-2 w-56 bg-white rounded-xl shadow-lg border border-gray-200 py-1.5 z-50">
+                <div className="px-4 py-2.5 border-b border-gray-100">
+                  <p className="text-sm font-semibold text-gray-900">{user?.name || "User"}</p>
+                  <p className="text-xs text-gray-500">{user?.email || user?.phone || ""}</p>
+                </div>
+                <button
+                  onClick={() => { setProfileOpen(false); router.push("/profile"); }}
+                  className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                >
+                  <User className="h-3.5 w-3.5 text-gray-400" />
+                  Profile
+                </button>
+                <button
+                  onClick={() => { setProfileOpen(false); router.push("/settings"); }}
+                  className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                >
+                  <HelpCircle className="h-3.5 w-3.5 text-gray-400" />
+                  Settings
+                </button>
+                <div className="border-t border-gray-100 mt-1 pt-1">
+                  <button
+                    onClick={() => { setProfileOpen(false); logout(); }}
+                    className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-red-600 hover:bg-red-50"
+                  >
+                    <LogOut className="h-3.5 w-3.5" />
+                    Sign out
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
         </div>
       </div>
     </header>

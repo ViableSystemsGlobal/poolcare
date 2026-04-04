@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Query, Headers } from "@nestjs/common";
+import { Controller, Get, Post, Query, Headers, UnauthorizedException } from "@nestjs/common";
 import { prisma } from "@poolcare/db";
 import { PlansSchedulerService } from "./plans/scheduler.service";
 
@@ -38,7 +38,7 @@ export class AppController {
     // Verify cron secret if set
     const expectedSecret = process.env.CRON_SECRET;
     if (expectedSecret && secret !== expectedSecret) {
-      return { error: "Unauthorized", status: 401 };
+      throw new UnauthorizedException();
     }
 
     const horizon = horizonDays ? parseInt(horizonDays, 10) : 56;

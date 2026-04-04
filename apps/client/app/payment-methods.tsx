@@ -1,4 +1,4 @@
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert } from "react-native";
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert, Linking } from "react-native";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -114,7 +114,11 @@ export default function PaymentMethodsScreen() {
 
         <TouchableOpacity
           style={styles.supportBtn}
-          onPress={() => Alert.alert("Support", "Contact your pool service provider for payment queries.")}
+          onPress={() => Alert.alert("Contact Support", "How would you like to reach us?", [
+            { text: "Call", onPress: () => Linking.openURL("tel:+233506226222") },
+            { text: "Email", onPress: () => Linking.openURL("mailto:info@poolcare.africa") },
+            { text: "Cancel", style: "cancel" as const },
+          ])}
         >
           <Text style={[styles.supportBtnText, { color: themeColor }]}>Need help? Contact Support</Text>
         </TouchableOpacity>

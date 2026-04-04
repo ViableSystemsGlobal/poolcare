@@ -1,10 +1,12 @@
-import { useState, useEffect } from "react";
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, TextInput, ActivityIndicator, Alert, Image } from "react-native";
+import { useState, useEffect, useRef } from "react";
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, TextInput, ActivityIndicator, Alert } from "react-native";
+import { Image } from "expo-image";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useTheme } from "../src/contexts/ThemeContext";
 import { api } from "@/lib/api-client";
+import { fixUrlForMobile } from "../src/lib/network-utils";
 import { setPoolShopCart } from "@/lib/poolshop-cart";
 
 interface Product {
@@ -46,14 +48,42 @@ export default function PoolShopScreen() {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [allCategories, setAllCategories] = useState<string[]>([]);
+  const [isGuest, setIsGuest] = useState(false);
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const fetchProducts = () => {
+  const CATEGORY_ICONS: Record<string, string> = {
+    chemicals: "flask-outline",
+    equipment: "construct-outline",
+    accessories: "cube-outline",
+    tools: "hammer-outline",
+  };
+
+  const getCategoryIcon = (cat: string) => {
+    const key = cat.toLowerCase().replace(/\s+/g, "");
+    for (const k of Object.keys(CATEGORY_ICONS)) {
+      if (key.includes(k)) return CATEGORY_ICONS[k];
+    }
+    return "pricetag-outline";
+  };
+
+  const fetchProducts = (search = "", category = "all") => {
     setLoading(true);
     setError(null);
-    api.getProducts({ isActive: "true", limit: "100" })
+    const params: any = { isActive: "true", limit: "200" };
+    if (search.trim()) params.search = search.trim();
+    if (category !== "all") params.category = category;
+    // Use public endpoint so guests can browse without logging in
+    api.getPublicProducts(params)
       .then((res: { items?: any[] }) => {
         const items = res.items || [];
-        setProducts(items.map(mapApiProduct));
+        const mapped = items.map(mapApiProduct);
+        setProducts(mapped);
+        if (category === "all" && !search.trim()) {
+          const cats = Array.from(new Set(mapped.map((p) => p.category).filter(Boolean))).sort() as string[];
+          setAllCategories(cats);
+        }
         setError(null);
       })
       .catch((err: Error) => {
@@ -64,23 +94,33 @@ export default function PoolShopScreen() {
   };
 
   useEffect(() => {
+    api.getAuthToken().then((token) => setIsGuest(!token));
     fetchProducts();
+    api.getOrgSettings().then((res: any) => {
+      const url = res?.profile?.logoUrl?.trim();
+      if (url) setLogoUrl(url);
+    }).catch(() => {});
   }, []);
 
   const categories = [
     { id: "all", name: "All Products", icon: "grid-outline" },
-    { id: "chemicals", name: "Chemicals", icon: "flask-outline" },
-    { id: "equipment", name: "Equipment", icon: "construct-outline" },
-    { id: "accessories", name: "Accessories", icon: "cube-outline" },
+    ...allCategories.map((cat) => ({ id: cat, name: cat, icon: getCategoryIcon(cat) })),
   ];
 
-  const filteredProducts = products.filter((product) => {
-    const matchesCategory = selectedCategory === "all" || product.category === selectedCategory;
-    const desc = product.description || "";
-    const matchesSearch = product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      desc.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesCategory && matchesSearch;
-  });
+  const filteredProducts = products;
+
+  const handleSearchChange = (text: string) => {
+    setSearchQuery(text);
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+    searchTimer.current = setTimeout(() => {
+      fetchProducts(text, selectedCategory);
+    }, 400);
+  };
+
+  const handleCategoryChange = (category: string) => {
+    setSelectedCategory(category);
+    fetchProducts(searchQuery, category);
+  };
 
   const addToCart = (product: Product) => {
     const existingItem = cart.find((item) => item.id === product.id);
@@ -124,22 +164,33 @@ export default function PoolShopScreen() {
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity
-          style={styles.headerBackWrap}
-          onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))}
+          style={[styles.headerBackWrap, isGuest && styles.headerSignInWrap]}
+          onPress={() => isGuest ? router.replace("/(auth)/login") : (router.canGoBack() ? router.back() : router.replace("/"))}
         >
-          <Ionicons name="arrow-back" size={22} color="#111827" />
+          <Ionicons name={isGuest ? "log-in-outline" : "arrow-back"} size={20} color={isGuest ? themeColor : "#111827"} />
+          {isGuest && <Text style={[styles.headerSignInText, { color: themeColor }]}>Sign In</Text>}
         </TouchableOpacity>
         <View style={styles.headerCenter}>
-          <Text style={styles.headerTitle}>Pool Shop</Text>
+          {logoUrl ? (
+            <Image
+              source={{ uri: fixUrlForMobile(logoUrl) }}
+              style={styles.headerLogo}
+              contentFit="contain"
+              cachePolicy="disk"
+            />
+          ) : (
+            <Text style={[styles.headerTitle, { color: themeColor }]}>PoolCare</Text>
+          )}
         </View>
         <View style={styles.headerRight}>
+          {!isGuest && (
           <TouchableOpacity onPress={() => router.push("/poolshop/orders")} style={styles.myOrdersButton}>
-            <Ionicons name="receipt-outline" size={20} color={themeColor} />
-            <Text style={[styles.myOrdersText, { color: themeColor }]}>Orders</Text>
+            <Ionicons name="receipt-outline" size={22} color={themeColor} />
           </TouchableOpacity>
+          )}
           <TouchableOpacity onPress={() => setShowCart(!showCart)} style={styles.cartButtonWrap}>
-            <View style={[styles.cartIconWrap, getCartItemCount() > 0 && { backgroundColor: themeColor + "18" }]}>
-              <Ionicons name="cart-outline" size={22} color={getCartItemCount() > 0 ? themeColor : "#6b7280"} />
+            <View style={styles.cartIconWrap}>
+              <Ionicons name="cart-outline" size={22} color={themeColor} />
               {getCartItemCount() > 0 && (
                 <View style={[styles.cartBadge, { backgroundColor: themeColor }]}>
                   <Text style={styles.cartBadgeText}>{getCartItemCount()}</Text>
@@ -158,7 +209,7 @@ export default function PoolShopScreen() {
           placeholder="Search products…"
           placeholderTextColor="#9ca3af"
           value={searchQuery}
-          onChangeText={setSearchQuery}
+          onChangeText={handleSearchChange}
         />
       </View>
 
@@ -179,7 +230,7 @@ export default function PoolShopScreen() {
                 { borderColor: themeColor },
                 isActive && [styles.categoryButtonActive, { backgroundColor: themeColor, borderColor: themeColor }],
               ]}
-              onPress={() => setSelectedCategory(category.id)}
+              onPress={() => handleCategoryChange(category.id)}
               activeOpacity={0.8}
             >
               <Ionicons
@@ -239,6 +290,7 @@ export default function PoolShopScreen() {
                 onPress={() => {
                   setSearchQuery("");
                   setSelectedCategory("all");
+                  fetchProducts("", "all");
                 }}
               >
                 <Text style={styles.retryButtonText}>Clear filters</Text>
@@ -256,7 +308,7 @@ export default function PoolShopScreen() {
               >
                 <View style={styles.productImageContainer}>
                   {product.image ? (
-                    <Image source={{ uri: product.image }} style={styles.productImageFull} resizeMode="cover" />
+                    <Image source={{ uri: product.image }} style={styles.productImageFull} contentFit="cover" cachePolicy="disk" />
                   ) : (
                     <View style={[styles.productImagePlaceholder, { backgroundColor: themeColor + "12" }]}>
                       <Ionicons name="cube-outline" size={32} color={themeColor} />
@@ -373,7 +425,20 @@ export default function PoolShopScreen() {
                   </View>
                   <TouchableOpacity
                     style={[styles.checkoutButton, { backgroundColor: themeColor }]}
-                    onPress={() => {
+                    onPress={async () => {
+                      const token = await api.getAuthToken();
+                      if (!token) {
+                        setShowCart(false);
+                        Alert.alert(
+                          "Sign in required",
+                          "Please sign in to complete your order.",
+                          [
+                            { text: "Cancel", style: "cancel" },
+                            { text: "Sign In", onPress: () => router.push("/(auth)/login") },
+                          ]
+                        );
+                        return;
+                      }
                       setShowCart(false);
                       setPoolShopCart(cart);
                       router.push("/poolshop/checkout");
@@ -416,10 +481,26 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  headerSignInWrap: {
+    width: "auto",
+    paddingHorizontal: 12,
+    borderRadius: 20,
+    flexDirection: "row",
+    gap: 4,
+    backgroundColor: "rgba(20,184,166,0.10)",
+  },
+  headerSignInText: {
+    fontSize: 13,
+    fontWeight: "700",
+  },
   headerCenter: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
+  },
+  headerLogo: {
+    width: 140,
+    height: 44,
   },
   headerTitle: {
     fontSize: 20,
@@ -437,13 +518,9 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   myOrdersButton: {
-    flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    borderRadius: 20,
-    borderWidth: 1.5,
+    justifyContent: "center",
+    padding: 4,
   },
   myOrdersText: {
     fontSize: 13,
@@ -453,9 +530,6 @@ const styles = StyleSheet.create({
     padding: 4,
   },
   cartIconWrap: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
     alignItems: "center",
     justifyContent: "center",
     position: "relative",

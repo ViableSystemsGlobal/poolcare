@@ -13,7 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Settings, Building, DollarSign, Save, Globe, MapPin, Mail, Phone, CheckCircle, Image, Palette, Map, Loader2, Send, Sparkles } from "lucide-react";
+import { Settings, Building, DollarSign, Save, Globe, MapPin, Mail, Phone, CheckCircle, Image, Palette, Map, Loader2, Send, Sparkles, FileText, Lightbulb, MessageCircleQuestion } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -26,7 +26,7 @@ import { useTheme } from "@/contexts/theme-context";
 import { useToast } from "@/hooks/use-toast";
 
 const colorMap: { [key: string]: string } = {
-  'orange-600': '#ea580c',
+  'orange-600': '#397d54',
   'purple-600': '#9333ea',
   'blue-600': '#2563eb',
   'green-600': '#16a34a',
@@ -45,7 +45,7 @@ function hexToRgb(hex: string): [number, number, number] {
 /** Perceptual distance in RGB space; returns the preset name (e.g. "green") that is closest to the given hex */
 function closestThemeColor(hex: string): string {
   const [r, g, b] = hexToRgb(hex);
-  let bestKey = 'orange-600';
+  let bestKey = 'green-600';
   let bestDist = Infinity;
   for (const [key, value] of Object.entries(colorMap)) {
     const [pr, pg, pb] = hexToRgb(value);
@@ -58,7 +58,7 @@ function closestThemeColor(hex: string): string {
   return bestKey.split('-')[0];
 }
 
-type SettingsTab = "org" | "tax" | "policies" | "integrations";
+type SettingsTab = "org" | "tax" | "policies" | "integrations" | "tips";
 
 interface OrgProfile {
   name: string;
@@ -68,6 +68,10 @@ interface OrgProfile {
   homeCardImageUrl?: string | null;
   requestCardImageUrl?: string | null;
   chatCardImageUrl?: string | null;
+  splashImageUrl?: string | null;
+  splashBackgroundColor?: string | null;
+  loginBackgroundUrl?: string | null;
+  loginBackgroundType?: "image" | "video" | "youtube" | null;
   themeColor?: string;
   customColorHex?: string | null;
   timezone: string;
@@ -76,6 +80,8 @@ interface OrgProfile {
   supportEmail?: string | null;
   supportPhone?: string | null;
   locale: string;
+  helpAssistantName?: string | null;
+  helpAssistantImageUrl?: string | null;
 }
 
 interface TaxSettings {
@@ -88,6 +94,13 @@ interface TaxSettings {
   };
   currency: string;
   showTaxOnItems: boolean;
+}
+
+interface PolicySettings {
+  cancellationPolicy: string;
+  serviceAgreement: string;
+  refundPolicy: string;
+  paymentTerms: string;
 }
 
 interface SmtpSettings {
@@ -143,13 +156,17 @@ export default function SettingsPage() {
     homeCardImageUrl: null,
     requestCardImageUrl: null,
     chatCardImageUrl: null,
-    themeColor: "orange",
+    splashImageUrl: null,
+    splashBackgroundColor: null,
+    themeColor: "green",
     timezone: "Africa/Accra",
     address: null,
     currency: "GHS",
     supportEmail: null,
     supportPhone: null,
     locale: "en",
+    helpAssistantName: null,
+    helpAssistantImageUrl: null,
   });
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
@@ -169,6 +186,17 @@ export default function SettingsPage() {
   const [uploadingHomeCardImage, setUploadingHomeCardImage] = useState(false);
   const [uploadingRequestCardImage, setUploadingRequestCardImage] = useState(false);
   const [uploadingChatCardImage, setUploadingChatCardImage] = useState(false);
+  const [splashImageFile, setSplashImageFile] = useState<File | null>(null);
+  const [splashImagePreview, setSplashImagePreview] = useState<string | null>(null);
+  const [uploadingSplashImage, setUploadingSplashImage] = useState(false);
+  const [helpAssistantImageFile, setHelpAssistantImageFile] = useState<File | null>(null);
+  const [helpAssistantImagePreview, setHelpAssistantImagePreview] = useState<string | null>(null);
+  const [uploadingHelpAssistantImage, setUploadingHelpAssistantImage] = useState(false);
+  const [loginBgFile, setLoginBgFile] = useState<File | null>(null);
+  const [loginBgPreview, setLoginBgPreview] = useState<string | null>(null);
+  const [uploadingLoginBg, setUploadingLoginBg] = useState(false);
+  const [loginBgMode, setLoginBgMode] = useState<"image" | "video" | "youtube">("image");
+  const [loginBgYoutubeUrl, setLoginBgYoutubeUrl] = useState("");
   const colorInputRef = useRef<HTMLInputElement>(null);
 
   // Tax Settings
@@ -182,6 +210,14 @@ export default function SettingsPage() {
     },
     currency: "GHS",
     showTaxOnItems: false,
+  });
+
+  // Policy Settings
+  const [policySettings, setPolicySettings] = useState<PolicySettings>({
+    cancellationPolicy: "",
+    serviceAgreement: "",
+    refundPolicy: "",
+    paymentTerms: "",
   });
 
   // SMTP Settings
@@ -225,6 +261,34 @@ export default function SettingsPage() {
   const [testingLlm, setTestingLlm] = useState(false);
   const [llmTestResult, setLlmTestResult] = useState<{ success: boolean; message: string } | null>(null);
 
+  // Tip Schedule Settings
+  const [tipSchedule, setTipSchedule] = useState<{
+    enabled: boolean;
+    days: {
+      monday: boolean;
+      tuesday: boolean;
+      wednesday: boolean;
+      thursday: boolean;
+      friday: boolean;
+      saturday: boolean;
+      sunday: boolean;
+    };
+    lastTipIndex: number;
+  }>({
+    enabled: false,
+    days: {
+      monday: false,
+      tuesday: false,
+      wednesday: false,
+      thursday: false,
+      friday: false,
+      saturday: false,
+      sunday: false,
+    },
+    lastTipIndex: 0,
+  });
+  const [savingTipSchedule, setSavingTipSchedule] = useState(false);
+
   useEffect(() => {
     fetchSettings();
   }, []);
@@ -234,13 +298,18 @@ export default function SettingsPage() {
       setLoading(true);
       const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
 
-      const [orgRes, taxRes, smtpRes, smsRes, googleMapsRes, llmRes] = await Promise.all([
+      const [orgRes, taxRes, policiesRes, smtpRes, smsRes, googleMapsRes, llmRes, tipScheduleRes] = await Promise.all([
         fetch(`${API_URL}/settings/org`, {
           headers: {
             Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
           },
         }),
         fetch(`${API_URL}/settings/tax`, {
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
+          },
+        }),
+        fetch(`${API_URL}/settings/policies`, {
           headers: {
             Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
           },
@@ -265,6 +334,11 @@ export default function SettingsPage() {
             Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
           },
         }),
+        fetch(`${API_URL}/settings/tip-schedule`, {
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
+          },
+        }),
       ]);
 
       if (orgRes.ok) {
@@ -276,6 +350,15 @@ export default function SettingsPage() {
           setHomeCardImagePreview(orgData.profile.homeCardImageUrl || null);
           setRequestCardImagePreview(orgData.profile.requestCardImageUrl || null);
           setChatCardImagePreview(orgData.profile.chatCardImageUrl || null);
+          setSplashImagePreview(orgData.profile.splashImageUrl || null);
+          setLoginBgPreview(orgData.profile.loginBackgroundUrl || null);
+          setHelpAssistantImagePreview(orgData.profile.helpAssistantImageUrl || null);
+          if (orgData.profile.loginBackgroundType) {
+            setLoginBgMode(orgData.profile.loginBackgroundType);
+          }
+          if (orgData.profile.loginBackgroundType === "youtube" && orgData.profile.loginBackgroundUrl) {
+            setLoginBgYoutubeUrl(orgData.profile.loginBackgroundUrl);
+          }
           // Update theme context with saved values
           if (orgData.profile.themeColor) {
             setThemeColor(orgData.profile.themeColor as any);
@@ -305,6 +388,13 @@ export default function SettingsPage() {
       } else if (taxRes.status === 404) {
         // Tax settings endpoint doesn't exist yet, use defaults
         console.log("Tax settings endpoint not found, using defaults");
+      }
+
+      if (policiesRes.ok) {
+        const policiesData = await policiesRes.json();
+        setPolicySettings(policiesData);
+      } else if (policiesRes.status === 404) {
+        console.log("Policies endpoint not found, using defaults");
       }
 
       if (smtpRes.ok) {
@@ -374,6 +464,20 @@ export default function SettingsPage() {
             baseUrl: llmData.settings.baseUrl || prev.baseUrl || "",
             enabled: llmData.settings.enabled !== undefined ? llmData.settings.enabled : prev.enabled,
           }));
+        }
+      }
+
+      if (tipScheduleRes.ok) {
+        const tipData = await tipScheduleRes.json();
+        if (tipData) {
+          setTipSchedule({
+            enabled: tipData.enabled ?? false,
+            days: tipData.days ?? {
+              monday: false, tuesday: false, wednesday: false, thursday: false,
+              friday: false, saturday: false, sunday: false,
+            },
+            lastTipIndex: tipData.lastTipIndex ?? 0,
+          });
         }
       }
     } catch (error) {
@@ -681,6 +785,129 @@ export default function SettingsPage() {
     }
   };
 
+  const handleSplashImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setSplashImageFile(file);
+      const reader = new FileReader();
+      reader.onloadend = () => setSplashImagePreview(reader.result as string);
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const uploadSplashImage = async (): Promise<string | null> => {
+    if (!splashImageFile) return null;
+    try {
+      setUploadingSplashImage(true);
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+      const uploadFormData = new FormData();
+      uploadFormData.append("splashImage", splashImageFile);
+      const response = await fetch(`${API_URL}/settings/upload-splash-image`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${localStorage.getItem("auth_token")}` },
+        body: uploadFormData,
+      });
+      if (!response.ok) throw new Error("Upload failed");
+      const data = await response.json();
+      setOrgProfile((prev) => ({ ...prev, splashImageUrl: data.splashImageUrl }));
+      setSplashImageFile(null);
+      return data.splashImageUrl;
+    } catch (error: any) {
+      toast({ title: "Upload failed", description: error.message, variant: "destructive" });
+      return null;
+    } finally {
+      setUploadingSplashImage(false);
+    }
+  };
+
+  const extractYoutubeId = (url: string): string | null => {
+    const patterns = [
+      /(?:youtube\.com\/watch\?v=)([a-zA-Z0-9_-]{11})/,
+      /(?:youtu\.be\/)([a-zA-Z0-9_-]{11})/,
+      /(?:youtube\.com\/embed\/)([a-zA-Z0-9_-]{11})/,
+    ];
+    for (const pattern of patterns) {
+      const match = url.match(pattern);
+      if (match) return match[1];
+    }
+    return null;
+  };
+
+  const handleHelpAssistantImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setHelpAssistantImageFile(file);
+      const reader = new FileReader();
+      reader.onloadend = () => setHelpAssistantImagePreview(reader.result as string);
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const uploadHelpAssistantImage = async (): Promise<string | null> => {
+    if (!helpAssistantImageFile) return null;
+    try {
+      setUploadingHelpAssistantImage(true);
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+      const uploadFormData = new FormData();
+      uploadFormData.append("helpAssistantImage", helpAssistantImageFile);
+      const response = await fetch(`${API_URL}/settings/upload-help-assistant-image`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${localStorage.getItem("auth_token")}` },
+        body: uploadFormData,
+      });
+      if (!response.ok) throw new Error("Upload failed");
+      const data = await response.json();
+      setOrgProfile({ ...orgProfile, helpAssistantImageUrl: data.helpAssistantImageUrl });
+      setHelpAssistantImageFile(null);
+      return data.helpAssistantImageUrl;
+    } catch (error: any) {
+      toast({ title: "Upload failed", description: error.message || "Failed to upload help assistant image", variant: "destructive" });
+      return null;
+    } finally {
+      setUploadingHelpAssistantImage(false);
+    }
+  };
+
+  const handleLoginBgFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setLoginBgFile(file);
+      const reader = new FileReader();
+      reader.onloadend = () => setLoginBgPreview(reader.result as string);
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const uploadLoginBackground = async (): Promise<string | null> => {
+    if (!loginBgFile) return null;
+    try {
+      setUploadingLoginBg(true);
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+      const uploadFormData = new FormData();
+      uploadFormData.append("loginBackground", loginBgFile);
+      const response = await fetch(`${API_URL}/settings/upload-login-background`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${localStorage.getItem("auth_token")}` },
+        body: uploadFormData,
+      });
+      if (!response.ok) throw new Error("Upload failed");
+      const data = await response.json();
+      const bgType = loginBgMode === "video" ? "video" : "image";
+      setOrgProfile((prev) => ({
+        ...prev,
+        loginBackgroundUrl: data.loginBackgroundUrl,
+        loginBackgroundType: bgType,
+      }));
+      setLoginBgFile(null);
+      return data.loginBackgroundUrl;
+    } catch (error: any) {
+      toast({ title: "Upload failed", description: error.message, variant: "destructive" });
+      return null;
+    } finally {
+      setUploadingLoginBg(false);
+    }
+  };
+
   const handleSaveOrg = async () => {
     try {
       setSaving(true);
@@ -693,6 +920,8 @@ export default function SettingsPage() {
       let uploadedHomeCardImageUrl: string | null = null;
       let uploadedRequestCardImageUrl: string | null = null;
       let uploadedChatCardImageUrl: string | null = null;
+      let uploadedSplashImageUrl: string | null = null;
+      let uploadedLoginBgUrl: string | null = null;
       if (logoFile) {
         uploadedLogoUrl = await uploadLogo();
         if (!uploadedLogoUrl) return;
@@ -717,6 +946,36 @@ export default function SettingsPage() {
         uploadedChatCardImageUrl = await uploadChatCardImage();
         if (!uploadedChatCardImageUrl) return;
       }
+      if (splashImageFile) {
+        uploadedSplashImageUrl = await uploadSplashImage();
+        if (!uploadedSplashImageUrl) return;
+      }
+      if (loginBgFile) {
+        uploadedLoginBgUrl = await uploadLoginBackground();
+        if (!uploadedLoginBgUrl) return;
+      }
+      let uploadedHelpAssistantImageUrl: string | null = null;
+      if (helpAssistantImageFile) {
+        uploadedHelpAssistantImageUrl = await uploadHelpAssistantImage();
+        if (!uploadedHelpAssistantImageUrl) return;
+      }
+
+      // Handle YouTube URL mode for login background
+      let loginBgUpdates: Record<string, any> = {};
+      if (loginBgMode === "youtube" && loginBgYoutubeUrl) {
+        const videoId = extractYoutubeId(loginBgYoutubeUrl);
+        if (videoId) {
+          loginBgUpdates = {
+            loginBackgroundUrl: loginBgYoutubeUrl,
+            loginBackgroundType: "youtube" as const,
+          };
+        }
+      } else if (uploadedLoginBgUrl) {
+        loginBgUpdates = {
+          loginBackgroundUrl: uploadedLoginBgUrl,
+          loginBackgroundType: loginBgMode === "video" ? "video" as const : "image" as const,
+        };
+      }
 
       const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
 
@@ -729,6 +988,9 @@ export default function SettingsPage() {
         ...(uploadedHomeCardImageUrl != null && { homeCardImageUrl: uploadedHomeCardImageUrl }),
         ...(uploadedRequestCardImageUrl != null && { requestCardImageUrl: uploadedRequestCardImageUrl }),
         ...(uploadedChatCardImageUrl != null && { chatCardImageUrl: uploadedChatCardImageUrl }),
+        ...(uploadedSplashImageUrl != null && { splashImageUrl: uploadedSplashImageUrl }),
+        ...(uploadedHelpAssistantImageUrl != null && { helpAssistantImageUrl: uploadedHelpAssistantImageUrl }),
+        ...loginBgUpdates,
       };
 
       const response = await fetch(`${API_URL}/settings/org`, {
@@ -837,11 +1099,109 @@ export default function SettingsPage() {
     }
   };
 
+  const handleSavePolicies = async () => {
+    try {
+      setSaving(true);
+      setSaveSuccess(false);
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+
+      const response = await fetch(`${API_URL}/settings/policies`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
+        },
+        body: JSON.stringify(policySettings),
+      });
+
+      const contentType = response.headers.get("content-type");
+      const isJson = contentType && contentType.includes("application/json");
+
+      if (response.ok) {
+        if (isJson) {
+          const data = await response.json();
+          setPolicySettings(data);
+        }
+        setSaveSuccess(true);
+        setTimeout(() => setSaveSuccess(false), 3000);
+      } else {
+        let errorMessage = "Unknown error";
+        if (isJson) {
+          try {
+            const error = await response.json();
+            errorMessage = error.error || error.details || error.message || "Unknown error";
+          } catch (e) {
+            errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+          }
+        } else {
+          const text = await response.text();
+          errorMessage = text || `HTTP ${response.status}: ${response.statusText}`;
+        }
+        toast({ title: "Save failed", description: errorMessage, variant: "destructive" });
+      }
+    } catch (error: any) {
+      console.error("Failed to save policy settings:", error);
+      toast({ title: "Save failed", description: error.message || "Unknown error", variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleSaveTipSchedule = async () => {
+    try {
+      setSavingTipSchedule(true);
+      setSaveSuccess(false);
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+
+      const response = await fetch(`${API_URL}/settings/tip-schedule`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
+        },
+        body: JSON.stringify(tipSchedule),
+      });
+
+      const contentType = response.headers.get("content-type");
+      const isJson = contentType && contentType.includes("application/json");
+
+      if (response.ok) {
+        if (isJson) {
+          const data = await response.json();
+          setTipSchedule(data);
+        }
+        setSaveSuccess(true);
+        toast({ title: "Saved", description: "Tip schedule updated successfully" });
+        setTimeout(() => setSaveSuccess(false), 3000);
+      } else {
+        let errorMessage = "Unknown error";
+        if (isJson) {
+          try {
+            const error = await response.json();
+            errorMessage = error.error || error.details || error.message || "Unknown error";
+          } catch (e) {
+            errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+          }
+        } else {
+          const text = await response.text();
+          errorMessage = text || `HTTP ${response.status}: ${response.statusText}`;
+        }
+        toast({ title: "Save failed", description: errorMessage, variant: "destructive" });
+      }
+    } catch (error: any) {
+      console.error("Failed to save tip schedule:", error);
+      toast({ title: "Save failed", description: error.message || "Unknown error", variant: "destructive" });
+    } finally {
+      setSavingTipSchedule(false);
+    }
+  };
+
   const tabs = [
     { id: "org" as SettingsTab, label: "Organization", icon: Building },
     { id: "tax" as SettingsTab, label: "Tax & Finance", icon: DollarSign },
-    { id: "policies" as SettingsTab, label: "Policies", icon: Settings, disabled: true },
+    { id: "policies" as SettingsTab, label: "Policies", icon: FileText },
     { id: "integrations" as SettingsTab, label: "Integrations", icon: Settings },
+    { id: "tips" as SettingsTab, label: "Tips", icon: Lightbulb },
   ];
 
   return (
@@ -890,7 +1250,7 @@ export default function SettingsPage() {
         <Card>
           <CardContent className="py-12">
             <div className="text-center">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-600 mx-auto"></div>
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 mx-auto" style={{ borderColor: '#397d54' }}></div>
               <p className="mt-4 text-gray-600">Loading settings...</p>
             </div>
           </CardContent>
@@ -1111,6 +1471,309 @@ export default function SettingsPage() {
                       {uploadingChatCardImage && <p className="text-sm text-gray-500">Uploading...</p>}
                     </div>
 
+                    {/* App Splash Screen */}
+                    <div className="space-y-3 md:col-span-2 p-4 rounded-lg border border-dashed border-gray-200 bg-gray-50">
+                      <div>
+                        <Label className="flex items-center gap-2 text-sm font-semibold">
+                          <Image className="h-4 w-4" />
+                          Client App Splash Screen
+                        </Label>
+                        <p className="text-xs text-gray-500 mt-1">
+                          Full-screen background image shown when the client app opens. Logo is overlaid on top. Max 5MB, JPG/PNG/WebP.
+                        </p>
+                      </div>
+                      <div className="flex items-start gap-6">
+                        <div className="flex-1 space-y-3">
+                          <div>
+                            <Label className="text-xs text-gray-600 mb-1 block">Background Image</Label>
+                            <Input
+                              id="splashImage"
+                              type="file"
+                              accept="image/jpeg,image/jpg,image/png,image/webp"
+                              onChange={handleSplashImageChange}
+                              className="cursor-pointer"
+                            />
+                            {uploadingSplashImage && <p className="text-xs text-gray-500 mt-1">Uploading...</p>}
+                          </div>
+                          <div>
+                            <Label htmlFor="splashBgColor" className="text-xs text-gray-600 mb-1 block">
+                              Background Color (shown if no image, or as overlay tint)
+                            </Label>
+                            <div className="flex items-center gap-3">
+                              <input
+                                id="splashBgColor"
+                                type="color"
+                                value={orgProfile.splashBackgroundColor || "#ffffff"}
+                                onChange={(e) => setOrgProfile({ ...orgProfile, splashBackgroundColor: e.target.value })}
+                                className="h-9 w-16 cursor-pointer rounded border border-gray-300 p-0.5"
+                              />
+                              <Input
+                                type="text"
+                                value={orgProfile.splashBackgroundColor || ""}
+                                onChange={(e) => setOrgProfile({ ...orgProfile, splashBackgroundColor: e.target.value })}
+                                placeholder="#ffffff"
+                                className="w-32 text-sm font-mono"
+                              />
+                              {orgProfile.splashBackgroundColor && (
+                                <button
+                                  type="button"
+                                  onClick={() => setOrgProfile({ ...orgProfile, splashBackgroundColor: null })}
+                                  className="text-xs text-gray-400 hover:text-gray-600"
+                                >
+                                  Clear
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                        {/* Preview */}
+                        {(splashImagePreview || orgProfile.splashImageUrl) && (
+                          <div className="shrink-0">
+                            <p className="text-xs text-gray-500 mb-1 text-center">Preview</p>
+                            <div
+                              className="w-24 h-44 rounded-xl overflow-hidden border-2 border-gray-200 relative flex items-center justify-center"
+                              style={{ backgroundColor: orgProfile.splashBackgroundColor || "#fff" }}
+                            >
+                              <img
+                                src={splashImagePreview || orgProfile.splashImageUrl || ""}
+                                alt="Splash preview"
+                                className="absolute inset-0 w-full h-full object-cover"
+                                onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                              />
+                              {(orgProfile.loaderLogoUrl || orgProfile.logoUrl) && (
+                                <img
+                                  src={orgProfile.loaderLogoUrl || orgProfile.logoUrl || ""}
+                                  alt="Logo overlay"
+                                  className="relative z-10 w-10 h-10 object-contain"
+                                />
+                              )}
+                            </div>
+                            <p className="text-xs text-gray-400 mt-1 text-center">~preview</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Login Background */}
+                    <div className="space-y-3 md:col-span-2 p-4 rounded-lg border border-dashed border-gray-200 bg-gray-50">
+                      <div>
+                        <Label className="flex items-center gap-2 text-sm font-semibold">
+                          <Image className="h-4 w-4" />
+                          Login Background
+                        </Label>
+                        <p className="text-xs text-gray-500 mt-1">
+                          Background for the admin login page. Upload an image, video, or paste a YouTube URL.
+                        </p>
+                      </div>
+
+                      {/* Mode tabs */}
+                      <div className="flex gap-1 bg-gray-200 rounded-lg p-0.5 w-fit">
+                        {(["image", "video", "youtube"] as const).map((mode) => (
+                          <button
+                            key={mode}
+                            type="button"
+                            onClick={() => {
+                              setLoginBgMode(mode);
+                              setLoginBgFile(null);
+                              if (mode !== "youtube") setLoginBgYoutubeUrl("");
+                            }}
+                            className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                              loginBgMode === mode
+                                ? "bg-white shadow text-gray-900"
+                                : "text-gray-500 hover:text-gray-700"
+                            }`}
+                          >
+                            {mode === "youtube" ? "YouTube URL" : mode.charAt(0).toUpperCase() + mode.slice(1)}
+                          </button>
+                        ))}
+                      </div>
+
+                      <div className="flex items-start gap-6">
+                        <div className="flex-1 space-y-3">
+                          {loginBgMode === "image" && (
+                            <div>
+                              <Label className="text-xs text-gray-600 mb-1 block">Background Image</Label>
+                              <Input
+                                id="loginBgImage"
+                                type="file"
+                                accept="image/jpeg,image/jpg,image/png,image/webp"
+                                onChange={handleLoginBgFileChange}
+                                className="cursor-pointer"
+                              />
+                              <p className="text-xs text-gray-500 mt-1">Max 5MB. JPG, PNG, or WebP.</p>
+                              {uploadingLoginBg && <p className="text-xs text-gray-500 mt-1">Uploading...</p>}
+                            </div>
+                          )}
+                          {loginBgMode === "video" && (
+                            <div>
+                              <Label className="text-xs text-gray-600 mb-1 block">Background Video</Label>
+                              <Input
+                                id="loginBgVideo"
+                                type="file"
+                                accept="video/mp4,video/webm"
+                                onChange={handleLoginBgFileChange}
+                                className="cursor-pointer"
+                              />
+                              <p className="text-xs text-gray-500 mt-1">Max 10MB. MP4 or WebM.</p>
+                              {uploadingLoginBg && <p className="text-xs text-gray-500 mt-1">Uploading...</p>}
+                            </div>
+                          )}
+                          {loginBgMode === "youtube" && (
+                            <div>
+                              <Label className="text-xs text-gray-600 mb-1 block">YouTube URL</Label>
+                              <Input
+                                id="loginBgYoutube"
+                                type="url"
+                                value={loginBgYoutubeUrl}
+                                onChange={(e) => setLoginBgYoutubeUrl(e.target.value)}
+                                placeholder="https://www.youtube.com/watch?v=..."
+                                className="font-mono text-sm"
+                              />
+                              <p className="text-xs text-gray-500 mt-1">
+                                Supports youtube.com/watch?v=, youtu.be/, and youtube.com/embed/ formats.
+                              </p>
+                            </div>
+                          )}
+
+                          {/* Remove button */}
+                          {(orgProfile.loginBackgroundUrl || loginBgPreview) && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setOrgProfile((prev) => ({
+                                  ...prev,
+                                  loginBackgroundUrl: null,
+                                  loginBackgroundType: null,
+                                }));
+                                setLoginBgFile(null);
+                                setLoginBgPreview(null);
+                                setLoginBgYoutubeUrl("");
+                              }}
+                              className="text-xs text-red-500 hover:text-red-700 underline"
+                            >
+                              Remove login background
+                            </button>
+                          )}
+                        </div>
+
+                        {/* Preview */}
+                        {(() => {
+                          const currentType = loginBgFile
+                            ? loginBgMode
+                            : orgProfile.loginBackgroundType;
+                          const currentUrl = loginBgPreview || orgProfile.loginBackgroundUrl;
+                          if (!currentUrl) return null;
+
+                          if (currentType === "youtube") {
+                            const videoId = extractYoutubeId(currentUrl) || extractYoutubeId(loginBgYoutubeUrl);
+                            if (!videoId) return null;
+                            return (
+                              <div className="shrink-0">
+                                <p className="text-xs text-gray-500 mb-1 text-center">Preview</p>
+                                <div className="w-40 h-24 rounded-lg overflow-hidden border-2 border-gray-200">
+                                  <img
+                                    src={`https://img.youtube.com/vi/${videoId}/mqdefault.jpg`}
+                                    alt="YouTube preview"
+                                    className="w-full h-full object-cover"
+                                  />
+                                </div>
+                              </div>
+                            );
+                          }
+
+                          if (currentType === "video") {
+                            return (
+                              <div className="shrink-0">
+                                <p className="text-xs text-gray-500 mb-1 text-center">Preview</p>
+                                <video
+                                  src={currentUrl}
+                                  className="w-40 h-24 rounded-lg object-cover border-2 border-gray-200"
+                                  muted
+                                  playsInline
+                                />
+                              </div>
+                            );
+                          }
+
+                          return (
+                            <div className="shrink-0">
+                              <p className="text-xs text-gray-500 mb-1 text-center">Preview</p>
+                              <img
+                                src={currentUrl}
+                                alt="Login background preview"
+                                className="w-40 h-24 rounded-lg object-cover border-2 border-gray-200"
+                                onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                              />
+                            </div>
+                          );
+                        })()}
+                      </div>
+
+                      {/* YouTube live preview */}
+                      {loginBgMode === "youtube" && loginBgYoutubeUrl && extractYoutubeId(loginBgYoutubeUrl) && (
+                        <div>
+                          <p className="text-xs text-gray-500 mb-1">Embed preview</p>
+                          <div className="w-full max-w-sm aspect-video rounded-lg overflow-hidden border border-gray-200">
+                            <iframe
+                              src={`https://www.youtube.com/embed/${extractYoutubeId(loginBgYoutubeUrl)}?autoplay=0`}
+                              className="w-full h-full"
+                              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                              allowFullScreen
+                              title="YouTube preview"
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Help Assistant Settings */}
+                    <div className="space-y-3 md:col-span-2 p-4 rounded-lg border border-dashed border-gray-200 bg-gray-50">
+                      <div>
+                        <Label className="flex items-center gap-2 text-sm font-semibold">
+                          <MessageCircleQuestion className="h-4 w-4" />
+                          Help Assistant
+                        </Label>
+                        <p className="text-xs text-gray-500 mt-1">
+                          Customize the floating help chat that appears on every page of the admin system.
+                        </p>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="helpAssistantName" className="text-xs text-gray-600">Assistant Name</Label>
+                          <Input
+                            id="helpAssistantName"
+                            value={orgProfile.helpAssistantName || ""}
+                            onChange={(e) => setOrgProfile({ ...orgProfile, helpAssistantName: e.target.value || null })}
+                            placeholder="PoolCare Help"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="helpAssistantImage" className="text-xs text-gray-600">Assistant Avatar</Label>
+                          <div className="flex items-center gap-3">
+                            <div className="flex-1">
+                              <Input
+                                id="helpAssistantImage"
+                                type="file"
+                                accept="image/*"
+                                onChange={handleHelpAssistantImageChange}
+                                className="cursor-pointer"
+                              />
+                              <p className="text-xs text-gray-500 mt-1">Max 2MB. Used as the floating chat button.</p>
+                            </div>
+                            {(helpAssistantImagePreview || orgProfile.helpAssistantImageUrl) && (
+                              <img
+                                src={helpAssistantImagePreview || orgProfile.helpAssistantImageUrl || ""}
+                                alt="Help assistant avatar"
+                                className="w-10 h-10 rounded-full object-cover border-2 border-gray-200"
+                                onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                              />
+                            )}
+                          </div>
+                          {uploadingHelpAssistantImage && <p className="text-xs text-gray-500">Uploading...</p>}
+                        </div>
+                      </div>
+                    </div>
+
                     {/* Theme Color Picker */}
                     <div className="space-y-2 md:col-span-2">
                       <Label htmlFor="theme-color" className="flex items-center gap-2">
@@ -1131,7 +1794,7 @@ export default function SettingsPage() {
                                   : 'border-gray-300 hover:border-gray-400'
                               }`}
                               style={{
-                                backgroundColor: colorMap[`${color}-600`] || '#ea580c'
+                                backgroundColor: colorMap[`${color}-600`] || '#397d54'
                               }}
                               title={color.charAt(0).toUpperCase() + color.slice(1)}
                             />
@@ -1144,7 +1807,7 @@ export default function SettingsPage() {
                             ref={colorInputRef}
                             type="color"
                             id="theme-color-native"
-                            value={orgProfile.customColorHex || colorMap[`${orgProfile.themeColor || 'orange'}-600`] || '#ea580c'}
+                            value={orgProfile.customColorHex || colorMap[`${orgProfile.themeColor || 'green'}-600`] || '#397d54'}
                             onChange={(e) => {
                               const hex = e.target.value;
                               const closest = closestThemeColor(hex);
@@ -1163,7 +1826,7 @@ export default function SettingsPage() {
                                 : 'border-gray-300 hover:border-gray-400'
                             }`}
                             style={{
-                              backgroundColor: orgProfile.customColorHex || colorMap[`${orgProfile.themeColor || 'orange'}-600`] || '#ea580c',
+                              backgroundColor: orgProfile.customColorHex || colorMap[`${orgProfile.themeColor || 'green'}-600`] || '#397d54',
                             }}
                             title="Pick a custom color"
                             aria-label="Pick theme color"
@@ -1171,7 +1834,7 @@ export default function SettingsPage() {
                           {/* Hex text input */}
                           <Input
                             id="theme-color-hex"
-                            value={orgProfile.customColorHex || colorMap[`${orgProfile.themeColor || 'orange'}-600`] || '#ea580c'}
+                            value={orgProfile.customColorHex || colorMap[`${orgProfile.themeColor || 'green'}-600`] || '#397d54'}
                             onChange={(e) => {
                               let val = e.target.value;
                               // Auto-add # prefix
@@ -1510,14 +2173,86 @@ export default function SettingsPage() {
             </Card>
           )}
 
-          {/* Policies (Coming Soon) */}
+          {/* Policies */}
           {activeTab === "policies" && (
             <Card>
-              <CardContent className="py-12">
-                <div className="text-center">
-                  <Settings className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                  <h3 className="text-lg font-medium text-gray-900 mb-2">Policies & Defaults</h3>
-                  <p className="text-gray-500 text-sm">Coming soon</p>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <FileText className="h-5 w-5" />
+                  Policies & Terms
+                </CardTitle>
+                <CardDescription>
+                  Define your organization's policies and terms that are shown to clients
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="space-y-2">
+                  <Label htmlFor="cancellation-policy">Cancellation Policy</Label>
+                  <Textarea
+                    id="cancellation-policy"
+                    placeholder="e.g., Cancellations must be made 24 hours before the scheduled visit. Late cancellations may incur a fee."
+                    value={policySettings.cancellationPolicy}
+                    onChange={(e) =>
+                      setPolicySettings((prev) => ({ ...prev, cancellationPolicy: e.target.value }))
+                    }
+                    rows={4}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="service-agreement">Service Agreement</Label>
+                  <Textarea
+                    id="service-agreement"
+                    placeholder="Enter the service agreement text shown to clients when they sign up or book services."
+                    value={policySettings.serviceAgreement}
+                    onChange={(e) =>
+                      setPolicySettings((prev) => ({ ...prev, serviceAgreement: e.target.value }))
+                    }
+                    rows={6}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="refund-policy">Refund Policy</Label>
+                  <Textarea
+                    id="refund-policy"
+                    placeholder="e.g., Refunds are available within 7 days of service if the client is unsatisfied with the work performed."
+                    value={policySettings.refundPolicy}
+                    onChange={(e) =>
+                      setPolicySettings((prev) => ({ ...prev, refundPolicy: e.target.value }))
+                    }
+                    rows={4}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="payment-terms">Payment Terms</Label>
+                  <Textarea
+                    id="payment-terms"
+                    placeholder="e.g., Payment is due within 7 days of invoice date. Late payments may incur a 5% surcharge."
+                    value={policySettings.paymentTerms}
+                    onChange={(e) =>
+                      setPolicySettings((prev) => ({ ...prev, paymentTerms: e.target.value }))
+                    }
+                    rows={4}
+                  />
+                </div>
+
+                <div className="flex justify-end gap-3 pt-4 border-t">
+                  {saveSuccess && (
+                    <div className="flex items-center gap-2 text-green-600 mr-auto">
+                      <CheckCircle className="h-5 w-5" />
+                      <span className="text-sm font-medium">Settings saved successfully!</span>
+                    </div>
+                  )}
+                  <Button
+                    onClick={handleSavePolicies}
+                    disabled={saving}
+                    className={`bg-${theme.primary} hover:bg-${theme.primary}/90`}
+                  >
+                    <Save className="h-4 w-4 mr-2" />
+                    {saving ? "Saving..." : "Save Changes"}
+                  </Button>
                 </div>
               </CardContent>
             </Card>
@@ -2360,6 +3095,164 @@ export default function SettingsPage() {
               </Card>
             </div>
           )}
+
+          {/* Tip of the Day */}
+          {activeTab === "tips" && (
+            <div className="space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Lightbulb className="h-5 w-5" />
+                    Tip of the Day
+                  </CardTitle>
+                  <CardDescription>
+                    Automatically send pool care tips to your clients on selected days at 8 AM
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  {/* Enable Toggle */}
+                  <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border">
+                    <div>
+                      <Label htmlFor="tip-enabled" className="text-base font-medium">Enable Tip of the Day</Label>
+                      <p className="text-sm text-gray-500 mt-1">
+                        When enabled, clients will receive helpful pool care tips via push notification
+                      </p>
+                    </div>
+                    <button
+                      id="tip-enabled"
+                      role="switch"
+                      aria-checked={tipSchedule.enabled}
+                      onClick={() => setTipSchedule({ ...tipSchedule, enabled: !tipSchedule.enabled })}
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${
+                        tipSchedule.enabled ? `bg-${theme.primary}` : "bg-gray-200"
+                      }`}
+                      style={tipSchedule.enabled ? { backgroundColor: colorMap[theme.primary] || undefined } : undefined}
+                    >
+                      <span
+                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                          tipSchedule.enabled ? "translate-x-6" : "translate-x-1"
+                        }`}
+                      />
+                    </button>
+                  </div>
+
+                  {/* Day Selection */}
+                  <div className={tipSchedule.enabled ? "" : "opacity-50 pointer-events-none"}>
+                    <Label className="text-base font-medium">Delivery Days</Label>
+                    <p className="text-sm text-gray-500 mt-1 mb-4">
+                      Select which days of the week tips should be sent
+                    </p>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                      {(["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"] as const).map((day) => (
+                        <label
+                          key={day}
+                          className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
+                            tipSchedule.days[day]
+                              ? `border-${theme.primary} bg-${theme.primary}/5`
+                              : "border-gray-200 hover:border-gray-300"
+                          }`}
+                          style={tipSchedule.days[day] ? { borderColor: colorMap[theme.primary] || undefined, backgroundColor: colorMap[theme.primary] ? `${colorMap[theme.primary]}08` : undefined } : undefined}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={tipSchedule.days[day]}
+                            onChange={(e) =>
+                              setTipSchedule({
+                                ...tipSchedule,
+                                days: { ...tipSchedule.days, [day]: e.target.checked },
+                              })
+                            }
+                            className="h-4 w-4 rounded"
+                            style={{ accentColor: colorMap[theme.primary] || undefined }}
+                          />
+                          <span className="text-sm font-medium capitalize">{day}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Save Button */}
+                  <div className="flex justify-end pt-4 border-t">
+                    <Button
+                      onClick={handleSaveTipSchedule}
+                      disabled={savingTipSchedule}
+                      className={`bg-${theme.primary} hover:bg-${theme.primary}/90`}
+                      style={{ backgroundColor: colorMap[theme.primary] || undefined }}
+                    >
+                      {savingTipSchedule ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          Saving...
+                        </>
+                      ) : saveSuccess ? (
+                        <>
+                          <CheckCircle className="h-4 w-4 mr-2" />
+                          Saved!
+                        </>
+                      ) : (
+                        <>
+                          <Save className="h-4 w-4 mr-2" />
+                          Save Schedule
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Example Tips Preview */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">Example Tips Preview</CardTitle>
+                  <CardDescription>
+                    Here are some examples of the tips your clients will receive
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    {[
+                      {
+                        title: "Check Your pH Levels",
+                        body: "Test your pool water pH at least twice a week. The ideal range is 7.2 to 7.6 for comfortable swimming and effective sanitization.",
+                      },
+                      {
+                        title: "Skim and Brush Regularly",
+                        body: "Skim debris from the surface daily and brush the walls and floor weekly to prevent algae buildup and keep your pool sparkling clean.",
+                      },
+                      {
+                        title: "Run Your Pump Enough",
+                        body: "Run your pool pump for at least 8 hours a day to ensure proper circulation and filtration. This helps distribute chemicals evenly.",
+                      },
+                      {
+                        title: "Shock Your Pool Weekly",
+                        body: "Shocking your pool once a week helps eliminate bacteria, algae, and chloramines. Do it in the evening for best results.",
+                      },
+                      {
+                        title: "Clean Your Filter",
+                        body: "A dirty filter reduces water flow and makes your pump work harder. Clean or backwash your filter every 1-2 weeks depending on usage.",
+                      },
+                    ].map((tip, index) => (
+                      <div
+                        key={index}
+                        className="flex gap-3 p-3 bg-gray-50 rounded-lg border border-gray-100"
+                      >
+                        <div className="flex-shrink-0 mt-0.5">
+                          <Lightbulb className="h-4 w-4 text-amber-500" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-gray-900">{tip.title}</p>
+                          <p className="text-sm text-gray-600 mt-0.5">{tip.body}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-xs text-gray-400 mt-4">
+                    Tips rotate automatically. Your clients will receive a different tip each scheduled day.
+                  </p>
+                </CardContent>
+              </Card>
+            </div>
+          )}
         </>
       )}
 
@@ -2442,7 +3335,7 @@ export default function SettingsPage() {
                       subject: "PoolCare - Test Email",
                       html: `
                         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-                          <h2 style="color: #ea580c; margin-bottom: 20px;">Test Email from PoolCare</h2>
+                          <h2 style="color: #397d54; margin-bottom: 20px;">Test Email from PoolCare</h2>
                           <p>This is a test email to verify your SMTP configuration is working correctly.</p>
                           <p>If you received this email, your email settings are configured properly!</p>
                           <hr style="margin: 20px 0; border: none; border-top: 1px solid #e5e7eb;" />

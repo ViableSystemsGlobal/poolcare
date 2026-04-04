@@ -445,7 +445,7 @@ export default function JobDetailPage() {
                   <p className="text-sm font-medium text-gray-600">Route Sequence</p>
                   <p className="text-sm font-medium text-gray-900">#{job.sequence}</p>
                 </div>
-                <Navigation className="h-8 w-8 text-orange-400" />
+                <Navigation className="h-8 w-8 text-emerald-400" />
               </div>
             </CardContent>
           </Card>

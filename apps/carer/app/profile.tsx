@@ -7,6 +7,7 @@ import {
   StyleSheet,
   Switch,
   Alert,
+  Linking,
   Image,
   ActivityIndicator,
   Modal,
@@ -18,8 +19,11 @@ import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as ImagePicker from "expo-image-picker";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useTheme } from "../src/contexts/ThemeContext";
 import { api } from "../src/lib/api-client";
+
+const NOTIF_PREFS_KEY = "notification_preferences";
 
 interface CarerProfile {
   id: string;
@@ -60,7 +64,28 @@ export default function ProfileScreen() {
     paymentAlerts: true,
   });
 
-  useEffect(() => { loadProfile(); }, []);
+  useEffect(() => { loadProfile(); loadNotificationPrefs(); }, []);
+
+  const loadNotificationPrefs = async () => {
+    try {
+      const stored = await AsyncStorage.getItem(NOTIF_PREFS_KEY);
+      if (stored) {
+        setNotifications((prev) => ({ ...prev, ...JSON.parse(stored) }));
+      }
+    } catch {
+      // keep defaults
+    }
+  };
+
+  const toggleNotificationPref = async (key: keyof NotificationPreferences, value: boolean) => {
+    const updated = { ...notifications, [key]: value };
+    setNotifications(updated);
+    try {
+      await AsyncStorage.setItem(NOTIF_PREFS_KEY, JSON.stringify(updated));
+    } catch {
+      // silent – state already updated for instant feedback
+    }
+  };
 
   const loadProfile = async () => {
     try {
@@ -339,7 +364,7 @@ export default function ProfileScreen() {
                 </View>
                 <Switch
                   value={notifications[key]}
-                  onValueChange={(v) => setNotifications((n) => ({ ...n, [key]: v }))}
+                  onValueChange={(v) => toggleNotificationPref(key, v)}
                   trackColor={{ false: "#d1d5db", true: themeColor }}
                   thumbColor="#ffffff"
                 />
@@ -351,16 +376,20 @@ export default function ProfileScreen() {
         {/* Support section */}
         {renderSection("Support & Legal", <>
           {renderItem("help-circle-outline", "Help Center", () =>
-            Alert.alert("Help", "Contact your pool service manager for support.")
+            Linking.openURL("https://poolcare.africa")
           )}
           {renderItem("chatbubbles-outline", "Contact Support", () =>
-            Alert.alert("Support", "We'll connect you with support shortly.")
+            Alert.alert("Contact Support", "How would you like to reach us?", [
+              { text: "Call", onPress: () => Linking.openURL("tel:+233506226222") },
+              { text: "Email", onPress: () => Linking.openURL("mailto:info@poolcare.africa") },
+              { text: "Cancel", style: "cancel" },
+            ])
           )}
           {renderItem("document-text-outline", "Privacy Policy", () =>
-            Alert.alert("Privacy Policy", "Your data is kept private and secure.")
+            Linking.openURL("https://poolcare.africa/privacy-policy/")
           )}
           {renderItem("document-outline", "Terms of Service", () =>
-            Alert.alert("Terms", "By using PoolCare you agree to our terms of service.")
+            Linking.openURL("https://poolcare.africa/terms-and-conditions/")
           )}
         </>)}
 

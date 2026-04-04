@@ -1,6 +1,7 @@
 import { Injectable, BadRequestException, NotFoundException } from "@nestjs/common";
 import { prisma } from "@poolcare/db";
 import { SettingsService } from "../../settings/settings.service";
+import { KnowledgeService } from "../../knowledge/knowledge.service";
 
 export interface ChatMessage {
   role: "user" | "assistant";
@@ -21,7 +22,10 @@ Only reference facts from the context provided — never invent readings, dates,
 
 @Injectable()
 export class PoolCoachService {
-  constructor(private readonly settingsService: SettingsService) {}
+  constructor(
+    private readonly settingsService: SettingsService,
+    private readonly knowledgeService: KnowledgeService,
+  ) {}
 
   private async getClientContext(orgId: string, userId: string): Promise<string> {
     const client = await prisma.client.findFirst({
@@ -72,6 +76,12 @@ export class PoolCoachService {
       where: { orgId, clientId: client.id, status: { in: ["sent", "overdue"] } },
     });
     if (unpaidCount > 0) lines.push("", `Unpaid invoices: ${unpaidCount}.`);
+
+    // Append knowledge base context (product info, chemical guides, etc.)
+    const knowledgeContext = await this.knowledgeService.getKnowledgeContext(orgId);
+    if (knowledgeContext) {
+      lines.push(knowledgeContext);
+    }
 
     return lines.join("\n");
   }

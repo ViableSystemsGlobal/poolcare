@@ -1,13 +1,22 @@
-import { useState, useEffect, useMemo } from "react";
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, RefreshControl, FlatList, Dimensions, Image, Alert, ActivityIndicator } from "react-native";
-import { router } from "expo-router";
+import { useState, useEffect, useMemo, useCallback } from "react";
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, RefreshControl, FlatList, Dimensions, Alert, ActivityIndicator, AppState } from "react-native";
+import { Image } from "expo-image";
+import { router, usePathname } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Location from "expo-location";
 import { api } from "../src/lib/api-client";
 import { fixUrlForMobile } from "../src/lib/network-utils";
 import { useTheme } from "../src/contexts/ThemeContext";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import Loader from "../src/components/Loader";
+
+const localHomeCard = require("../assets/home-card.png");
+const localRequestCard = require("../assets/request-card.png");
+const localChatCard = require("../assets/chat-card.png");
+
+const NOTIF_READ_ALL_KEY = "notifications_read_all_at";
+const NOTIF_READ_IDS_KEY = "notifications_read_ids";
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const POOL_CARD_WIDTH = SCREEN_WIDTH - 40;
@@ -79,6 +88,7 @@ interface NextVisit {
   time: string;
   status: string;
   location: string;
+  poolImage?: string | null;
   tip?: string;
 }
 
@@ -117,6 +127,37 @@ export default function ClientDashboard() {
   const [userInitials, setUserInitials] = useState<string>("");
   const [userProfileImageUrl, setUserProfileImageUrl] = useState<string | null>(null);
   const [weather, setWeather] = useState<{ temp: number; emoji: string } | null>(null);
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  const fetchUnreadCount = useCallback(async () => {
+    try {
+      const token = await api.getAuthToken();
+      if (!token) return;
+      const [res, readAllVal, readIdsVal] = await Promise.all([
+        api.getMyNotifications(1, 30) as Promise<any>,
+        AsyncStorage.getItem(NOTIF_READ_ALL_KEY),
+        AsyncStorage.getItem(NOTIF_READ_IDS_KEY),
+      ]);
+      const readAllAt = readAllVal ? parseInt(readAllVal) : 0;
+      const readIds: Set<string> = new Set(readIdsVal ? JSON.parse(readIdsVal) : []);
+      const items: any[] = res?.items || [];
+      setUnreadCount(items.filter((n: any) =>
+        new Date(n.createdAt).getTime() > readAllAt && !readIds.has(n.id)
+      ).length);
+    } catch { /* silent */ }
+  }, []);
+
+  // Fetch on mount + re-fetch when navigating back to this screen
+  const pathname = usePathname();
+  useEffect(() => { fetchUnreadCount(); }, [fetchUnreadCount, pathname]);
+
+  // Also re-fetch when app comes back to foreground
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state === "active") fetchUnreadCount();
+    });
+    return () => sub.remove();
+  }, [fetchUnreadCount]);
 
   useEffect(() => {
     // Check if user is authenticated
@@ -298,6 +339,7 @@ export default function ClientDashboard() {
           time: `${windowStart.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}–${windowEnd.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}`,
           status,
           location,
+          poolImage: (pool.photos && pool.photos.length > 0 ? pool.photos[0] : null) || (pool.imageUrls && pool.imageUrls.length > 0 ? pool.imageUrls[0] : null) || null,
           tip: getDailyTip(),
         };
       });
@@ -379,32 +421,58 @@ export default function ClientDashboard() {
   };
 
 
-  const renderNextVisitCard = ({ item }: { item: NextVisit; index: number }) => {
+  const renderNextVisitCard = ({ item }: { item: NextVisit }) => {
+    const dateParts = item.date.split(" "); // e.g. ["March", "17,", "2026"]
+    const month = (dateParts[0] || "").slice(0, 3).toUpperCase();
+    const day = (dateParts[1] || "").replace(",", "");
     return (
       <TouchableOpacity
-        style={[styles.nextVisitCard, { width: NEXT_VISIT_CARD_WIDTH, borderLeftColor: themeColor }]}
+        style={[styles.nextVisitCard, { width: NEXT_VISIT_CARD_WIDTH }]}
         onPress={() => { if (item.id) router.push(`/visits/${item.id}`); }}
         activeOpacity={0.75}
       >
-        <View style={styles.nextVisitTopRow}>
-          <Text style={styles.nextVisitLabel}>NEXT VISIT</Text>
-          <View style={[styles.visitStatusPill, { backgroundColor: themeColor + "20" }]}>
-            <Text style={[styles.visitStatusText, { color: themeColor }]}>{item.status}</Text>
-          </View>
+        {/* Date block */}
+        <View style={[styles.nextVisitDateBlock, { backgroundColor: themeColor }]}>
+          <Text style={styles.nextVisitDateBlockMonth}>{month}</Text>
+          <Text style={styles.nextVisitDateBlockDay}>{day}</Text>
         </View>
-        <Text style={styles.nextVisitDate}>{item.date}</Text>
-        {item.time ? (
-          <View style={styles.visitDetailRow}>
-            <Ionicons name="time-outline" size={14} color="#9ca3af" />
-            <Text style={styles.visitDetailText}>{item.time}</Text>
+
+        {/* Content */}
+        <View style={styles.nextVisitContent}>
+          <View style={styles.nextVisitTopRow}>
+            <Text style={styles.nextVisitLabel}>NEXT VISIT</Text>
+            <View style={[styles.visitStatusPill, { backgroundColor: themeColor + "20" }]}>
+              <Text style={[styles.visitStatusText, { color: themeColor }]}>{item.status}</Text>
+            </View>
           </View>
-        ) : null}
-        {item.location ? (
-          <View style={styles.visitDetailRow}>
-            <Ionicons name="location-outline" size={14} color="#9ca3af" />
-            <Text style={styles.visitDetailText} numberOfLines={1}>{item.location}</Text>
+          <Text style={styles.nextVisitDate}>{item.date}</Text>
+          {item.time ? (
+            <View style={styles.visitDetailRow}>
+              <Ionicons name="time-outline" size={13} color="#9ca3af" />
+              <Text style={styles.visitDetailText}>{item.time}</Text>
+            </View>
+          ) : null}
+          {item.location ? (
+            <View style={styles.visitDetailRow}>
+              <Ionicons name="location-outline" size={13} color="#9ca3af" />
+              <Text style={styles.visitDetailText} numberOfLines={1}>{item.location}</Text>
+            </View>
+          ) : null}
+        </View>
+
+        {/* Pool image */}
+        {item.poolImage ? (
+          <Image
+            source={{ uri: item.poolImage }}
+            style={styles.nextVisitPoolImage}
+            contentFit="cover"
+            cachePolicy="disk"
+          />
+        ) : (
+          <View style={[styles.nextVisitPoolImage, { backgroundColor: themeColor + "18", justifyContent: "center", alignItems: "center" }]}>
+            <Ionicons name="water-outline" size={28} color={themeColor} />
           </View>
-        ) : null}
+        )}
       </TouchableOpacity>
     );
   };
@@ -425,7 +493,8 @@ export default function ClientDashboard() {
           <Image
             source={{ uri: poolImage }}
             style={StyleSheet.absoluteFillObject}
-            resizeMode="cover"
+            contentFit="cover"
+            cachePolicy="disk"
           />
         ) : (
           <View style={[StyleSheet.absoluteFillObject, { backgroundColor: "#c7d2dc" }]}>
@@ -478,7 +547,7 @@ export default function ClientDashboard() {
         >
           <View style={[styles.avatarCircle, { backgroundColor: themeColor }]}>
             {userProfileImageUrl ? (
-              <Image source={{ uri: userProfileImageUrl }} style={styles.avatarImage} />
+              <Image source={{ uri: userProfileImageUrl }} style={styles.avatarImage} cachePolicy="disk" />
             ) : userInitials ? (
               <Text style={styles.avatarInitials}>{userInitials}</Text>
             ) : (
@@ -492,7 +561,8 @@ export default function ClientDashboard() {
             <Image
               source={{ uri: fixUrlForMobile(logoUrl) }}
               style={styles.headerLogo}
-              resizeMode="contain"
+              contentFit="contain"
+              cachePolicy="disk"
             />
           ) : (
             <Text style={[styles.headerLogoPlaceholder, { color: themeColor }]}>PoolCare</Text>
@@ -501,10 +571,15 @@ export default function ClientDashboard() {
 
         <TouchableOpacity
           style={styles.notificationButton}
-          onPress={() => router.push("/notifications")}
+          onPress={() => { router.push("/notifications"); setUnreadCount(0); }}
           activeOpacity={0.8}
         >
-          <Ionicons name="notifications-outline" size={22} color="#374151" />
+          <Ionicons name="notifications-outline" size={22} color={themeColor} />
+          {unreadCount > 0 && (
+            <View style={[styles.notifBadge, { backgroundColor: themeColor }]}>
+              <Text style={styles.notifBadgeText}>{unreadCount > 99 ? "99+" : unreadCount}</Text>
+            </View>
+          )}
         </TouchableOpacity>
       </View>
 
@@ -543,7 +618,7 @@ export default function ClientDashboard() {
           >
             <View style={styles.balanceDecorCircle1} />
             <View style={styles.balanceDecorCircle2} />
-            <View style={[styles.balanceCardContent, homeCardImageUrl ? styles.balanceCardContentWithImage : {}]}>
+            <View style={[styles.balanceCardContent, styles.balanceCardContentWithImage]}>
               <View style={styles.balanceTopRow}>
                 <View style={styles.balanceLabelRow}>
                   <Ionicons name="wallet-outline" size={14} color="rgba(255,255,255,0.75)" />
@@ -554,13 +629,12 @@ export default function ClientDashboard() {
               <Text style={styles.balanceAmount}>GH₵{formatAmount(balanceOwed)}</Text>
               <Text style={styles.balanceSub}>Tap to view billing details</Text>
             </View>
-            {homeCardImageUrl ? (
-              <Image
-                source={{ uri: fixUrlForMobile(homeCardImageUrl) }}
-                style={styles.homeCardImage}
-                resizeMode="cover"
-              />
-            ) : null}
+            <Image
+              source={homeCardImageUrl ? { uri: fixUrlForMobile(homeCardImageUrl) } : localHomeCard}
+              style={styles.homeCardImage}
+              contentFit="cover"
+              cachePolicy="disk"
+            />
           </LinearGradient>
         </TouchableOpacity>
 
@@ -571,46 +645,24 @@ export default function ClientDashboard() {
             onPress={() => router.push("/book-service")}
             activeOpacity={0.75}
           >
-            {requestCardImageUrl ? (
-              <>
-                <Image source={{ uri: fixUrlForMobile(requestCardImageUrl) }} style={StyleSheet.absoluteFillObject} resizeMode="cover" />
-                <LinearGradient colors={["rgba(0,0,0,0.18)", "rgba(0,0,0,0.55)"]} style={StyleSheet.absoluteFillObject} />
-                <View style={[styles.actionCardIcon, { backgroundColor: "rgba(255,255,255,0.22)" }]}>
-                  <Ionicons name="create-outline" size={26} color="#ffffff" />
-                </View>
-                <Text style={[styles.actionCardTitle, { color: "#ffffff" }]}>{"Request\nor Report"}</Text>
-              </>
-            ) : (
-              <>
-                <View style={[styles.actionCardIcon, { backgroundColor: themeColor }]}>
-                  <Ionicons name="create-outline" size={26} color="#ffffff" />
-                </View>
-                <Text style={styles.actionCardTitle}>{"Request\nor Report"}</Text>
-              </>
-            )}
+            <Image source={requestCardImageUrl ? { uri: fixUrlForMobile(requestCardImageUrl) } : localRequestCard} style={StyleSheet.absoluteFillObject} contentFit="cover" cachePolicy="disk" />
+            <LinearGradient colors={["rgba(0,0,0,0.18)", "rgba(0,0,0,0.55)"]} style={StyleSheet.absoluteFillObject} />
+            <View style={[styles.actionCardIcon, { backgroundColor: "rgba(255,255,255,0.22)" }]}>
+              <Ionicons name="create-outline" size={26} color="#ffffff" />
+            </View>
+            <Text style={[styles.actionCardTitle, { color: "#ffffff" }]}>{"Request\nor Report"}</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.actionCard}
             onPress={() => router.push("/kwame-ai")}
             activeOpacity={0.75}
           >
-            {chatCardImageUrl ? (
-              <>
-                <Image source={{ uri: fixUrlForMobile(chatCardImageUrl) }} style={StyleSheet.absoluteFillObject} resizeMode="cover" />
-                <LinearGradient colors={["rgba(0,0,0,0.18)", "rgba(0,0,0,0.55)"]} style={StyleSheet.absoluteFillObject} />
-                <View style={[styles.actionCardIcon, { backgroundColor: "rgba(255,255,255,0.22)" }]}>
-                  <Ionicons name="chatbubble-ellipses-outline" size={26} color="#ffffff" />
-                </View>
-                <Text style={[styles.actionCardTitle, { color: "#ffffff" }]}>{"Chat\n/ Ask"}</Text>
-              </>
-            ) : (
-              <>
-                <View style={[styles.actionCardIcon, { backgroundColor: themeColor }]}>
-                  <Ionicons name="chatbubble-ellipses-outline" size={26} color="#ffffff" />
-                </View>
-                <Text style={styles.actionCardTitle}>{"Chat\n/ Ask"}</Text>
-              </>
-            )}
+            <Image source={chatCardImageUrl ? { uri: fixUrlForMobile(chatCardImageUrl) } : localChatCard} style={StyleSheet.absoluteFillObject} contentFit="cover" cachePolicy="disk" />
+            <LinearGradient colors={["rgba(0,0,0,0.18)", "rgba(0,0,0,0.55)"]} style={StyleSheet.absoluteFillObject} />
+            <View style={[styles.actionCardIcon, { backgroundColor: "rgba(255,255,255,0.22)" }]}>
+              <Ionicons name="chatbubble-ellipses-outline" size={26} color="#ffffff" />
+            </View>
+            <Text style={[styles.actionCardTitle, { color: "#ffffff" }]}>{"Chat\n/ Ask"}</Text>
           </TouchableOpacity>
         </View>
 
@@ -792,6 +844,24 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
+  notifBadge: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 4,
+    borderWidth: 1.5,
+    borderColor: "#fff",
+  },
+  notifBadgeText: {
+    fontSize: 10,
+    fontWeight: "700",
+    color: "#fff",
+  },
   scrollView: {
     flex: 1,
   },
@@ -831,21 +901,53 @@ const styles = StyleSheet.create({
   },
   nextVisitCard: {
     backgroundColor: "#ffffff",
-    borderRadius: 16,
+    borderRadius: 14,
     marginRight: 12,
-    padding: 20,
+    padding: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    elevation: 4,
-    borderLeftWidth: 4,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.07,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  nextVisitDateBlock: {
+    width: 48,
+    height: 48,
+    borderRadius: 10,
+    justifyContent: "center",
+    alignItems: "center",
+    flexShrink: 0,
+    overflow: "hidden",
+  },
+  nextVisitDateBlockMonth: {
+    fontSize: 10,
+    fontWeight: "700",
+    color: "rgba(255,255,255,0.85)",
+    letterSpacing: 0.5,
+  },
+  nextVisitDateBlockDay: {
+    fontSize: 20,
+    fontWeight: "800",
+    color: "#ffffff",
+    lineHeight: 24,
+  },
+  nextVisitContent: {
+    flex: 1,
+  },
+  nextVisitPoolImage: {
+    width: 72,
+    height: 72,
+    borderRadius: 10,
+    flexShrink: 0,
   },
   nextVisitTopRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: 10,
+    marginBottom: 4,
   },
   nextVisitLabel: {
     fontSize: 11,
@@ -866,11 +968,11 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   nextVisitDate: {
-    fontSize: 24,
-    fontWeight: "800",
+    fontSize: 15,
+    fontWeight: "700",
     color: "#111827",
-    letterSpacing: -0.5,
-    marginBottom: 12,
+    letterSpacing: -0.3,
+    marginBottom: 4,
   },
   visitDetailRow: {
     flexDirection: "row",
@@ -941,7 +1043,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.3,
   },
   balanceAmount: {
-    fontSize: 30,
+    fontSize: SCREEN_WIDTH < 380 ? 22 : SCREEN_WIDTH < 430 ? 26 : 30,
     fontWeight: "800",
     color: "#ffffff",
     letterSpacing: -1,

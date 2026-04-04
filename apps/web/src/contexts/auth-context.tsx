@@ -37,6 +37,7 @@ interface User {
   email?: string;
   phone?: string;
   role: string;
+  imageUrl?: string;
 }
 
 interface Org {
@@ -84,7 +85,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (response.ok) {
         const data = await response.json();
         console.log("✅ User info fetched successfully:", data);
-        setUser(data.user || null);
+        const u = data.user;
+        if (u) u.imageUrl = u.imageUrl || u.profileImageUrl || null;
+        setUser(u || null);
         setOrg(data.org || null);
       } else if (response.status === 401) {
         // Token is invalid

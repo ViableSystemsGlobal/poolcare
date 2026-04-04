@@ -19,7 +19,8 @@ export class RolesGuard implements CanActivate {
     const request = context.switchToHttp().getRequest();
     const user = request.user;
 
-    return requiredRoles.includes(user.role);
+    // Support multi-role JWT: check against roles array, fall back to single role for backward compat
+    return requiredRoles.some((r) => user.roles?.includes(r) || user.role === r);
   }
 }
 

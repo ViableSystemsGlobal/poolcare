@@ -306,11 +306,11 @@ export default function AnalyticsPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-600">DSO</p>
-                <p className="text-2xl font-bold text-orange-600">
+                <p className="text-2xl font-bold text-emerald-700">
                   {financeMetrics ? `${financeMetrics.ar.dso} days` : "—"}
                 </p>
               </div>
-              <Clock className="h-8 w-8 text-orange-400" />
+              <Clock className="h-8 w-8 text-emerald-400" />
             </div>
           </Card>
 
@@ -391,7 +391,7 @@ export default function AnalyticsPage() {
                     {financeMetrics ? `DSO: ${financeMetrics.ar.dso} days` : ""}
                   </p>
                 </div>
-                <FileText className="h-8 w-8 text-orange-400" />
+                <FileText className="h-8 w-8 text-emerald-400" />
               </div>
             </CardContent>
           </Card>
@@ -439,7 +439,7 @@ export default function AnalyticsPage() {
                 </div>
                 <div className="text-center">
                   <p className="text-sm text-gray-600">31-60 Days</p>
-                  <p className="text-lg font-bold text-orange-600">
+                  <p className="text-lg font-bold text-emerald-700">
                     {formatCurrency(financeMetrics.aging.days_31_60)}
                   </p>
                 </div>
@@ -586,12 +586,12 @@ export default function AnalyticsPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-gray-600">Avg Duration</p>
-                  <p className="text-xl font-bold text-orange-600">
+                  <p className="text-xl font-bold text-emerald-700">
                     {operationsMetrics ? `${operationsMetrics.visits.avgDurationMinutes} min` : "—"}
                   </p>
                   <p className="text-xs text-gray-500 mt-1">Per visit</p>
                 </div>
-                <TrendingUp className="h-8 w-8 text-orange-400" />
+                <TrendingUp className="h-8 w-8 text-emerald-400" />
               </div>
             </CardContent>
           </Card>

@@ -10,6 +10,7 @@ import {
   UseGuards,
   UseInterceptors,
   UploadedFile,
+  NotFoundException,
 } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
 import { ParseFilePipe, MaxFileSizeValidator, FileTypeValidator } from "@nestjs/common/pipes";
@@ -20,6 +21,7 @@ import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { RolesGuard } from "../auth/guards/roles.guard";
 import { Roles } from "../auth/decorators/roles.decorator";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
+import { Public } from "../auth/decorators/public.decorator";
 import {
   CreateProductDto,
   UpdateProductDto,
@@ -43,6 +45,23 @@ import {
 @UseGuards(JwtAuthGuard)
 export class ProductsController {
   constructor(private readonly inventoryService: InventoryService) {}
+
+  /** Public endpoints — lets unauthenticated users (guests) browse the shop */
+  @Get("browse")
+  @Public()
+  async browse(@Query() query: ListProductsQuery) {
+    const orgId = await this.inventoryService.getDefaultOrgId();
+    if (!orgId) return { items: [], pagination: { total: 0, page: 1, limit: 20, totalPages: 0 } };
+    return this.inventoryService.listProducts(orgId, query);
+  }
+
+  @Get("browse/:id")
+  @Public()
+  async browseOne(@Param("id") id: string) {
+    const orgId = await this.inventoryService.getDefaultOrgId();
+    if (!orgId) throw new NotFoundException("Product not found");
+    return this.inventoryService.getProduct(orgId, id);
+  }
 
   @Get()
   async list(

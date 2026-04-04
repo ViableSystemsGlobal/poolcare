@@ -1,6 +1,33 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { prisma } from "@poolcare/db";
+import * as crypto from 'crypto';
+
+const ENCRYPTION_KEY = process.env.SETTINGS_ENCRYPTION_KEY || 'poolcare-dev-encryption-key-32ch'; // Must be 32 chars
+const IV_LENGTH = 16;
+
+function encrypt(text: string): string {
+  const iv = crypto.randomBytes(IV_LENGTH);
+  const cipher = crypto.createCipheriv('aes-256-cbc', Buffer.from(ENCRYPTION_KEY.padEnd(32).slice(0, 32)), iv);
+  let encrypted = cipher.update(text);
+  encrypted = Buffer.concat([encrypted, cipher.final()]);
+  return iv.toString('hex') + ':' + encrypted.toString('hex');
+}
+
+function decrypt(text: string): string {
+  try {
+    const parts = text.split(':');
+    if (parts.length !== 2) return text; // Not encrypted, return as-is (backward compat)
+    const iv = Buffer.from(parts[0], 'hex');
+    const encrypted = Buffer.from(parts[1], 'hex');
+    const decipher = crypto.createDecipheriv('aes-256-cbc', Buffer.from(ENCRYPTION_KEY.padEnd(32).slice(0, 32)), iv);
+    let decrypted = decipher.update(encrypted);
+    decrypted = Buffer.concat([decrypted, decipher.final()]);
+    return decrypted.toString();
+  } catch {
+    return text; // If decryption fails, return as-is (backward compat)
+  }
+}
 
 @Injectable()
 export class SettingsService {
@@ -17,6 +44,8 @@ export class SettingsService {
     loaderLogoUrl: string | null;
     themeColor: string;
     primaryColorHex: string;
+    loginBackgroundUrl: string | null;
+    loginBackgroundType: string | null;
   }> {
     // Find an OrgSetting that has branding configured (logoUrl or custom theme)
     const orgSettings = await prisma.orgSetting.findMany({
@@ -57,6 +86,8 @@ export class SettingsService {
         loaderLogoUrl: null,
         themeColor: "teal",
         primaryColorHex: "#6b7280",
+        loginBackgroundUrl: null,
+        loginBackgroundType: null,
       };
     }
 
@@ -70,12 +101,17 @@ export class SettingsService {
     // Ensure logo URLs are absolute so login page (different origin) can load them
     const logoUrl = rawLogoUrl ? this.toAbsoluteLogoUrl(rawLogoUrl) : null;
     const loaderLogoUrl = rawLoaderLogoUrl ? this.toAbsoluteLogoUrl(rawLoaderLogoUrl) : null;
+    const rawLoginBgUrl = profile.loginBackgroundUrl || null;
+    const loginBackgroundUrl = rawLoginBgUrl ? this.toAbsoluteLogoUrl(rawLoginBgUrl) : null;
+    const loginBackgroundType: string | null = profile.loginBackgroundType || null;
     return {
       organizationName: org.name || "PoolCare",
       logoUrl,
       loaderLogoUrl,
       themeColor,
       primaryColorHex,
+      loginBackgroundUrl,
+      loginBackgroundType,
     };
   }
 
@@ -130,6 +166,8 @@ export class SettingsService {
         homeCardImageUrl: profile.homeCardImageUrl || null,
         requestCardImageUrl: profile.requestCardImageUrl || null,
         chatCardImageUrl: profile.chatCardImageUrl || null,
+        loginBackgroundUrl: profile.loginBackgroundUrl || null,
+        loginBackgroundType: profile.loginBackgroundType || null,
         themeColor: profile.themeColor || "orange",
         customColorHex: profile.customColorHex || null,
         currency: profile.currency || "GHS",
@@ -137,6 +175,8 @@ export class SettingsService {
         address: profile.address || null,
         supportEmail: profile.supportEmail || null,
         supportPhone: profile.supportPhone || null,
+        helpAssistantName: profile.helpAssistantName || null,
+        helpAssistantImageUrl: profile.helpAssistantImageUrl || null,
       },
     };
   }
@@ -180,6 +220,8 @@ export class SettingsService {
           homeCardImageUrl: profile.homeCardImageUrl !== undefined ? (profile.homeCardImageUrl || null) : (currentProfile.homeCardImageUrl || null),
           requestCardImageUrl: profile.requestCardImageUrl !== undefined ? (profile.requestCardImageUrl || null) : (currentProfile.requestCardImageUrl || null),
           chatCardImageUrl: profile.chatCardImageUrl !== undefined ? (profile.chatCardImageUrl || null) : (currentProfile.chatCardImageUrl || null),
+          loginBackgroundUrl: profile.loginBackgroundUrl !== undefined ? (profile.loginBackgroundUrl || null) : (currentProfile.loginBackgroundUrl || null),
+          loginBackgroundType: profile.loginBackgroundType !== undefined ? (profile.loginBackgroundType || null) : (currentProfile.loginBackgroundType || null),
           themeColor: profile.themeColor || currentProfile.themeColor || "orange",
           customColorHex: profile.customColorHex !== undefined ? (profile.customColorHex || null) : (currentProfile.customColorHex || null),
           currency: profile.currency || currentProfile.currency || "GHS",
@@ -187,6 +229,8 @@ export class SettingsService {
           address: profile.address !== undefined ? profile.address : (currentProfile.address || null),
           supportEmail: profile.supportEmail || currentProfile.supportEmail || null,
           supportPhone: profile.supportPhone || currentProfile.supportPhone || null,
+          helpAssistantName: profile.helpAssistantName !== undefined ? (profile.helpAssistantName || null) : (currentProfile.helpAssistantName || null),
+          helpAssistantImageUrl: profile.helpAssistantImageUrl !== undefined ? (profile.helpAssistantImageUrl || null) : (currentProfile.helpAssistantImageUrl || null),
         },
       },
     });
@@ -203,6 +247,8 @@ export class SettingsService {
         homeCardImageUrl: savedProfile.homeCardImageUrl || null,
         requestCardImageUrl: savedProfile.requestCardImageUrl || null,
         chatCardImageUrl: savedProfile.chatCardImageUrl || null,
+        loginBackgroundUrl: savedProfile.loginBackgroundUrl || null,
+        loginBackgroundType: savedProfile.loginBackgroundType || null,
         themeColor: savedProfile.themeColor || "orange",
         customColorHex: savedProfile.customColorHex || null,
         currency: savedProfile.currency || "GHS",
@@ -210,6 +256,8 @@ export class SettingsService {
         address: savedProfile.address || null,
         supportEmail: savedProfile.supportEmail || null,
         supportPhone: savedProfile.supportPhone || null,
+        helpAssistantName: savedProfile.helpAssistantName || null,
+        helpAssistantImageUrl: savedProfile.helpAssistantImageUrl || null,
       },
     };
   }
@@ -278,12 +326,12 @@ export class SettingsService {
                                  newPassword.trim().length > 0;
       
       if (isValidNewPassword) {
-        // User provided a new password - use it
-        finalPassword = newPassword.trim();
+        // User provided a new password - encrypt before storing
+        finalPassword = encrypt(newPassword.trim());
       }
       // If password is undefined, empty, or masked, keep existing password (don't change it)
     }
-    
+
     const username = settings.username !== undefined ? this.normalizeSettingValue(settings.username) : this.normalizeSettingValue(existingSms.username);
     const senderId = settings.senderId !== undefined ? this.normalizeSettingValue(settings.senderId) : (this.normalizeSettingValue(existingSms.senderId) || "PoolCare");
     const apiEndpoint = settings.apiEndpoint !== undefined ? this.normalizeSettingValue(settings.apiEndpoint) : (this.normalizeSettingValue(existingSms.apiEndpoint) || "https://deywuro.com/api/sms");
@@ -330,11 +378,18 @@ export class SettingsService {
     const orgSetting = await this.getOrCreateOrgSetting(orgId);
     
     const integrations = (orgSetting.integrations as any) || {};
+    // Encrypt password if a new one is provided
+    const existingSmtpPassword = integrations.smtp?.password || "";
+    let smtpPassword = existingSmtpPassword;
+    if (settings.password && settings.password !== "***" && settings.password !== "******" && settings.password !== "••••••••") {
+      smtpPassword = encrypt(settings.password);
+    }
+
     integrations.smtp = {
       host: settings.host || "",
       port: settings.port || 587,
       user: settings.user || "",
-      password: settings.password || integrations.smtp?.password || "", // Keep existing if not provided
+      password: smtpPassword,
       tls: settings.tls !== undefined ? settings.tls : true,
     };
 
@@ -584,6 +639,51 @@ export class SettingsService {
     }
   }
 
+  async getTipSchedule(orgId: string) {
+    const orgSetting = await this.getOrCreateOrgSetting(orgId);
+    const integrations = (orgSetting.integrations as any) || {};
+    const schedule = integrations.tipSchedule || {};
+
+    return {
+      enabled: schedule.enabled || false,
+      monday: schedule.monday || false,
+      tuesday: schedule.tuesday || false,
+      wednesday: schedule.wednesday || false,
+      thursday: schedule.thursday || false,
+      friday: schedule.friday || false,
+      saturday: schedule.saturday || false,
+      sunday: schedule.sunday || false,
+      lastTipIndex: schedule.lastTipIndex ?? -1,
+    };
+  }
+
+  async updateTipSchedule(orgId: string, data: any) {
+    const orgSetting = await this.getOrCreateOrgSetting(orgId);
+    const integrations = (orgSetting.integrations as any) || {};
+    const current = integrations.tipSchedule || {};
+
+    const updated = {
+      enabled: data.enabled !== undefined ? data.enabled : (current.enabled || false),
+      monday: data.monday !== undefined ? data.monday : (current.monday || false),
+      tuesday: data.tuesday !== undefined ? data.tuesday : (current.tuesday || false),
+      wednesday: data.wednesday !== undefined ? data.wednesday : (current.wednesday || false),
+      thursday: data.thursday !== undefined ? data.thursday : (current.thursday || false),
+      friday: data.friday !== undefined ? data.friday : (current.friday || false),
+      saturday: data.saturday !== undefined ? data.saturday : (current.saturday || false),
+      sunday: data.sunday !== undefined ? data.sunday : (current.sunday || false),
+      lastTipIndex: data.lastTipIndex !== undefined ? data.lastTipIndex : (current.lastTipIndex ?? -1),
+    };
+
+    integrations.tipSchedule = updated;
+
+    await prisma.orgSetting.update({
+      where: { orgId },
+      data: { integrations },
+    });
+
+    return updated;
+  }
+
   async getTaxSettings(orgId: string) {
     const orgSetting = await this.getOrCreateOrgSetting(orgId);
     const tax = (orgSetting.tax as any) || {};
@@ -623,6 +723,38 @@ export class SettingsService {
     });
 
     return updatedTax;
+  }
+
+  async getPolicies(orgId: string) {
+    const orgSetting = await this.getOrCreateOrgSetting(orgId);
+    const policies = (orgSetting.policies as any) || {};
+
+    return {
+      cancellationPolicy: policies.cancellationPolicy || "",
+      serviceAgreement: policies.serviceAgreement || "",
+      refundPolicy: policies.refundPolicy || "",
+      paymentTerms: policies.paymentTerms || "",
+    };
+  }
+
+  async updatePolicies(orgId: string, data: any) {
+    const orgSetting = await this.getOrCreateOrgSetting(orgId);
+    const currentPolicies = (orgSetting.policies as any) || {};
+
+    const updatedPolicies = {
+      ...currentPolicies,
+      cancellationPolicy: data.cancellationPolicy !== undefined ? data.cancellationPolicy : (currentPolicies.cancellationPolicy || ""),
+      serviceAgreement: data.serviceAgreement !== undefined ? data.serviceAgreement : (currentPolicies.serviceAgreement || ""),
+      refundPolicy: data.refundPolicy !== undefined ? data.refundPolicy : (currentPolicies.refundPolicy || ""),
+      paymentTerms: data.paymentTerms !== undefined ? data.paymentTerms : (currentPolicies.paymentTerms || ""),
+    };
+
+    await prisma.orgSetting.update({
+      where: { orgId },
+      data: { policies: updatedPolicies },
+    });
+
+    return updatedPolicies;
   }
 }
 

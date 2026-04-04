@@ -117,11 +117,13 @@ export class ClientsService {
 
       // Always ensure a CLIENT membership exists in this org — covers both new
       // users and existing users being added as clients for the first time.
+      // With multi-role support, this creates a CLIENT role alongside any existing roles.
       await prisma.orgMember.upsert({
         where: {
-          orgId_userId: {
+          orgId_userId_role: {
             orgId,
             userId,
+            role: "CLIENT",
           },
         },
         create: {
@@ -581,12 +583,13 @@ export class ClientsService {
         },
       });
 
-      // Add membership if not exists
+      // Add CLIENT membership if not exists (multi-role: won't conflict with other roles)
       await prisma.orgMember.upsert({
         where: {
-          orgId_userId: {
+          orgId_userId_role: {
             orgId,
             userId: existingUser.id,
+            role: "CLIENT",
           },
         },
         create: {

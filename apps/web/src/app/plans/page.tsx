@@ -1,12 +1,12 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Plus, Search, Calendar, Edit, Trash2, Pause, PlayCircle, FastForward, DollarSign, Clock, FileText, Droplet, Download, Info } from "lucide-react";
+import { Plus, Search, Calendar, Edit, Trash2, Pause, PlayCircle, FastForward, DollarSign, Clock, FileText, Droplet, Download, Info, ChevronLeft, ChevronRight } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Table,
@@ -51,6 +51,7 @@ export default function PlansPage() {
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("");
+  const [page, setPage] = useState(1);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [selectedPlans, setSelectedPlans] = useState<Set<string>>(new Set());
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
@@ -255,6 +256,13 @@ export default function PlansPage() {
         plan.pool?.client?.name?.toLowerCase().includes(searchQuery.toLowerCase())
       )
     : plans;
+
+  const PAGE_SIZE = 20;
+  const totalPages = Math.max(1, Math.ceil(filteredPlans.length / PAGE_SIZE));
+  const paginatedPlans = useMemo(
+    () => filteredPlans.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
+    [filteredPlans, page]
+  );
 
   const allSelected = filteredPlans.length > 0 && selectedPlans.size === filteredPlans.length;
 
@@ -854,9 +862,9 @@ export default function PlansPage() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm font-medium text-gray-600">Active Plans</p>
-                    <p className="text-2xl font-bold text-orange-600">{metrics.activePlans}</p>
+                    <p className="text-2xl font-bold text-emerald-700">{metrics.activePlans}</p>
                   </div>
-                  <PlayCircle className="h-8 w-8 text-orange-600" />
+                  <PlayCircle className="h-8 w-8 text-emerald-700" />
                 </div>
               </Card>
 
@@ -864,9 +872,9 @@ export default function PlansPage() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm font-medium text-gray-600">Paused Plans</p>
-                    <p className="text-2xl font-bold text-orange-600">{metrics.pausedPlans}</p>
+                    <p className="text-2xl font-bold text-emerald-700">{metrics.pausedPlans}</p>
                   </div>
-                  <Pause className="h-8 w-8 text-orange-400" />
+                  <Pause className="h-8 w-8 text-emerald-400" />
                 </div>
               </Card>
 
@@ -895,7 +903,7 @@ export default function PlansPage() {
         <CardContent>
           {/* Bulk Actions Bar */}
           {selectedPlans.size > 0 && (
-            <div className="flex items-center justify-between p-4 mb-4 bg-orange-50 border border-orange-200 rounded-lg">
+            <div className="flex items-center justify-between p-4 mb-4 bg-emerald-50 border border-emerald-200 rounded-lg">
               <div className="flex items-center gap-2">
                 <span className="text-sm font-medium text-gray-900">
                   {selectedPlans.size} plan{selectedPlans.size !== 1 ? "s" : ""} selected
@@ -960,14 +968,14 @@ export default function PlansPage() {
                 <Input
                   placeholder="Search plans by pool or client name..."
                   value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }}
                   className="pl-10"
                 />
               </div>
             </div>
             <Select
               value={statusFilter || "__all__"}
-              onValueChange={(value) => setStatusFilter(value === "__all__" ? "" : value)}
+              onValueChange={(value) => { setStatusFilter(value === "__all__" ? "" : value); setPage(1); }}
             >
               <SelectTrigger className="w-[200px]">
                 <SelectValue placeholder="Filter by status" />
@@ -1024,7 +1032,7 @@ export default function PlansPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredPlans.map((plan: any) => (
+                  {paginatedPlans.map((plan: any) => (
                     <TableRow
                       key={plan.id}
                       className="cursor-pointer hover:bg-gray-50"
@@ -1102,7 +1110,7 @@ export default function PlansPage() {
                             plan.status === "active"
                               ? "bg-green-100 text-green-700"
                               : plan.status === "paused"
-                              ? "bg-orange-100 text-orange-700"
+                              ? "bg-emerald-100 text-emerald-800"
                               : "bg-gray-100 text-gray-700"
                           }`}
                         >
@@ -1114,6 +1122,21 @@ export default function PlansPage() {
                   ))}
                 </TableBody>
               </Table>
+              {/* Pagination */}
+              <div className="flex items-center justify-between border-t px-4 py-3">
+                <p className="text-sm text-gray-500">
+                  Showing {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, filteredPlans.length)} of {filteredPlans.length} plans
+                </p>
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  <span className="text-sm text-gray-600">Page {page} of {totalPages}</span>
+                  <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
             </div>
           )}
         </CardContent>

@@ -57,7 +57,7 @@ export function TopLoadingBar() {
           g: parseInt(result[2], 16),
           b: parseInt(result[3], 16),
         }
-      : { r: 234, g: 88, b: 12 }; // Fallback to orange
+      : { r: 57, g: 125, b: 84 }; // Fallback to #397d54
   };
 
   const rgb = hexToRgb(themeColor);

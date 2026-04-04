@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Plus, Search, Droplet, MapPin, Edit, Trash2, Eye, Users, Download, Navigation, Loader2 } from "lucide-react";
+import { Plus, Search, Droplet, MapPin, Edit, Trash2, Eye, Users, Download, Navigation, Loader2, ChevronLeft, ChevronRight } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { DashboardAICard } from "@/components/dashboard-ai-card";
 import { useToast } from "@/hooks/use-toast";
@@ -65,6 +65,8 @@ interface Client {
   phone?: string;
 }
 
+const PAGE_SIZE = 20;
+
 export default function PoolsPage() {
   const router = useRouter();
   const { toast } = useToast();
@@ -72,6 +74,7 @@ export default function PoolsPage() {
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
+  const [page, setPage] = useState(1);
   const [selectedClientId, setSelectedClientId] = useState<string>("");
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [selectedPools, setSelectedPools] = useState<Set<string>>(new Set());
@@ -109,7 +112,15 @@ export default function PoolsPage() {
   useEffect(() => {
     fetchPools();
     fetchClients();
+    setPage(1);
   }, [searchQuery, selectedClientId]);
+
+  // Pagination
+  const totalPages = Math.max(1, Math.ceil(pools.length / PAGE_SIZE));
+  const paginatedPools = useMemo(
+    () => pools.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
+    [pools, page]
+  );
 
   // Selection handlers
   const handleSelectAll = (checked: boolean) => {
@@ -975,7 +986,7 @@ export default function PoolsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {pools.map((pool) => (
+                  {paginatedPools.map((pool) => (
                     <TableRow
                       key={pool.id}
                       className="cursor-pointer hover:bg-gray-50"
@@ -1060,6 +1071,21 @@ export default function PoolsPage() {
                   ))}
                 </TableBody>
               </Table>
+              {/* Pagination */}
+              <div className="flex items-center justify-between border-t px-4 py-3">
+                <p className="text-sm text-gray-500">
+                  Showing {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, pools.length)} of {pools.length} pools
+                </p>
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  <span className="text-sm text-gray-600">Page {page} of {totalPages}</span>
+                  <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
             </div>
           )}
         </CardContent>

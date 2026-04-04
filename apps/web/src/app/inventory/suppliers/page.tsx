@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,6 +13,8 @@ import {
   Phone,
   Mail,
   MapPin,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import {
   Table,
@@ -64,6 +66,7 @@ export default function SuppliersPage() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [page, setPage] = useState(1);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null);
   const [formData, setFormData] = useState({
@@ -245,6 +248,13 @@ export default function SuppliersPage() {
     );
   });
 
+  const PAGE_SIZE = 20;
+  const totalPages = Math.max(1, Math.ceil(filteredSuppliers.length / PAGE_SIZE));
+  const paginatedSuppliers = useMemo(
+    () => filteredSuppliers.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
+    [filteredSuppliers, page]
+  );
+
   // Stats
   const totalSuppliers = suppliers.length;
   const activeSuppliers = suppliers.filter((s) => s.status === "ACTIVE").length;
@@ -316,7 +326,7 @@ export default function SuppliersPage() {
                 <Input
                   placeholder="Search suppliers..."
                   value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }}
                   className="pl-10"
                 />
               </div>
@@ -347,6 +357,7 @@ export default function SuppliersPage() {
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-600"></div>
             </div>
           ) : (
+            <>
             <Table>
               <TableHeader>
                 <TableRow>
@@ -359,7 +370,7 @@ export default function SuppliersPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredSuppliers.map((supplier) => (
+                {paginatedSuppliers.map((supplier) => (
                   <TableRow key={supplier.id}>
                     <TableCell>
                       <div className="flex items-center gap-3">
@@ -444,6 +455,22 @@ export default function SuppliersPage() {
                 )}
               </TableBody>
             </Table>
+            {/* Pagination */}
+            <div className="flex items-center justify-between border-t px-4 py-3">
+              <p className="text-sm text-gray-500">
+                Showing {(page - 1) * PAGE_SIZE + 1} - {Math.min(page * PAGE_SIZE, filteredSuppliers.length)} of {filteredSuppliers.length} suppliers
+              </p>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <span className="text-sm text-gray-600">Page {page} of {totalPages}</span>
+                <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+            </>
           )}
         </CardContent>
       </Card>

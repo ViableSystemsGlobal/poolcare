@@ -60,9 +60,9 @@ async function main() {
   });
 
   await prisma.orgMember.upsert({
-    where: { orgId_userId: { orgId: org.id, userId: clientUser.id } },
+    where: { orgId_userId_role: { orgId: org.id, userId: clientUser.id, role: "CLIENT" } },
     create: { orgId: org.id, userId: clientUser.id, role: "CLIENT" },
-    update: { role: "CLIENT" },
+    update: {},
   });
 
   const existingClientRecord = await prisma.client.findFirst({
@@ -268,9 +268,9 @@ async function main() {
   });
 
   await prisma.orgMember.upsert({
-    where: { orgId_userId: { orgId: org.id, userId: carerUser.id } },
+    where: { orgId_userId_role: { orgId: org.id, userId: carerUser.id, role: "CARER" } },
     create: { orgId: org.id, userId: carerUser.id, role: "CARER" },
-    update: { role: "CARER" },
+    update: {},
   });
 
   const carerRecord = await prisma.carer.upsert({

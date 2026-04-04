@@ -102,7 +102,8 @@ export class InvoicesService {
           totalCents: totals.totalCents,
           dueDate: dto.dueDate ? new Date(dto.dueDate) : null,
           notes: dto.notes,
-          status: "draft",
+          status: dto.quoteId ? "sent" : "draft",
+          issuedAt: dto.quoteId ? new Date() : null,
         },
         include: {
           client: true,

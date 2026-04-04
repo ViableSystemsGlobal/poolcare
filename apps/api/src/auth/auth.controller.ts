@@ -1,12 +1,20 @@
-import { Body, Controller, Post, HttpCode, HttpStatus, NotFoundException } from "@nestjs/common";
+import { Body, Controller, Post, Patch, HttpCode, HttpStatus, NotFoundException, UseGuards, UploadedFile, UseInterceptors, ParseFilePipe, MaxFileSizeValidator, FileTypeValidator } from "@nestjs/common";
+import { FileInterceptor } from "@nestjs/platform-express";
 import { Throttle } from "@nestjs/throttler";
 import { AuthService, devOtpStore } from "./auth.service";
 import { OtpRequestDto, OtpVerifyDto } from "./dto";
 import { Public } from "./decorators/public.decorator";
+import { CurrentUser } from "./decorators/current-user.decorator";
+import { JwtAuthGuard } from "./guards/jwt-auth.guard";
+import { FilesService } from "../files/files.service";
+import { prisma } from "@poolcare/db";
 
 @Controller("auth")
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly filesService: FilesService,
+  ) {}
 
   @Public()
   @Throttle({ short: { ttl: 60000, limit: 5 } }) // max 5 OTP requests per minute per IP
@@ -25,6 +33,7 @@ export class AuthController {
   }
 
   @Public()
+  @Throttle({ short: { ttl: 60000, limit: 10 } })
   @Post("otp/verify")
   async verifyOtp(@Body() dto: OtpVerifyDto) {
     console.log('[AuthController] Received OTP verify request:', { channel: dto.channel, target: dto.target, codeLength: dto.code?.length });
@@ -64,6 +73,50 @@ export class AuthController {
     }
 
     return { exists: true, code: stored.code, expiresAt: stored.expiresAt };
+  }
+
+  @Patch("profile")
+  @UseGuards(JwtAuthGuard)
+  async updateProfile(
+    @CurrentUser() user: { sub: string },
+    @Body() body: { name?: string; email?: string; phone?: string },
+  ) {
+    const data: any = {};
+    if (body.name !== undefined) data.name = body.name || null;
+    if (body.email !== undefined) data.email = body.email?.trim() || null;
+    if (body.phone !== undefined) data.phone = body.phone?.trim() || null;
+
+    const updated = await prisma.user.update({
+      where: { id: user.sub },
+      data,
+      select: { id: true, name: true, email: true, phone: true },
+    });
+    return updated;
+  }
+
+  @Post("profile/avatar")
+  @UseGuards(JwtAuthGuard)
+  @UseInterceptors(FileInterceptor("avatar"))
+  async uploadAvatar(
+    @CurrentUser() user: { sub: string; org_id: string },
+    @UploadedFile(
+      new ParseFilePipe({
+        validators: [
+          new MaxFileSizeValidator({ maxSize: 2 * 1024 * 1024 }),
+          new FileTypeValidator({ fileType: /(jpeg|jpg|png|webp)$/i }),
+        ],
+      }),
+    )
+    file: Express.Multer.File,
+  ) {
+    const url = await this.filesService.uploadImage(user.org_id, file, "user_avatar", user.sub);
+
+    await prisma.user.update({
+      where: { id: user.sub },
+      data: { imageUrl: url },
+    });
+
+    return { imageUrl: url };
   }
 }
 

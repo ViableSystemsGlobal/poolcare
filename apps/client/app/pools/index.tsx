@@ -7,10 +7,10 @@ import {
   StyleSheet,
   RefreshControl,
   FlatList,
-  Image,
   ActivityIndicator,
   Dimensions,
 } from "react-native";
+import { Image } from "expo-image";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -172,7 +172,8 @@ export default function PoolsListScreen() {
           <Image
             source={{ uri: poolImage }}
             style={StyleSheet.absoluteFillObject}
-            resizeMode="cover"
+            contentFit="cover"
+            cachePolicy="disk"
           />
         ) : (
           <View

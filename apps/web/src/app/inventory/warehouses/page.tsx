@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,6 +16,8 @@ import {
   Upload,
   X,
   Image as ImageIcon,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -60,6 +62,7 @@ export default function WarehousesPage() {
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
+  const [page, setPage] = useState(1);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [editingWarehouse, setEditingWarehouse] = useState<Warehouse | null>(null);
   const [formData, setFormData] = useState({
@@ -351,6 +354,13 @@ export default function WarehousesPage() {
     );
   });
 
+  const PAGE_SIZE = 20;
+  const totalPages = Math.max(1, Math.ceil(filteredWarehouses.length / PAGE_SIZE));
+  const paginatedWarehouses = useMemo(
+    () => filteredWarehouses.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
+    [filteredWarehouses, page]
+  );
+
   // Stats
   const totalWarehouses = warehouses.length;
   const activeWarehouses = warehouses.filter((w) => w.isActive).length;
@@ -420,7 +430,7 @@ export default function WarehousesPage() {
             <Input
               placeholder="Search warehouses..."
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }}
               className="pl-10"
             />
           </div>
@@ -439,6 +449,7 @@ export default function WarehousesPage() {
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-600"></div>
             </div>
           ) : (
+            <>
             <Table>
               <TableHeader>
                 <TableRow>
@@ -450,7 +461,7 @@ export default function WarehousesPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredWarehouses.map((warehouse) => (
+                {paginatedWarehouses.map((warehouse) => (
                   <TableRow key={warehouse.id}>
                     <TableCell>
                       <div className="flex items-center gap-3">
@@ -534,6 +545,22 @@ export default function WarehousesPage() {
                 )}
               </TableBody>
             </Table>
+            {/* Pagination */}
+            <div className="flex items-center justify-between border-t px-4 py-3">
+              <p className="text-sm text-gray-500">
+                Showing {(page - 1) * PAGE_SIZE + 1} - {Math.min(page * PAGE_SIZE, filteredWarehouses.length)} of {filteredWarehouses.length} warehouses
+              </p>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <span className="text-sm text-gray-600">Page {page} of {totalPages}</span>
+                <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+            </>
           )}
         </CardContent>
       </Card>

@@ -9,7 +9,14 @@ import Loader from "../src/components/Loader";
 import BottomNav from "../src/components/BottomNav";
 import { api } from "../src/lib/api-client";
 import { fixUrlForMobile } from "../src/lib/network-utils";
-import { getCachedLogoUrl, setCachedLogoUrl } from "../src/lib/logo-cache";
+import {
+  getCachedLogoUrl,
+  setCachedLogoUrl,
+  getCachedSplashImage,
+  setCachedSplashImage,
+  getCachedSplashBgColor,
+  setCachedSplashBgColor,
+} from "../src/lib/logo-cache";
 
 // Show notifications even when the app is in the foreground
 Notifications.setNotificationHandler({
@@ -28,15 +35,26 @@ SplashScreen.preventAutoHideAsync();
 export default function RootLayout() {
   const [appIsReady, setAppIsReady] = useState(false);
   const [loaderLogoUrl, setLoaderLogoUrl] = useState<string | null>(null);
+  const [splashImageUrl, setSplashImageUrl] = useState<string | null>(null);
+  const [splashBgColor, setSplashBgColor] = useState<string | null>(null);
 
   useEffect(() => {
     async function prepare() {
       try {
-        // 1. Read cached logo URL immediately (no network call)
-        const cached = await getCachedLogoUrl();
+        // 1. Read all cached values immediately (no network call)
+        const [cached, cachedSplash, cachedBg] = await Promise.all([
+          getCachedLogoUrl(),
+          getCachedSplashImage(),
+          getCachedSplashBgColor(),
+        ]);
 
-        // 2. Fetch fresh logo from API (3s timeout so we don't hang forever)
-        let rawUrl: string | null = null;
+        if (cachedSplash) setSplashImageUrl(fixUrlForMobile(cachedSplash));
+        if (cachedBg) setSplashBgColor(cachedBg);
+
+        // 2. Fetch fresh settings from API (3s timeout so we don't hang forever)
+        let rawLogoUrl: string | null = null;
+        let rawSplashUrl: string | null = null;
+        let rawSplashBg: string | null = null;
         try {
           const token = await api.getAuthToken();
           if (token) {
@@ -44,23 +62,31 @@ export default function RootLayout() {
               api.getOrgSettings(),
               new Promise<null>((r) => setTimeout(() => r(null), 3000)),
             ]) as any;
-            rawUrl = settings?.profile?.loaderLogoUrl || settings?.profile?.logoUrl || null;
+            rawLogoUrl = settings?.profile?.loaderLogoUrl || settings?.profile?.logoUrl || null;
+            rawSplashUrl = settings?.profile?.splashImageUrl || null;
+            rawSplashBg = settings?.profile?.splashBackgroundColor || null;
           }
         } catch {}
 
-        // 3. Use fresh URL if we got one, otherwise fall back to cache
-        const urlToShow = rawUrl
-          ? fixUrlForMobile(rawUrl)
+        // 3. Use fresh values if we got them, otherwise fall back to cache
+        const logoToShow = rawLogoUrl
+          ? fixUrlForMobile(rawLogoUrl)
           : cached
           ? fixUrlForMobile(cached)
           : null;
+        const splashToShow = rawSplashUrl ? fixUrlForMobile(rawSplashUrl) : cachedSplash ? fixUrlForMobile(cachedSplash) : null;
+        const bgToShow = rawSplashBg ?? cachedBg;
 
-        if (urlToShow) setLoaderLogoUrl(urlToShow);
+        if (logoToShow) setLoaderLogoUrl(logoToShow);
+        if (splashToShow) setSplashImageUrl(splashToShow);
+        if (bgToShow) setSplashBgColor(bgToShow);
 
-        // 4. Persist fresh URL for next launch
-        if (rawUrl) await setCachedLogoUrl(rawUrl);
+        // 4. Persist fresh values for next launch
+        if (rawLogoUrl) await setCachedLogoUrl(rawLogoUrl);
+        await setCachedSplashImage(rawSplashUrl);
+        await setCachedSplashBgColor(rawSplashBg);
 
-        // 5. NOW hide native splash — our Loader is already rendered with the logo
+        // 5. NOW hide native splash — our Loader is already rendered
         await SplashScreen.hideAsync();
       } catch (e) {
         console.warn(e);
@@ -78,7 +104,7 @@ export default function RootLayout() {
   if (!appIsReady) {
     return (
       <ThemeProvider>
-        <Loader logoUrl={loaderLogoUrl} />
+        <Loader logoUrl={loaderLogoUrl} splashImageUrl={splashImageUrl} splashBgColor={splashBgColor} />
       </ThemeProvider>
     );
   }
@@ -92,8 +118,15 @@ export default function RootLayout() {
 
 function LayoutInner() {
   const pathname = usePathname();
-  const showNav = TAB_ROUTES.includes(pathname);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const notificationResponseListener = useRef<Notifications.EventSubscription>();
+
+  // Re-check auth whenever the route changes so BottomNav appears/disappears correctly
+  useEffect(() => {
+    api.getAuthToken().then((token) => setIsAuthenticated(!!token));
+  }, [pathname]);
+
+  const showNav = TAB_ROUTES.includes(pathname) && isAuthenticated;
 
   useEffect(() => {
     const onBack = () => {

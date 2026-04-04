@@ -311,20 +311,45 @@ export class FilesService {
     return { success: true };
   }
 
+  /**
+   * Upload a media file (image or video). Allows image and video mimetypes up to 10MB.
+   */
+  async uploadMedia(orgId: string, file: Express.Multer.File, scope: string, refId: string): Promise<string> {
+    const mediaTypes = [
+      "image/jpeg", "image/png", "image/webp", "image/gif",
+      "video/mp4", "video/webm",
+    ];
+    if (!mediaTypes.includes(file.mimetype)) {
+      throw new BadRequestException(`File type ${file.mimetype} not allowed. Allowed types: ${mediaTypes.join(", ")}`);
+    }
+    const maxSize = 10 * 1024 * 1024; // 10MB
+    if (file.size > maxSize) {
+      throw new BadRequestException(`File size ${file.size} exceeds maximum allowed size of ${maxSize} bytes`);
+    }
+    return this._storeFile(orgId, file, scope, refId);
+  }
+
   async uploadImage(orgId: string, file: Express.Multer.File, scope: string, refId: string): Promise<string> {
+    // Validate file type
+    const allowedTypes = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+    if (!allowedTypes.includes(file.mimetype)) {
+      throw new BadRequestException(`File type ${file.mimetype} not allowed. Allowed types: ${allowedTypes.join(", ")}`);
+    }
+
+    // Validate file size (max 5MB)
+    const maxSize = 5 * 1024 * 1024; // 5MB
+    if (file.size > maxSize) {
+      throw new BadRequestException(`File size ${file.size} exceeds maximum allowed size of ${maxSize} bytes`);
+    }
+
+    return this._storeFile(orgId, file, scope, refId);
+  }
+
+  /**
+   * Core storage logic shared by uploadImage and uploadMedia.
+   */
+  private async _storeFile(orgId: string, file: Express.Multer.File, scope: string, refId: string): Promise<string> {
     try {
-      // Validate file type
-      const allowedTypes = ["image/jpeg", "image/png", "image/webp", "image/gif"];
-      if (!allowedTypes.includes(file.mimetype)) {
-        throw new BadRequestException(`File type ${file.mimetype} not allowed. Allowed types: ${allowedTypes.join(", ")}`);
-      }
-
-      // Validate file size (max 5MB)
-      const maxSize = 5 * 1024 * 1024; // 5MB
-      if (file.size > maxSize) {
-        throw new BadRequestException(`File size ${file.size} exceeds maximum allowed size of ${maxSize} bytes`);
-      }
-
       // Generate storage key
       const fileId = uuidv4();
       const ext = file.originalname.split(".").pop() || file.mimetype.split("/")[1];
@@ -374,7 +399,7 @@ export class FilesService {
         message: error.message,
         stack: error.stack,
       });
-      
+
       // Provide more specific error messages
       if (error.code === "ECONNREFUSED" || error.message?.includes("connect") || error.message?.includes("ECONNREFUSED") || error.code === "ENOTFOUND") {
         throw new BadRequestException(
@@ -387,7 +412,7 @@ export class FilesService {
         throw error;
       }
       const errorMsg = error.message || error.toString();
-      throw new BadRequestException(`Failed to upload image: ${errorMsg}`);
+      throw new BadRequestException(`Failed to upload file: ${errorMsg}`);
     }
   }
 

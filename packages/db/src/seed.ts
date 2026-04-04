@@ -30,9 +30,10 @@ async function main() {
   // Create org member (admin)
   await prisma.orgMember.upsert({
     where: {
-      orgId_userId: {
+      orgId_userId_role: {
         orgId: org.id,
         userId: adminUser.id,
+        role: "ADMIN",
       },
     },
     update: {},

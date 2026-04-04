@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Package, Search, CheckCircle, XCircle, Clock, AlertCircle } from "lucide-react";
+import { Package, Search, CheckCircle, XCircle, Clock, AlertCircle, ChevronLeft, ChevronRight } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -72,7 +72,7 @@ const statusColors: Record<string, string> = {
 const priorityColors: Record<string, string> = {
   low: "bg-gray-100 text-gray-800",
   normal: "bg-blue-100 text-blue-800",
-  high: "bg-orange-100 text-orange-800",
+  high: "bg-emerald-100 text-emerald-900",
   urgent: "bg-red-100 text-red-800",
 };
 
@@ -81,6 +81,7 @@ export default function SuppliesPage() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [page, setPage] = useState(1);
   const [selectedRequest, setSelectedRequest] = useState<SupplyRequest | null>(null);
   const [actionDialogOpen, setActionDialogOpen] = useState(false);
   const [actionType, setActionType] = useState<"approve" | "fulfill" | "reject">("approve");
@@ -174,6 +175,13 @@ export default function SuppliesPage() {
     return matchesSearch;
   });
 
+  const PAGE_SIZE = 20;
+  const totalPages = Math.max(1, Math.ceil(filteredRequests.length / PAGE_SIZE));
+  const paginatedRequests = useMemo(
+    () => filteredRequests.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
+    [filteredRequests, page]
+  );
+
   const getStatusIcon = (status: string) => {
     switch (status) {
       case "pending":
@@ -211,7 +219,7 @@ export default function SuppliesPage() {
                 <Input
                   placeholder="Search..."
                   value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
+                  onChange={(e) => { setSearchTerm(e.target.value); setPage(1); }}
                   className="pl-10"
                 />
               </div>
@@ -236,6 +244,7 @@ export default function SuppliesPage() {
           ) : filteredRequests.length === 0 ? (
             <div className="text-center py-8 text-gray-500">No supply requests found</div>
           ) : (
+            <>
             <Table>
               <TableHeader>
                 <TableRow>
@@ -248,7 +257,7 @@ export default function SuppliesPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredRequests.map((request) => (
+                {paginatedRequests.map((request) => (
                   <TableRow key={request.id}>
                     <TableCell>
                       <div>
@@ -320,6 +329,22 @@ export default function SuppliesPage() {
                 ))}
               </TableBody>
             </Table>
+            {/* Pagination */}
+            <div className="flex items-center justify-between border-t px-4 py-3">
+              <p className="text-sm text-gray-500">
+                Showing {(page - 1) * PAGE_SIZE + 1} - {Math.min(page * PAGE_SIZE, filteredRequests.length)} of {filteredRequests.length} requests
+              </p>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <span className="text-sm text-gray-600">Page {page} of {totalPages}</span>
+                <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+            </>
           )}
         </CardContent>
       </Card>

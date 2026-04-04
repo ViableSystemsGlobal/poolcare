@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Plus, Search, FileText, Edit, Trash2, Eye, Download, ClipboardList, Clock, AlertCircle } from "lucide-react";
+import { Plus, Search, FileText, Edit, Trash2, Eye, Download, ClipboardList, Clock, AlertCircle, ChevronLeft, ChevronRight } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Table,
@@ -66,6 +66,7 @@ export default function VisitTemplatesPage() {
   const [templates, setTemplates] = useState<VisitTemplate[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
+  const [page, setPage] = useState(1);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [selectedTemplates, setSelectedTemplates] = useState<Set<string>>(new Set());
   const [editingTemplate, setEditingTemplate] = useState<VisitTemplate | null>(null);
@@ -164,6 +165,13 @@ export default function VisitTemplatesPage() {
         template.name.toLowerCase().includes(searchQuery.toLowerCase())
       )
     : templates;
+
+  const PAGE_SIZE = 20;
+  const totalPages = Math.max(1, Math.ceil(filteredTemplates.length / PAGE_SIZE));
+  const paginatedTemplates = useMemo(
+    () => filteredTemplates.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
+    [filteredTemplates, page]
+  );
 
   const allSelected = filteredTemplates.length > 0 && selectedTemplates.size === filteredTemplates.length;
 
@@ -639,7 +647,7 @@ export default function VisitTemplatesPage() {
         <CardContent>
           {/* Bulk Actions Bar */}
           {selectedTemplates.size > 0 && (
-            <div className="flex items-center justify-between p-4 mb-4 bg-orange-50 border border-orange-200 rounded-lg">
+            <div className="flex items-center justify-between p-4 mb-4 bg-emerald-50 border border-emerald-200 rounded-lg">
               <div className="flex items-center gap-2">
                 <span className="text-sm font-medium text-gray-900">
                   {selectedTemplates.size} template{selectedTemplates.size !== 1 ? "s" : ""} selected
@@ -672,7 +680,7 @@ export default function VisitTemplatesPage() {
               <Input
                 placeholder="Search templates by name..."
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }}
                 className="pl-10"
               />
             </div>
@@ -717,7 +725,7 @@ export default function VisitTemplatesPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredTemplates.map((template) => (
+                  {paginatedTemplates.map((template) => (
                     <TableRow
                       key={template.id}
                       className="cursor-pointer hover:bg-gray-50"
@@ -789,6 +797,21 @@ export default function VisitTemplatesPage() {
                   ))}
                 </TableBody>
               </Table>
+              {/* Pagination */}
+              <div className="flex items-center justify-between border-t px-4 py-3">
+                <p className="text-sm text-gray-500">
+                  Showing {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, filteredTemplates.length)} of {filteredTemplates.length} templates
+                </p>
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  <span className="text-sm text-gray-600">Page {page} of {totalPages}</span>
+                  <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
             </div>
           )}
         </CardContent>

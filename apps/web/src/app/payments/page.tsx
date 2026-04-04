@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { DollarSign, Search, Filter, Download, Eye, CheckCircle, Clock, XCircle, Receipt } from "lucide-react";
+import { DollarSign, Search, Filter, Download, Eye, CheckCircle, Clock, XCircle, Receipt, ChevronLeft, ChevronRight } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { DashboardAICard } from "@/components/dashboard-ai-card";
 import {
@@ -56,6 +56,7 @@ export default function PaymentsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string | undefined>(undefined);
   const [methodFilter, setMethodFilter] = useState<string | undefined>(undefined);
+  const [page, setPage] = useState(1);
   const [selectedPayments, setSelectedPayments] = useState<Set<string>>(new Set());
 
   const [metrics, setMetrics] = useState({
@@ -152,6 +153,13 @@ export default function PaymentsPage() {
       payment.providerRef?.toLowerCase().includes(searchQuery.toLowerCase());
     return matchesSearch;
   });
+
+  const PAGE_SIZE = 20;
+  const totalPages = Math.max(1, Math.ceil(filteredPayments.length / PAGE_SIZE));
+  const paginatedPayments = useMemo(
+    () => filteredPayments.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
+    [filteredPayments, page]
+  );
 
   const allSelected = filteredPayments.length > 0 && selectedPayments.size === filteredPayments.length;
 
@@ -275,11 +283,11 @@ export default function PaymentsPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-600">Total Collected</p>
-                <p className="text-2xl font-bold text-orange-600">
+                <p className="text-2xl font-bold text-emerald-700">
                   {formatCurrency(metrics.totalAmount, "GHS")}
                 </p>
               </div>
-              <DollarSign className="h-8 w-8 text-orange-400" />
+              <DollarSign className="h-8 w-8 text-emerald-400" />
             </div>
           </Card>
 
@@ -319,7 +327,7 @@ export default function PaymentsPage() {
                 <Input
                   placeholder="Search by invoice number, client, or reference..."
                   value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }}
                   className="pl-10"
                 />
               </div>
@@ -408,7 +416,7 @@ export default function PaymentsPage() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filteredPayments.map((payment) => (
+                  paginatedPayments.map((payment) => (
                     <TableRow
                       key={payment.id}
                       className="cursor-pointer hover:bg-gray-50"
@@ -467,6 +475,21 @@ export default function PaymentsPage() {
                 )}
               </TableBody>
             </Table>
+            {/* Pagination */}
+            <div className="flex items-center justify-between border-t px-4 py-3">
+              <p className="text-sm text-gray-500">
+                Showing {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, filteredPayments.length)} of {filteredPayments.length} payments
+              </p>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <span className="text-sm text-gray-600">Page {page} of {totalPages}</span>
+                <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
           </div>
         </CardContent>
       </Card>

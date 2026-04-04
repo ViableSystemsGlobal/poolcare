@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Plus, Search, AlertTriangle, Edit, Trash2, Eye, CheckCircle, XCircle, FileText, Download, Image } from "lucide-react";
+import { Plus, Search, AlertTriangle, Edit, Trash2, Eye, CheckCircle, XCircle, FileText, Download, Image, ChevronLeft, ChevronRight } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -86,6 +86,7 @@ export default function IssuesPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("");
   const [severityFilter, setSeverityFilter] = useState<string>("");
+  const [page, setPage] = useState(1);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [selectedIssues, setSelectedIssues] = useState<Set<string>>(new Set());
   const [editingIssue, setEditingIssue] = useState<Issue | null>(null);
@@ -193,6 +194,13 @@ export default function IssuesPage() {
         issue.pool?.client?.name?.toLowerCase().includes(searchQuery.toLowerCase())
       )
     : issues;
+
+  const PAGE_SIZE = 20;
+  const totalPages = Math.max(1, Math.ceil(filteredIssues.length / PAGE_SIZE));
+  const paginatedIssues = useMemo(
+    () => filteredIssues.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
+    [filteredIssues, page]
+  );
 
   const allSelected = filteredIssues.length > 0 && selectedIssues.size === filteredIssues.length;
 
@@ -360,7 +368,7 @@ export default function IssuesPage() {
       case "critical":
         return "bg-red-100 text-red-700";
       case "high":
-        return "bg-orange-100 text-orange-700";
+        return "bg-emerald-100 text-emerald-800";
       case "medium":
         return "bg-yellow-100 text-yellow-700";
       case "low":
@@ -531,7 +539,7 @@ export default function IssuesPage() {
         <CardContent>
           {/* Bulk Actions Bar */}
           {selectedIssues.size > 0 && (
-            <div className="flex items-center justify-between p-4 mb-4 bg-orange-50 border border-orange-200 rounded-lg">
+            <div className="flex items-center justify-between p-4 mb-4 bg-emerald-50 border border-emerald-200 rounded-lg">
               <div className="flex items-center gap-2">
                 <span className="text-sm font-medium text-gray-900">
                   {selectedIssues.size} issue{selectedIssues.size !== 1 ? "s" : ""} selected
@@ -565,7 +573,7 @@ export default function IssuesPage() {
                 <Input
                   placeholder="Search issues by type, description, pool, or client..."
                   value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }}
                   className="pl-10"
                 />
               </div>
@@ -644,7 +652,7 @@ export default function IssuesPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredIssues.map((issue) => (
+                  {paginatedIssues.map((issue) => (
                     <TableRow
                       key={issue.id}
                       className="cursor-pointer hover:bg-gray-50"
@@ -699,7 +707,7 @@ export default function IssuesPage() {
                             </span>
                           </div>
                         ) : issue.requiresQuote ? (
-                          <span className="text-sm text-orange-600">Needs Quote</span>
+                          <span className="text-sm text-emerald-700">Needs Quote</span>
                         ) : (
                           <span className="text-sm text-gray-400">N/A</span>
                         )}
@@ -734,7 +742,7 @@ export default function IssuesPage() {
                               size="sm"
                               onClick={() => router.push(`/quotes?issueId=${issue.id}`)}
                               title="Create quote"
-                              className="text-orange-600"
+                              className="text-emerald-700"
                             >
                               <FileText className="h-4 w-4" />
                             </Button>
@@ -745,6 +753,21 @@ export default function IssuesPage() {
                   ))}
                 </TableBody>
               </Table>
+              {/* Pagination */}
+              <div className="flex items-center justify-between border-t px-4 py-3">
+                <p className="text-sm text-gray-500">
+                  Showing {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, filteredIssues.length)} of {filteredIssues.length} issues
+                </p>
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  <span className="text-sm text-gray-600">Page {page} of {totalPages}</span>
+                  <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
             </div>
           )}
         </CardContent>

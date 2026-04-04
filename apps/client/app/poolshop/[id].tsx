@@ -14,7 +14,8 @@ export default function PoolShopProductScreen() {
 
   useEffect(() => {
     if (!id) return;
-    api.getProduct(id)
+    // Use public endpoint so guests can view product details without logging in
+    api.getPublicProduct(id)
       .then((p) => {
         setProduct(p);
         setError(null);
@@ -42,7 +43,20 @@ export default function PoolShopProductScreen() {
     setPoolShopCart(next);
     Alert.alert("Added to Cart", `${product.name} × ${quantity} added.`, [
       { text: "Continue Shopping", onPress: () => router.back() },
-      { text: "Checkout", onPress: () => router.push("/poolshop/checkout") },
+      {
+        text: "Checkout",
+        onPress: async () => {
+          const token = await api.getAuthToken();
+          if (!token) {
+            Alert.alert("Sign in required", "Please sign in to complete your order.", [
+              { text: "Cancel", style: "cancel" },
+              { text: "Sign In", onPress: () => router.push("/(auth)/login") },
+            ]);
+          } else {
+            router.push("/poolshop/checkout");
+          }
+        },
+      },
     ]);
   };
 

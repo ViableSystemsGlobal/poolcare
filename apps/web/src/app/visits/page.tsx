@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Plus, Search, ClipboardCheck, Edit, Trash2, Eye, CheckCircle, Clock, Calendar, Download, XCircle } from "lucide-react";
+import { Plus, Search, ClipboardCheck, Edit, Trash2, Eye, CheckCircle, Clock, Calendar, Download, XCircle, ChevronLeft, ChevronRight } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Table,
@@ -78,6 +78,7 @@ export default function VisitsPage() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("");
+  const [page, setPage] = useState(1);
   const [selectedVisits, setSelectedVisits] = useState<Set<string>>(new Set());
 
   // Metrics state
@@ -382,6 +383,13 @@ export default function VisitsPage() {
       )
     : visits;
 
+  const PAGE_SIZE = 20;
+  const totalPages = Math.max(1, Math.ceil(filteredVisits.length / PAGE_SIZE));
+  const paginatedVisits = useMemo(
+    () => filteredVisits.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
+    [filteredVisits, page]
+  );
+
   const allSelected = filteredVisits.length > 0 && selectedVisits.size === filteredVisits.length;
 
   return (
@@ -472,7 +480,7 @@ export default function VisitsPage() {
         <CardContent>
           {/* Bulk Actions Bar */}
           {selectedVisits.size > 0 && (
-            <div className="flex items-center justify-between p-4 mb-4 bg-orange-50 border border-orange-200 rounded-lg">
+            <div className="flex items-center justify-between p-4 mb-4 bg-emerald-50 border border-emerald-200 rounded-lg">
               <div className="flex items-center gap-2">
                 <span className="text-sm font-medium text-gray-900">
                   {selectedVisits.size} visit{selectedVisits.size !== 1 ? "s" : ""} selected
@@ -506,7 +514,7 @@ export default function VisitsPage() {
                 <Input
                   placeholder="Search visits by pool, client, or address..."
                   value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }}
                   className="pl-10"
                 />
               </div>
@@ -563,7 +571,7 @@ export default function VisitsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredVisits.map((visit) => (
+                  {paginatedVisits.map((visit) => (
                     <TableRow
                       key={visit.id}
                       className="cursor-pointer hover:bg-gray-50"
@@ -649,6 +657,21 @@ export default function VisitsPage() {
                   ))}
                 </TableBody>
               </Table>
+              {/* Pagination */}
+              <div className="flex items-center justify-between border-t px-4 py-3">
+                <p className="text-sm text-gray-500">
+                  Showing {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, filteredVisits.length)} of {filteredVisits.length} visits
+                </p>
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  <span className="text-sm text-gray-600">Page {page} of {totalPages}</span>
+                  <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
             </div>
           )}
         </CardContent>

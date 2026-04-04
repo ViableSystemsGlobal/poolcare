@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Query, UseGuards, Headers } from "@nestjs/common";
+import { Controller, Get, Post, Query, UseGuards, Headers, UnauthorizedException } from "@nestjs/common";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { RolesGuard } from "../auth/guards/roles.guard";
 import { Roles } from "../auth/decorators/roles.decorator";
@@ -51,7 +51,7 @@ export class BillingController {
     // Verify cron secret if set
     const expectedSecret = process.env.CRON_SECRET;
     if (expectedSecret && secret !== expectedSecret) {
-      return { error: "Unauthorized", status: 401 };
+      throw new UnauthorizedException();
     }
 
     return this.billingService.processMonthlyBilling(orgId);

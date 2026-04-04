@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Receipt, Search, Download, Eye, FileText, CheckCircle } from "lucide-react";
+import { Receipt, Search, Download, Eye, FileText, CheckCircle, ChevronLeft, ChevronRight } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { DashboardAICard } from "@/components/dashboard-ai-card";
 import { useToast } from "@/hooks/use-toast";
@@ -52,6 +52,7 @@ export default function ReceiptsPage() {
   const [receipts, setReceipts] = useState<ReceiptData[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
+  const [page, setPage] = useState(1);
   const [selectedReceipts, setSelectedReceipts] = useState<Set<string>>(new Set());
 
   const [metrics, setMetrics] = useState({
@@ -135,6 +136,13 @@ export default function ReceiptsPage() {
     }
     return true;
   });
+
+  const PAGE_SIZE = 20;
+  const totalPages = Math.max(1, Math.ceil(filteredReceipts.length / PAGE_SIZE));
+  const paginatedReceipts = useMemo(
+    () => filteredReceipts.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
+    [filteredReceipts, page]
+  );
 
   const handleSelectAll = () => {
     if (selectedReceipts.size === filteredReceipts.length) {
@@ -324,7 +332,7 @@ export default function ReceiptsPage() {
                   variant="outline"
                   size="sm"
                   onClick={handleBulkDownload}
-                  className="border-orange-600 text-orange-600 hover:bg-orange-50"
+                  className="border-emerald-700 text-emerald-700 hover:bg-emerald-50"
                 >
                   <Download className="h-4 w-4 mr-2" />
                   Download
@@ -354,7 +362,7 @@ export default function ReceiptsPage() {
             <Button
               variant="outline"
               onClick={() => fetchReceipts()}
-              className="border-orange-600 text-orange-600 hover:bg-orange-50"
+              className="border-emerald-700 text-emerald-700 hover:bg-emerald-50"
             >
               <Download className="h-4 w-4 mr-2" />
               Export CSV
@@ -368,7 +376,7 @@ export default function ReceiptsPage() {
               <Input
                 placeholder="Search by receipt number, invoice, or client..."
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }}
                 className="pl-10"
               />
             </div>
@@ -379,6 +387,7 @@ export default function ReceiptsPage() {
           ) : filteredReceipts.length === 0 ? (
             <div className="text-center py-8 text-gray-500">No receipts found</div>
           ) : (
+            <>
             <Table>
               <TableHeader>
                 <TableRow>
@@ -398,7 +407,7 @@ export default function ReceiptsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredReceipts.map((receipt) => (
+                {paginatedReceipts.map((receipt) => (
                   <TableRow
                     key={receipt.id}
                     className="cursor-pointer hover:bg-gray-50"
@@ -450,6 +459,22 @@ export default function ReceiptsPage() {
                 ))}
               </TableBody>
             </Table>
+            {/* Pagination */}
+            <div className="flex items-center justify-between border-t px-4 py-3">
+              <p className="text-sm text-gray-500">
+                Showing {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, filteredReceipts.length)} of {filteredReceipts.length} receipts
+              </p>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <span className="text-sm text-gray-600">Page {page} of {totalPages}</span>
+                <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+            </>
           )}
         </CardContent>
       </Card>

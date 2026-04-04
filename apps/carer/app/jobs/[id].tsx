@@ -218,37 +218,61 @@ export default function JobDetailScreen() {
     };
   }, [poolLocation, arrived, job?.status]);
 
+  // Default wizard checklist items (used when no visit template is assigned)
+  const getDefaultWizardItems = (): WizardChecklistItem[] => [
+    // BEFORE PHOTOS - First thing to do
+    { id: "photo_before", label: "Take before photos of the pool", required: true, category: "documentation", requiresPhoto: true },
+
+    // Cleaning tasks - can optionally add photos
+    { id: "clean_surface", label: "Skim pool surface - remove all floating debris", required: true, category: "cleaning", allowsPhoto: true },
+    { id: "clean_floor", label: "Vacuum pool floor", required: true, category: "cleaning", allowsPhoto: true },
+    { id: "clean_walls", label: "Brush pool walls and steps", required: true, category: "cleaning", allowsPhoto: true },
+    { id: "clean_baskets", label: "Empty skimmer and pump baskets", required: true, category: "cleaning", allowsPhoto: true },
+    { id: "clean_waterline", label: "Clean waterline/tile line", required: false, category: "cleaning", allowsNotApplicable: true, allowsPhoto: true },
+    { id: "backwash", label: "Backwash filter if needed", required: false, category: "cleaning", allowsNotApplicable: true, allowsPhoto: true },
+
+    // Equipment inspection - can optionally add photos of issues
+    { id: "check_pump", label: "Check pump is running properly", required: true, category: "equipment", allowsPhoto: true },
+    { id: "check_filter", label: "Inspect filter pressure gauge", required: true, category: "equipment", allowsPhoto: true },
+    { id: "check_valves", label: "Verify all valves are correctly positioned", required: true, category: "equipment", allowsPhoto: true },
+    { id: "check_heater", label: "Check heater (if applicable)", required: false, category: "equipment", allowsNotApplicable: true, allowsPhoto: true },
+    { id: "check_salt", label: "Check salt cell (if saltwater pool)", required: false, category: "equipment", allowsNotApplicable: true, allowsPhoto: true },
+
+    // Safety checks - can optionally add photos
+    { id: "safety_ladders", label: "Inspect ladders and handrails", required: true, category: "safety", allowsNotApplicable: true, allowsPhoto: true },
+    { id: "safety_lights", label: "Check pool lights", required: true, category: "safety", allowsNotApplicable: true, allowsPhoto: true },
+    { id: "safety_deck", label: "Inspect pool deck for hazards", required: false, category: "safety", allowsNotApplicable: true, allowsPhoto: true },
+
+    // AFTER PHOTOS - Last thing to do
+    { id: "photo_after", label: "Take after photos of the pool", required: true, category: "documentation", requiresPhoto: true },
+  ];
+
+  // Build wizard checklist items from a visit template's checklist JSON,
+  // falling back to the hardcoded defaults when no template is provided.
+  const buildWizardItemsFromTemplate = (templateChecklist: any[] | null | undefined): WizardChecklistItem[] => {
+    if (!templateChecklist || !Array.isArray(templateChecklist) || templateChecklist.length === 0) {
+      return getDefaultWizardItems();
+    }
+    return templateChecklist.map((item: any, idx: number) => ({
+      id: item.id || `step_${idx}`,
+      label: item.task || item.label || item.name || `Step ${idx + 1}`,
+      required: item.required !== false,
+      category: item.category || "general",
+      allowsPhoto: item.allowsPhoto ?? true,
+      allowsNotApplicable: item.allowsNotApplicable ?? false,
+      requiresPhoto: item.requiresPhoto ?? false,
+      requiresNumericInput: item.requiresNumericInput,
+      numericField: item.numericField,
+      min: item.min,
+      max: item.max,
+    }));
+  };
+
   // Initialize wizard checklist with detailed items
   // Before photos FIRST, then tasks, then after photos
   // All items can have optional photo attachment
-  const initializeWizardChecklist = () => {
-    const wizardItems: WizardChecklistItem[] = [
-      // BEFORE PHOTOS - First thing to do
-      { id: "photo_before", label: "Take before photos of the pool", required: true, category: "documentation", requiresPhoto: true },
-      
-      // Cleaning tasks - can optionally add photos
-      { id: "clean_surface", label: "Skim pool surface - remove all floating debris", required: true, category: "cleaning", allowsPhoto: true },
-      { id: "clean_floor", label: "Vacuum pool floor", required: true, category: "cleaning", allowsPhoto: true },
-      { id: "clean_walls", label: "Brush pool walls and steps", required: true, category: "cleaning", allowsPhoto: true },
-      { id: "clean_baskets", label: "Empty skimmer and pump baskets", required: true, category: "cleaning", allowsPhoto: true },
-      { id: "clean_waterline", label: "Clean waterline/tile line", required: false, category: "cleaning", allowsNotApplicable: true, allowsPhoto: true },
-      { id: "backwash", label: "Backwash filter if needed", required: false, category: "cleaning", allowsNotApplicable: true, allowsPhoto: true },
-      
-      // Equipment inspection - can optionally add photos of issues
-      { id: "check_pump", label: "Check pump is running properly", required: true, category: "equipment", allowsPhoto: true },
-      { id: "check_filter", label: "Inspect filter pressure gauge", required: true, category: "equipment", allowsPhoto: true },
-      { id: "check_valves", label: "Verify all valves are correctly positioned", required: true, category: "equipment", allowsPhoto: true },
-      { id: "check_heater", label: "Check heater (if applicable)", required: false, category: "equipment", allowsNotApplicable: true, allowsPhoto: true },
-      { id: "check_salt", label: "Check salt cell (if saltwater pool)", required: false, category: "equipment", allowsNotApplicable: true, allowsPhoto: true },
-      
-      // Safety checks - can optionally add photos
-      { id: "safety_ladders", label: "Inspect ladders and handrails", required: true, category: "safety", allowsNotApplicable: true, allowsPhoto: true },
-      { id: "safety_lights", label: "Check pool lights", required: true, category: "safety", allowsNotApplicable: true, allowsPhoto: true },
-      { id: "safety_deck", label: "Inspect pool deck for hazards", required: false, category: "safety", allowsNotApplicable: true, allowsPhoto: true },
-      
-      // AFTER PHOTOS - Last thing to do
-      { id: "photo_after", label: "Take after photos of the pool", required: true, category: "documentation", requiresPhoto: true },
-    ];
+  const initializeWizardChecklist = (templateChecklist?: any[] | null) => {
+    const wizardItems = buildWizardItemsFromTemplate(templateChecklist);
     setWizardChecklist(wizardItems);
   };
 
@@ -257,7 +281,17 @@ export default function JobDetailScreen() {
       setLoading(true);
       
       const jobData: any = await api.getJob(id);
-      
+
+      // Extract visit template checklist from the service plan's visit template
+      const visitTemplateChecklist = jobData?.plan?.visitTemplate?.checklist || null;
+      const templateChecklistArray = visitTemplateChecklist
+        ? (Array.isArray(visitTemplateChecklist)
+            ? visitTemplateChecklist
+            : typeof visitTemplateChecklist === "string"
+            ? JSON.parse(visitTemplateChecklist)
+            : null)
+        : null;
+
       // Get pool and client info
       const pool = jobData?.pool || {};
       const client = pool?.client || {};
@@ -326,25 +360,8 @@ export default function JobDetailScreen() {
               checklistLoaded = true;
               
               // Also load wizard checklist from saved data
-              // Initialize base wizard items first
-              const baseWizardItems: WizardChecklistItem[] = [
-                { id: "photo_before", label: "Take before photos of the pool", required: true, category: "documentation", requiresPhoto: true },
-                { id: "clean_surface", label: "Skim pool surface - remove all floating debris", required: true, category: "cleaning", allowsPhoto: true },
-                { id: "clean_floor", label: "Vacuum pool floor", required: true, category: "cleaning", allowsPhoto: true },
-                { id: "clean_walls", label: "Brush pool walls and steps", required: true, category: "cleaning", allowsPhoto: true },
-                { id: "clean_baskets", label: "Empty skimmer and pump baskets", required: true, category: "cleaning", allowsPhoto: true },
-                { id: "clean_waterline", label: "Clean waterline/tile line", required: false, category: "cleaning", allowsNotApplicable: true, allowsPhoto: true },
-                { id: "backwash", label: "Backwash filter if needed", required: false, category: "cleaning", allowsNotApplicable: true, allowsPhoto: true },
-                { id: "check_pump", label: "Check pump is running properly", required: true, category: "equipment", allowsPhoto: true },
-                { id: "check_filter", label: "Inspect filter pressure gauge", required: true, category: "equipment", allowsPhoto: true },
-                { id: "check_valves", label: "Verify all valves are correctly positioned", required: true, category: "equipment", allowsPhoto: true },
-                { id: "check_heater", label: "Check heater (if applicable)", required: false, category: "equipment", allowsNotApplicable: true, allowsPhoto: true },
-                { id: "check_salt", label: "Check salt cell (if saltwater pool)", required: false, category: "equipment", allowsNotApplicable: true, allowsPhoto: true },
-                { id: "safety_ladders", label: "Inspect ladders and handrails", required: true, category: "safety", allowsNotApplicable: true, allowsPhoto: true },
-                { id: "safety_lights", label: "Check pool lights", required: true, category: "safety", allowsNotApplicable: true, allowsPhoto: true },
-                { id: "safety_deck", label: "Inspect pool deck for hazards", required: false, category: "safety", allowsNotApplicable: true, allowsPhoto: true },
-                { id: "photo_after", label: "Take after photos of the pool", required: true, category: "documentation", requiresPhoto: true },
-              ];
+              // Use template-based items if available, otherwise fall back to defaults
+              const baseWizardItems: WizardChecklistItem[] = buildWizardItemsFromTemplate(templateChecklistArray);
               
               // Update wizard items with saved completion status
               const updatedWizardItems = baseWizardItems.map((wizardItem) => {
@@ -405,46 +422,66 @@ export default function JobDetailScreen() {
         
         // Only set default checklist if we didn't load a saved one
         if (!checklistLoaded) {
-      const defaultChecklist: ChecklistItem[] = [
-        { id: "1", task: "Skim pool surface", completed: false, required: true },
-        { id: "2", task: "Vacuum pool floor", completed: false, required: true },
-        { id: "3", task: "Brush pool walls and steps", completed: false, required: true },
-        { id: "4", task: "Empty skimmer and pump baskets", completed: false, required: true },
-        { id: "5", task: "Test water chemistry (pH, Chlorine, Alkalinity)", completed: false, required: true },
-        { id: "6", task: "Inspect pool equipment (pump, filter, heater)", completed: false, required: true },
-        { id: "7", task: "Clean or backwash filter if needed", completed: false, required: false },
-        { id: "8", task: "Check salt cell (if saltwater pool)", completed: false, required: false },
-        { id: "9", task: "Inspect safety equipment (ladders, railings, lights)", completed: false, required: true },
-        { id: "10", task: "Add chemicals as needed", completed: false, required: true },
-        { id: "11", task: "Take before photos", completed: false, required: true },
-        { id: "12", task: "Take after photos", completed: false, required: true },
-      ];
-          setChecklist(defaultChecklist);
+          if (templateChecklistArray && templateChecklistArray.length > 0) {
+            const templateBasedChecklist: ChecklistItem[] = templateChecklistArray.map((item: any, idx: number) => ({
+              id: item.id || `step_${idx}`,
+              task: item.task || item.label || item.name || `Step ${idx + 1}`,
+              completed: false,
+              required: item.required !== false,
+            }));
+            setChecklist(templateBasedChecklist);
+          } else {
+            const defaultChecklist: ChecklistItem[] = [
+              { id: "1", task: "Skim pool surface", completed: false, required: true },
+              { id: "2", task: "Vacuum pool floor", completed: false, required: true },
+              { id: "3", task: "Brush pool walls and steps", completed: false, required: true },
+              { id: "4", task: "Empty skimmer and pump baskets", completed: false, required: true },
+              { id: "5", task: "Test water chemistry (pH, Chlorine, Alkalinity)", completed: false, required: true },
+              { id: "6", task: "Inspect pool equipment (pump, filter, heater)", completed: false, required: true },
+              { id: "7", task: "Clean or backwash filter if needed", completed: false, required: false },
+              { id: "8", task: "Check salt cell (if saltwater pool)", completed: false, required: false },
+              { id: "9", task: "Inspect safety equipment (ladders, railings, lights)", completed: false, required: true },
+              { id: "10", task: "Add chemicals as needed", completed: false, required: true },
+              { id: "11", task: "Take before photos", completed: false, required: true },
+              { id: "12", task: "Take after photos", completed: false, required: true },
+            ];
+            setChecklist(defaultChecklist);
+          }
         }
         
         // Always initialize wizard checklist (even if visit exists) so user can continue
         // Check if wizard checklist needs initialization
-        initializeWizardChecklist();
+        initializeWizardChecklist(templateChecklistArray);
       } else {
-        // No existing visit - set default checklist
-        const defaultChecklist: ChecklistItem[] = [
-          { id: "1", task: "Skim pool surface", completed: false, required: true },
-          { id: "2", task: "Vacuum pool floor", completed: false, required: true },
-          { id: "3", task: "Brush pool walls and steps", completed: false, required: true },
-          { id: "4", task: "Empty skimmer and pump baskets", completed: false, required: true },
-          { id: "5", task: "Test water chemistry (pH, Chlorine, Alkalinity)", completed: false, required: true },
-          { id: "6", task: "Inspect pool equipment (pump, filter, heater)", completed: false, required: true },
-          { id: "7", task: "Clean or backwash filter if needed", completed: false, required: false },
-          { id: "8", task: "Check salt cell (if saltwater pool)", completed: false, required: false },
-          { id: "9", task: "Inspect safety equipment (ladders, railings, lights)", completed: false, required: true },
-          { id: "10", task: "Add chemicals as needed", completed: false, required: true },
-          { id: "11", task: "Take before photos", completed: false, required: true },
-          { id: "12", task: "Take after photos", completed: false, required: true },
-        ];
-        setChecklist(defaultChecklist);
-        
-        // Initialize wizard checklist with enhanced items
-        initializeWizardChecklist();
+        // No existing visit - build checklist from template if available, otherwise use defaults
+        if (templateChecklistArray && templateChecklistArray.length > 0) {
+          const templateBasedChecklist: ChecklistItem[] = templateChecklistArray.map((item: any, idx: number) => ({
+            id: item.id || `step_${idx}`,
+            task: item.task || item.label || item.name || `Step ${idx + 1}`,
+            completed: false,
+            required: item.required !== false,
+          }));
+          setChecklist(templateBasedChecklist);
+        } else {
+          const defaultChecklist: ChecklistItem[] = [
+            { id: "1", task: "Skim pool surface", completed: false, required: true },
+            { id: "2", task: "Vacuum pool floor", completed: false, required: true },
+            { id: "3", task: "Brush pool walls and steps", completed: false, required: true },
+            { id: "4", task: "Empty skimmer and pump baskets", completed: false, required: true },
+            { id: "5", task: "Test water chemistry (pH, Chlorine, Alkalinity)", completed: false, required: true },
+            { id: "6", task: "Inspect pool equipment (pump, filter, heater)", completed: false, required: true },
+            { id: "7", task: "Clean or backwash filter if needed", completed: false, required: false },
+            { id: "8", task: "Check salt cell (if saltwater pool)", completed: false, required: false },
+            { id: "9", task: "Inspect safety equipment (ladders, railings, lights)", completed: false, required: true },
+            { id: "10", task: "Add chemicals as needed", completed: false, required: true },
+            { id: "11", task: "Take before photos", completed: false, required: true },
+            { id: "12", task: "Take after photos", completed: false, required: true },
+          ];
+          setChecklist(defaultChecklist);
+        }
+
+        // Initialize wizard checklist with template items or enhanced defaults
+        initializeWizardChecklist(templateChecklistArray);
       }
       
       const jobStatus = jobData?.status || "scheduled";

@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Plus, Search, FileText, Edit, Trash2, Eye, Send, DollarSign, Download, Calendar, CheckCircle, Clock, AlertCircle } from "lucide-react";
+import { Plus, Search, FileText, Edit, Trash2, Eye, Send, DollarSign, Download, Calendar, CheckCircle, Clock, AlertCircle, ChevronLeft, ChevronRight, PlayCircle, RefreshCw } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -22,6 +22,7 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
+  DialogFooter,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -36,6 +37,7 @@ import { DashboardAICard } from "@/components/dashboard-ai-card";
 import { useTheme } from "@/contexts/theme-context";
 import { SkeletonMetricCard, SkeletonTable } from "@/components/ui/skeleton";
 import { formatCurrencyForDisplay } from "@/lib/utils";
+import { useToast } from "@/hooks/use-toast";
 
 interface Invoice {
   id: string;
@@ -87,10 +89,28 @@ interface Quote {
   status: string;
 }
 
+interface BillingSummary {
+  upcomingBillings: any[];
+  recentBillings: any[];
+  pendingBillings: any[];
+  summary: {
+    upcomingCount: number;
+    recentCount: number;
+    pendingCount: number;
+    totalUpcomingAmount: number;
+    totalRecentAmount: number;
+    totalPendingAmount: number;
+  };
+}
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+
 export default function InvoicesPage() {
   const router = useRouter();
-  const { getThemeClasses } = useTheme();
+  const { getThemeClasses, getThemeColor } = useTheme();
   const theme = getThemeClasses();
+  const themeHex = getThemeColor();
+  const { toast } = useToast();
 
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
@@ -99,10 +119,17 @@ export default function InvoicesPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("");
   const [typeFilter, setTypeFilter] = useState<string>("all"); // "all", "subscription", "regular"
+  const [page, setPage] = useState(1);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [selectedInvoices, setSelectedInvoices] = useState<Set<string>>(new Set());
   const [isSendDialogOpen, setIsSendDialogOpen] = useState(false);
   const [invoiceToSend, setInvoiceToSend] = useState<string | null>(null);
+
+  // Billing state
+  const [billingSummary, setBillingSummary] = useState<BillingSummary | null>(null);
+  const [billingLoading, setBillingLoading] = useState(true);
+  const [processing, setProcessing] = useState(false);
+  const [showProcessDialog, setShowProcessDialog] = useState(false);
 
   // Metrics state
   const [metrics, setMetrics] = useState({
@@ -110,6 +137,8 @@ export default function InvoicesPage() {
     draftInvoices: 0,
     sentInvoices: 0,
     paidInvoices: 0,
+    overdueInvoices: 0,
+    outstandingAmount: 0,
     totalRevenue: 0,
   });
 
@@ -129,6 +158,10 @@ export default function InvoicesPage() {
     fetchClients();
     fetchQuotes();
   }, [statusFilter]);
+
+  useEffect(() => {
+    fetchBillingSummary();
+  }, []);
 
   useEffect(() => {
     if (searchQuery) {
@@ -179,12 +212,13 @@ export default function InvoicesPage() {
   const handleBulkExport = () => {
     const data = filteredInvoices.filter((invoice) => selectedInvoices.has(invoice.id));
     const csv = [
-      ["Invoice #", "Client", "Pool", "Status", "Total", "Paid", "Balance", "Due Date", "Issued"],
+      ["Invoice #", "Client", "Pool", "Status", "Type", "Total", "Paid", "Balance", "Due Date", "Issued"],
       ...data.map((invoice) => [
         invoice.invoiceNumber,
         invoice.client?.name || "",
         invoice.pool?.name || "",
         invoice.status,
+        isRecurringInvoice(invoice) ? "Recurring" : "One-time",
         (invoice.totalCents / 100).toFixed(2),
         (invoice.paidCents / 100).toFixed(2),
         ((invoice.totalCents - invoice.paidCents) / 100).toFixed(2),
@@ -203,6 +237,15 @@ export default function InvoicesPage() {
     URL.revokeObjectURL(url);
   };
 
+  const isRecurringInvoice = (invoice: Invoice) => {
+    return !!(
+      invoice.metadata?.type === "subscription_billing" ||
+      invoice.metadata?.servicePlanId ||
+      invoice.metadata?.subscriptionBillingId ||
+      invoice.planId
+    );
+  };
+
   const filteredInvoices = invoices.filter((invoice) => {
     // Search filter
     if (searchQuery) {
@@ -215,30 +258,26 @@ export default function InvoicesPage() {
 
     // Type filter (subscription vs regular)
     if (typeFilter === "subscription") {
-      const isSubscription =
-        invoice.metadata?.type === "subscription_billing" ||
-        invoice.metadata?.servicePlanId ||
-        invoice.planId ||
-        invoice.metadata?.subscriptionBillingId;
-      if (!isSubscription) return false;
+      if (!isRecurringInvoice(invoice)) return false;
     } else if (typeFilter === "regular") {
-      const isSubscription =
-        invoice.metadata?.type === "subscription_billing" ||
-        invoice.metadata?.servicePlanId ||
-        invoice.planId ||
-        invoice.metadata?.subscriptionBillingId;
-      if (isSubscription) return false;
+      if (isRecurringInvoice(invoice)) return false;
     }
 
     return true;
   });
+
+  const PAGE_SIZE = 20;
+  const totalPages = Math.max(1, Math.ceil(filteredInvoices.length / PAGE_SIZE));
+  const paginatedInvoices = useMemo(
+    () => filteredInvoices.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
+    [filteredInvoices, page]
+  );
 
   const allSelected = filteredInvoices.length > 0 && selectedInvoices.size === filteredInvoices.length;
 
   const fetchInvoices = async () => {
     try {
       setLoading(true);
-      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
       const params = new URLSearchParams();
       if (statusFilter) params.append("status", statusFilter);
       params.append("limit", "100");
@@ -263,7 +302,6 @@ export default function InvoicesPage() {
 
   const fetchClients = async () => {
     try {
-      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
       const response = await fetch(`${API_URL}/clients?limit=100`, {
         headers: {
           Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
@@ -280,7 +318,6 @@ export default function InvoicesPage() {
 
   const fetchQuotes = async () => {
     try {
-      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
       const response = await fetch(`${API_URL}/quotes?status=approved&limit=100`, {
         headers: {
           Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
@@ -295,11 +332,71 @@ export default function InvoicesPage() {
     }
   };
 
+  const fetchBillingSummary = async () => {
+    try {
+      setBillingLoading(true);
+      const token = localStorage.getItem("auth_token");
+      const response = await fetch(`${API_URL}/billing/summary`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setBillingSummary(data);
+      }
+    } catch (error) {
+      console.error("Failed to fetch billing summary:", error);
+    } finally {
+      setBillingLoading(false);
+    }
+  };
+
+  const handleProcessBilling = async () => {
+    try {
+      setProcessing(true);
+      const token = localStorage.getItem("auth_token");
+      const response = await fetch(`${API_URL}/billing/process`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        toast({
+          title: "Billing Processed",
+          description: `Processed ${result.processed} subscriptions, ${result.skipped} skipped, ${result.errors?.length || 0} errors`,
+        });
+        setShowProcessDialog(false);
+        await Promise.all([fetchBillingSummary(), fetchInvoices()]);
+      } else {
+        const error = await response.json();
+        throw new Error(error.message || "Failed to process billing");
+      }
+    } catch (error: any) {
+      console.error("Failed to process billing:", error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to process billing",
+        variant: "destructive",
+      });
+    } finally {
+      setProcessing(false);
+    }
+  };
+
   const calculateMetrics = (currentInvoices: Invoice[]) => {
     const totalInvoices = currentInvoices.length;
     const draftInvoices = currentInvoices.filter((i) => i.status === "draft").length;
     const sentInvoices = currentInvoices.filter((i) => i.status === "sent").length;
     const paidInvoices = currentInvoices.filter((i) => i.status === "paid").length;
+    const overdueInvoices = currentInvoices.filter((i) => i.status === "overdue").length;
+    const outstandingAmount = currentInvoices
+      .filter((i) => i.status !== "paid" && i.status !== "cancelled")
+      .reduce((sum, i) => sum + (i.totalCents - i.paidCents), 0);
     const totalRevenue = currentInvoices
       .filter((i) => i.status === "paid")
       .reduce((sum, i) => sum + i.paidCents, 0) / 100;
@@ -309,6 +406,8 @@ export default function InvoicesPage() {
       draftInvoices,
       sentInvoices,
       paidInvoices,
+      overdueInvoices,
+      outstandingAmount,
       totalRevenue,
     });
   };
@@ -327,7 +426,6 @@ export default function InvoicesPage() {
 
   const handleCreate = async () => {
     try {
-      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
       const filteredItems = formData.items.filter((item) => item.label.trim() !== "");
 
       if (filteredItems.length === 0) {
@@ -391,7 +489,6 @@ export default function InvoicesPage() {
     if (!invoiceToSend) return;
 
     try {
-      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
       const response = await fetch(`${API_URL}/invoices/${invoiceToSend}/send`, {
         method: "POST",
         headers: {
@@ -418,7 +515,6 @@ export default function InvoicesPage() {
     if (!confirm("Delete this invoice? This cannot be undone.")) return;
 
     try {
-      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
       const response = await fetch(`${API_URL}/invoices/${invoiceId}`, {
         method: "DELETE",
         headers: {
@@ -455,9 +551,28 @@ export default function InvoicesPage() {
     }
   };
 
-  const formatCurrency = (cents: number, currency: string) => {
+  const formatCurrency = (cents: number, currency: string = "GHS") => {
     return `${formatCurrencyForDisplay(currency)}${(cents / 100).toFixed(2)}`;
   };
+
+  const formatDate = (dateString?: string) => {
+    if (!dateString) return "N/A";
+    return new Date(dateString).toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
+  };
+
+  // Compute next billing date from upcoming billings
+  const nextBillingDate = useMemo(() => {
+    if (!billingSummary?.upcomingBillings?.length) return null;
+    const dates = billingSummary.upcomingBillings
+      .map((b) => b.nextBillingDate)
+      .filter(Boolean)
+      .sort();
+    return dates[0] || null;
+  }, [billingSummary]);
 
   // AI Recommendations for Invoices
   const generateInvoiceAIRecommendations = () => {
@@ -466,7 +581,7 @@ export default function InvoicesPage() {
     if (metrics.draftInvoices > 0) {
       recommendations.push({
         id: "send-draft-invoices",
-        title: "📤 Send draft invoices",
+        title: "Send draft invoices",
         description: `${metrics.draftInvoices} draft invoices ready to send - review and send to clients.`,
         priority: "high" as const,
         action: "Review Drafts",
@@ -478,7 +593,7 @@ export default function InvoicesPage() {
     if (metrics.sentInvoices > 0) {
       recommendations.push({
         id: "track-sent-invoices",
-        title: "💵 Track sent invoices",
+        title: "Track sent invoices",
         description: `${metrics.sentInvoices} invoices sent - follow up on payments.`,
         priority: "medium" as const,
         action: "View Sent",
@@ -490,7 +605,7 @@ export default function InvoicesPage() {
     if (metrics.totalRevenue > 0) {
       recommendations.push({
         id: "review-revenue",
-        title: "💰 Review revenue",
+        title: "Review revenue",
         description: `Total paid revenue: ${formatCurrency(Math.round(metrics.totalRevenue * 100), formData.currency)}`,
         priority: "low" as const,
         action: "View Analytics",
@@ -514,12 +629,16 @@ export default function InvoicesPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Invoices</h1>
-          <p className="text-gray-600 mt-1">Manage invoices and track payments</p>
+          <p className="text-gray-600 mt-1">Manage invoices, recurring billing, and track payments</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={() => router.push("/billing")}>
-            <Calendar className="h-4 w-4 mr-2" />
-            Manage Subscriptions
+          <Button
+            variant="outline"
+            onClick={() => setShowProcessDialog(true)}
+            disabled={processing}
+          >
+            <PlayCircle className="h-4 w-4 mr-2" />
+            Run Billing Now
           </Button>
           <Button
             onClick={() => {
@@ -569,39 +688,108 @@ export default function InvoicesPage() {
               <Card className="p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium text-gray-600">Draft</p>
-                    <p className={`text-2xl font-bold text-${theme.primary}`}>{metrics.draftInvoices}</p>
-                  </div>
-                  <Clock className={`h-8 w-8 text-${theme.primary}`} />
-                </div>
-              </Card>
-
-              <Card className="p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-gray-600">Paid</p>
-                    <p className="text-2xl font-bold text-green-600">{metrics.paidInvoices}</p>
-                  </div>
-                  <CheckCircle className="h-8 w-8 text-green-400" />
-                </div>
-              </Card>
-
-              <Card className="p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-gray-600">Revenue</p>
-                    <p className="text-2xl font-bold text-orange-600">
-                      {formatCurrency(Math.round(metrics.totalRevenue * 100), formData.currency)}
+                    <p className="text-sm font-medium text-gray-600">Outstanding</p>
+                    <p className="text-2xl font-bold text-amber-600">
+                      {formatCurrency(metrics.outstandingAmount, formData.currency)}
                     </p>
-                    <p className="text-xs text-gray-500">{formatCurrencyForDisplay(formData.currency)}</p>
                   </div>
-                  <DollarSign className="h-8 w-8 text-orange-400" />
+                  <DollarSign className="h-8 w-8 text-amber-400" />
+                </div>
+              </Card>
+
+              <Card className="p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-gray-600">Overdue</p>
+                    <p className="text-2xl font-bold text-red-600">{metrics.overdueInvoices}</p>
+                  </div>
+                  <AlertCircle className="h-8 w-8 text-red-400" />
+                </div>
+              </Card>
+
+              <Card className="p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-gray-600">Next Billing</p>
+                    <p className="text-lg font-bold" style={{ color: themeHex }}>
+                      {nextBillingDate ? formatDate(nextBillingDate) : "None"}
+                    </p>
+                  </div>
+                  <Calendar className="h-8 w-8" style={{ color: themeHex, opacity: 0.5 }} />
                 </div>
               </Card>
             </>
           )}
         </div>
       </div>
+
+      {/* Upcoming Recurring Billings Banner */}
+      {!billingLoading && billingSummary && billingSummary.upcomingBillings.length > 0 && (
+        <Card className="border-l-4" style={{ borderLeftColor: themeHex }}>
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <Calendar className="h-5 w-5" style={{ color: themeHex }} />
+                  Upcoming Recurring Billings
+                </CardTitle>
+                <CardDescription>
+                  {billingSummary.summary.upcomingCount} subscription{billingSummary.summary.upcomingCount !== 1 ? "s" : ""} due in the next 30 days
+                  {" "}({formatCurrency(billingSummary.summary.totalUpcomingAmount)})
+                </CardDescription>
+              </div>
+              <Button
+                onClick={() => setShowProcessDialog(true)}
+                disabled={processing}
+                size="sm"
+                style={{ backgroundColor: themeHex, color: "#fff" }}
+              >
+                <PlayCircle className="h-4 w-4 mr-2" />
+                Run Billing Now
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="rounded-md border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Plan</TableHead>
+                    <TableHead>Client</TableHead>
+                    <TableHead>Pool</TableHead>
+                    <TableHead>Amount</TableHead>
+                    <TableHead>Next Billing Date</TableHead>
+                    <TableHead>Status</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {billingSummary.upcomingBillings.map((plan) => (
+                    <TableRow key={plan.id}>
+                      <TableCell className="font-medium">
+                        {plan.template?.name || "Service Plan"}
+                      </TableCell>
+                      <TableCell>{plan.pool?.client?.name || "N/A"}</TableCell>
+                      <TableCell>{plan.pool?.name || "N/A"}</TableCell>
+                      <TableCell>
+                        {formatCurrency(plan.priceCents || 0, plan.currency)}
+                      </TableCell>
+                      <TableCell>{formatDate(plan.nextBillingDate)}</TableCell>
+                      <TableCell>
+                        <Badge
+                          variant={plan.status === "active" ? "default" : "secondary"}
+                          style={plan.status === "active" ? { backgroundColor: themeHex, color: "#fff" } : undefined}
+                        >
+                          {plan.status}
+                        </Badge>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Invoices Table */}
       <Card>
@@ -612,7 +800,7 @@ export default function InvoicesPage() {
         <CardContent>
           {/* Bulk Actions Bar */}
           {selectedInvoices.size > 0 && (
-            <div className="flex items-center justify-between p-4 mb-4 bg-orange-50 border border-orange-200 rounded-lg">
+            <div className="flex items-center justify-between p-4 mb-4 bg-emerald-50 border border-emerald-200 rounded-lg">
               <div className="flex items-center gap-2">
                 <span className="text-sm font-medium text-gray-900">
                   {selectedInvoices.size} invoice{selectedInvoices.size !== 1 ? "s" : ""} selected
@@ -646,14 +834,14 @@ export default function InvoicesPage() {
                 <Input
                   placeholder="Search invoices by number, client, or pool..."
                   value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }}
                   className="pl-10"
                 />
               </div>
             </div>
             <Select
               value={statusFilter || "__all__"}
-              onValueChange={(value) => setStatusFilter(value === "__all__" ? "" : value)}
+              onValueChange={(value) => { setStatusFilter(value === "__all__" ? "" : value); setPage(1); }}
             >
               <SelectTrigger className="w-[180px]">
                 <SelectValue placeholder="Filter by status" />
@@ -669,15 +857,15 @@ export default function InvoicesPage() {
             </Select>
             <Select
               value={typeFilter}
-              onValueChange={setTypeFilter}
+              onValueChange={(v) => { setTypeFilter(v); setPage(1); }}
             >
               <SelectTrigger className="w-[200px]">
                 <SelectValue placeholder="Filter by type" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Invoices</SelectItem>
-                <SelectItem value="subscription">Subscription</SelectItem>
-                <SelectItem value="regular">Regular</SelectItem>
+                <SelectItem value="all">All Types</SelectItem>
+                <SelectItem value="subscription">Recurring</SelectItem>
+                <SelectItem value="regular">One-time</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -689,11 +877,11 @@ export default function InvoicesPage() {
               <FileText className="h-12 w-12 text-gray-400 mx-auto mb-4" />
               <h3 className="text-lg font-medium text-gray-900 mb-2">No invoices found</h3>
               <p className="text-gray-600 mb-4">
-                {(searchQuery || statusFilter)
+                {(searchQuery || statusFilter || typeFilter !== "all")
                   ? "Try adjusting your filters"
                   : "Get started by creating your first invoice"}
               </p>
-              {!searchQuery && !statusFilter && (
+              {!searchQuery && !statusFilter && typeFilter === "all" && (
                 <Button onClick={() => setIsCreateDialogOpen(true)}>
                   <Plus className="h-4 w-4 mr-2" />
                   Create Invoice
@@ -713,6 +901,7 @@ export default function InvoicesPage() {
                       />
                     </TableHead>
                     <TableHead>Invoice #</TableHead>
+                    <TableHead>Type</TableHead>
                     <TableHead>Client</TableHead>
                     <TableHead>Pool</TableHead>
                     <TableHead>Status</TableHead>
@@ -724,8 +913,9 @@ export default function InvoicesPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredInvoices.map((invoice) => {
+                  {paginatedInvoices.map((invoice) => {
                     const balance = invoice.totalCents - invoice.paidCents;
+                    const recurring = isRecurringInvoice(invoice);
                     return (
                       <TableRow
                         key={invoice.id}
@@ -743,16 +933,18 @@ export default function InvoicesPage() {
                           />
                         </TableCell>
                         <TableCell className="font-medium">
-                          <div className="flex items-center gap-2">
-                            <span>{invoice.invoiceNumber}</span>
-                            {(invoice.metadata?.type === "subscription_billing" ||
-                              invoice.metadata?.servicePlanId ||
-                              invoice.planId) && (
-                              <Badge variant="outline" className="text-xs">
-                                Subscription
-                              </Badge>
-                            )}
-                          </div>
+                          {invoice.invoiceNumber}
+                        </TableCell>
+                        <TableCell>
+                          {recurring ? (
+                            <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100">
+                              Recurring
+                            </Badge>
+                          ) : (
+                            <Badge variant="secondary" className="bg-gray-100 text-gray-600 hover:bg-gray-100">
+                              One-time
+                            </Badge>
+                          )}
                         </TableCell>
                         <TableCell>{invoice.client?.name || "N/A"}</TableCell>
                         <TableCell>{invoice.pool?.name || "N/A"}</TableCell>
@@ -825,12 +1017,27 @@ export default function InvoicesPage() {
                   })}
                 </TableBody>
               </Table>
+              {/* Pagination */}
+              <div className="flex items-center justify-between border-t px-4 py-3">
+                <p className="text-sm text-gray-500">
+                  Showing {(page - 1) * PAGE_SIZE + 1}--{Math.min(page * PAGE_SIZE, filteredInvoices.length)} of {filteredInvoices.length} invoices
+                </p>
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  <span className="text-sm text-gray-600">Page {page} of {totalPages}</span>
+                  <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
             </div>
           )}
         </CardContent>
       </Card>
 
-      {/* Create Dialog - Similar to Quotes dialog, simplified for brevity */}
+      {/* Create Dialog */}
       <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
@@ -894,7 +1101,7 @@ export default function InvoicesPage() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="GHS">GH₵</SelectItem>
+                    <SelectItem value="GHS">GH&#8373;</SelectItem>
                     <SelectItem value="USD">USD</SelectItem>
                     <SelectItem value="EUR">EUR</SelectItem>
                   </SelectContent>
@@ -1041,6 +1248,46 @@ export default function InvoicesPage() {
                 </Button>
               </div>
             </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Process Billing Dialog */}
+        <Dialog open={showProcessDialog} onOpenChange={setShowProcessDialog}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Process Billing Now</DialogTitle>
+              <DialogDescription>
+                This will process all subscriptions that are due for billing. Normally, billing runs
+                automatically on the 25th of each month. Only use this if you need to process billing
+                early or manually.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => setShowProcessDialog(false)}
+                disabled={processing}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleProcessBilling}
+                disabled={processing}
+                style={{ backgroundColor: themeHex, color: "#fff" }}
+              >
+                {processing ? (
+                  <>
+                    <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                    Processing...
+                  </>
+                ) : (
+                  <>
+                    <PlayCircle className="h-4 w-4 mr-2" />
+                    Process Now
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
           </DialogContent>
         </Dialog>
       </div>
