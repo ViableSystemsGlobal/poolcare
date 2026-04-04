@@ -8,8 +8,8 @@ import {
   RefreshControl,
   ActivityIndicator,
   AppState,
+  Image,
 } from "react-native";
-import { Image } from "expo-image";
 import { router, usePathname } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -275,8 +275,7 @@ export default function TodayScreen() {
               <Image
                 source={homeCardImageUrl ? { uri: homeCardImageUrl } : localHomeCard}
                 style={styles.homeCardImage}
-                contentFit="contain"
-                cachePolicy="disk"
+                resizeMode="contain"
               />
             </View>
             {/* Divider */}

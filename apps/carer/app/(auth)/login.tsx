@@ -10,8 +10,8 @@ import {
   Platform,
   ScrollView,
   ActivityIndicator,
+  Image,
 } from "react-native";
-import { Image } from "expo-image";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -85,7 +85,7 @@ export default function LoginScreen() {
 
   return (
     <View style={styles.root}>
-      <Image source={loginBg} style={StyleSheet.absoluteFill} contentFit="cover" priority="high" />
+      <Image source={loginBg} style={StyleSheet.absoluteFill} resizeMode="cover" />
     <KeyboardAvoidingView
       style={styles.root}
       behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -102,9 +102,9 @@ export default function LoginScreen() {
         <View style={styles.card}>
           <View style={styles.cardLogoWrap}>
             {orgLogoUrl ? (
-              <Image source={{ uri: orgLogoUrl }} style={styles.cardLogo} contentFit="contain" cachePolicy="disk" />
+              <Image source={{ uri: orgLogoUrl }} style={styles.cardLogo} resizeMode="contain" />
             ) : (
-              <Image source={localLogo} style={styles.cardLogo} contentFit="contain" />
+              <Image source={localLogo} style={styles.cardLogo} resizeMode="contain" />
             )}
           </View>
           <Text style={[styles.appTag, { color: themeColor }]}>STAFF PORTAL</Text>
