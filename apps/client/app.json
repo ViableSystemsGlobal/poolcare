@@ -42,6 +42,12 @@
       "expo-secure-store",
       "expo-updates",
       [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "PoolCare uses your location to display current weather conditions relevant to your pool care. For example, the home screen shows the local temperature and forecast for your area so you can plan pool maintenance accordingly."
+        }
+      ],
+      [
         "expo-image-picker",
         {
           "photosPermission": "Allow PoolCare to access your photos to attach images to service requests.",

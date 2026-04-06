@@ -50,7 +50,7 @@
       [
         "expo-location",
         {
-          "locationAlwaysAndWhenInUsePermission": "Allow PoolCare to use your location for visit tracking."
+          "locationAlwaysAndWhenInUsePermission": "PoolCare uses your location to verify your arrival at pool service sites. For example, when you start a scheduled pool maintenance visit, your location is checked to confirm you are at the correct address."
         }
       ],
       [

@@ -184,8 +184,11 @@ export default function ClientDashboard() {
   }, []);
 
   useEffect(() => {
+    if (checkingAuth) return;
     (async () => {
       try {
+        const token = await api.getAuthToken();
+        if (!token) return;
         const { status } = await Location.requestForegroundPermissionsAsync();
         if (status !== "granted") return;
         const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Low });
@@ -198,7 +201,7 @@ export default function ClientDashboard() {
         setWeather({ temp: Math.round(cw.temperature), emoji: weatherEmoji(cw.weathercode) });
       } catch {}
     })();
-  }, []);
+  }, [checkingAuth]);
 
   const loadDashboard = async () => {
     try {
