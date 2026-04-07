@@ -56,14 +56,14 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Allow PoolCare to access your camera to take photos during visits."
+          "cameraPermission": "PoolCare uses your camera to document pool conditions during service visits. For example, you can photograph water clarity, chemical readings, or equipment issues to include in the visit report."
         }
       ],
       [
         "expo-image-picker",
         {
-          "photosPermission": "Allow PoolCare to access your photo library to update your profile photo.",
-          "cameraPermission": "Allow PoolCare to access your camera to update your profile photo."
+          "photosPermission": "PoolCare accesses your photo library so you can upload a profile photo or attach existing pool photos to service reports. For example, you can select a saved photo of pool equipment to include in a maintenance visit.",
+          "cameraPermission": "PoolCare uses your camera so you can take a profile photo or capture pool conditions. For example, you can photograph a pool's filter system during onboarding to document its setup."
         }
       ]
     ]

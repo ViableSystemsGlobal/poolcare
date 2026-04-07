@@ -50,8 +50,8 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Allow PoolCare to access your photos to attach images to service requests.",
-          "cameraPermission": "Allow PoolCare to use your camera to take photos for service requests."
+          "photosPermission": "PoolCare accesses your photo library so you can attach photos when reporting a pool issue. For example, you can select a photo of algae buildup or damaged equipment to send to your pool care technician.",
+          "cameraPermission": "PoolCare uses your camera so you can take photos when reporting a pool issue. For example, you can photograph discolored water or a broken pool pump to share with your service team."
         }
       ],
       [
