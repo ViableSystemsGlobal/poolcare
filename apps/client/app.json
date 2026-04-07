@@ -2,7 +2,7 @@
   "expo": {
     "name": "PoolCare Client",
     "slug": "poolcare-client",
-    "version": "1.0.0",
+    "version": "2.0.0",
     "sdkVersion": "54.0.0",
     "runtimeVersion": "1.0.0",
     "orientation": "portrait",
@@ -21,7 +21,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.poolcare.client",
-      "buildNumber": "5",
+      "buildNumber": "6",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSAppTransportSecurity": {"NSAllowsLocalNetworking": true}
@@ -35,7 +35,8 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#14b8a6"
       },
-      "package": "com.poolcare.client"
+      "package": "com.poolcare.client",
+      "versionCode": 6
     },
     "web": {"favicon": "./assets/favicon.png"},
     "plugins": [
