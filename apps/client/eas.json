@@ -1,7 +1,7 @@
 {
   "cli": {
     "version": ">= 12.0.0",
-    "appVersionSource": "remote"
+    "appVersionSource": "local"
   },
   "build": {
     "development": {
@@ -29,7 +29,10 @@
   "submit": {
     "production": {
       "ios": {},
-      "android": {}
+      "android": {
+        "serviceAccountKeyPath": "/Users/nanasasu/Downloads/adpools-472913-9b7b70e3a617.json",
+        "track": "internal"
+      }
     }
   }
 }
