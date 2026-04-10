@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { View, StyleSheet, BackHandler } from "react-native";
+import { View, StyleSheet, BackHandler, Platform } from "react-native";
 import { Stack, usePathname, router } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import * as SplashScreen from "expo-splash-screen";
@@ -125,6 +125,29 @@ function LayoutInner() {
   useEffect(() => {
     api.getAuthToken().then((token) => setIsAuthenticated(!!token));
   }, [pathname]);
+
+  // Register push token when authenticated
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    (async () => {
+      try {
+        const { status: existing } = await Notifications.getPermissionsAsync();
+        let finalStatus = existing;
+        if (existing !== "granted") {
+          const { status } = await Notifications.requestPermissionsAsync();
+          finalStatus = status;
+        }
+        if (finalStatus !== "granted") return;
+        const { data: token } = await Notifications.getExpoPushTokenAsync({
+          projectId: "3c0ac2ba-013a-49b3-94b2-5747615f9c7f",
+        });
+        const platform = Platform.OS === "ios" ? "ios" : "android";
+        await api.registerDeviceToken(token, platform);
+      } catch (e) {
+        console.warn("Push token registration failed:", e);
+      }
+    })();
+  }, [isAuthenticated]);
 
   const showNav = TAB_ROUTES.includes(pathname) && isAuthenticated;
 
