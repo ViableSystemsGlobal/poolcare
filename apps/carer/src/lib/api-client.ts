@@ -227,6 +227,13 @@ class ApiClient {
     return this.request("/carers/me/carer");
   }
 
+  async registerDeviceToken(token: string, platform: "ios" | "android") {
+    return this.request<any>("/carers/me/device-token", {
+      method: "POST",
+      body: JSON.stringify({ token, platform }),
+    });
+  }
+
   // Jobs
   async getJobs(params?: { status?: string; date?: string; carerId?: string }) {
     const query = new URLSearchParams(params as any).toString();

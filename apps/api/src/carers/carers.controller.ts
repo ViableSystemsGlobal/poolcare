@@ -99,6 +99,14 @@ export class CarersController {
     );
   }
 
+  @Post("me/device-token")
+  async registerMyDeviceToken(
+    @CurrentUser() user: { org_id: string; sub: string },
+    @Body() dto: { token: string; platform: string }
+  ) {
+    return this.carersService.registerMyDeviceToken(user.org_id, user.sub, dto);
+  }
+
   @Get("me/carer")
   async getMyCarer(@CurrentUser() user: { org_id: string; sub: string }) {
     return this.carersService.getMyCarer(user.org_id, user.sub);

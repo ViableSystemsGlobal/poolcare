@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
-import { View, StyleSheet, BackHandler } from "react-native";
+import { useEffect, useRef, useState } from "react";
+import { View, StyleSheet, BackHandler, Platform } from "react-native";
 import { Stack, usePathname, router } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import * as SplashScreen from "expo-splash-screen";
 import * as Font from "expo-font";
+import * as Notifications from "expo-notifications";
 import { Ionicons } from "@expo/vector-icons";
 import { ToastProvider } from "../src/components/Toast";
 import { ThemeProvider } from "../src/contexts/ThemeContext";
@@ -12,6 +13,15 @@ import BottomNav from "../src/components/BottomNav";
 import { api } from "../src/lib/api-client";
 import { fixUrlForMobile } from "../src/lib/network-utils";
 import { getCachedLogoUrl, setCachedLogoUrl } from "../src/lib/logo-cache";
+
+// Show notifications even when the app is in the foreground
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: true,
+  }),
+});
 
 // Keep the splash screen visible while we load resources
 SplashScreen.preventAutoHideAsync();
@@ -96,6 +106,50 @@ export default function RootLayout() {
 function LayoutInner() {
   const pathname = usePathname();
   const showNav = TAB_ROUTES.includes(pathname);
+  const notificationResponseListener = useRef<Notifications.EventSubscription>();
+
+  // Register push token when authenticated
+  useEffect(() => {
+    (async () => {
+      try {
+        const token = await api.getAuthToken();
+        if (!token) return;
+        const { status: existing } = await Notifications.getPermissionsAsync();
+        let finalStatus = existing;
+        if (existing !== "granted") {
+          const { status } = await Notifications.requestPermissionsAsync();
+          finalStatus = status;
+        }
+        if (finalStatus !== "granted") return;
+        const { data: pushToken } = await Notifications.getExpoPushTokenAsync({
+          projectId: "b53852a4-0450-4e67-9690-9564c55cce66",
+        });
+        const platform = Platform.OS === "ios" ? "ios" : "android";
+        await api.registerDeviceToken(pushToken, platform);
+      } catch (e) {
+        console.warn("Push token registration failed:", e);
+      }
+    })();
+  }, [pathname]);
+
+  // Handle notification taps
+  useEffect(() => {
+    notificationResponseListener.current =
+      Notifications.addNotificationResponseReceivedListener((response) => {
+        const data = response.notification.request.content.data as Record<string, string> | undefined;
+        if (!data) return;
+        if (data.url) {
+          router.push(data.url as any);
+        } else if (data.type === "job" && data.id) {
+          router.push(`/jobs/${data.id}` as any);
+        } else if (data.type === "notification") {
+          router.push("/notifications" as any);
+        }
+      });
+    return () => {
+      notificationResponseListener.current?.remove();
+    };
+  }, []);
 
   useEffect(() => {
     const onBack = () => {

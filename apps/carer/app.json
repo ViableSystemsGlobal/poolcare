@@ -19,6 +19,9 @@
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       },
+      "entitlements": {
+        "aps-environment": "production"
+      },
       "config": {
         "googleMapsApiKey": ""
       }
@@ -64,6 +67,14 @@
         {
           "photosPermission": "PoolCare accesses your photo library so you can upload a profile photo or attach existing pool photos to service reports. For example, you can select a saved photo of pool equipment to include in a maintenance visit.",
           "cameraPermission": "PoolCare uses your camera so you can take a profile photo or capture pool conditions. For example, you can photograph a pool's filter system during onboarding to document its setup."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#397d54",
+          "sounds": []
         }
       ]
     ]

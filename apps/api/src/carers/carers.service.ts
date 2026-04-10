@@ -286,6 +286,20 @@ export class CarersService {
     return updated;
   }
 
+  async registerMyDeviceToken(
+    orgId: string,
+    userId: string,
+    dto: { token: string; platform: string }
+  ) {
+    const carer = await prisma.carer.findFirst({
+      where: { orgId, userId },
+    });
+    if (!carer) {
+      throw new NotFoundException("Carer profile not found");
+    }
+    return this.registerDeviceToken(orgId, userId, carer.id, dto);
+  }
+
   async registerDeviceToken(
     orgId: string,
     userId: string,
