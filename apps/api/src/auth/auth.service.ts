@@ -349,6 +349,10 @@ export class AuthService {
 
       // All apps are now invite-only — no self-signup
       throw new UnauthorizedException(INVITE_ONLY_MESSAGE);
+    } catch (error: any) {
+      console.error('[AuthService] Error during OTP verification:', error);
+      throw error;
+    }
   }
 
   private generateOtp(): string {
