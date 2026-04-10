@@ -271,7 +271,7 @@ export class AuthService {
         where: userLookupVerify,
       });
 
-      if (app === "admin" || app === "carer") {
+      if (app === "admin" || app === "carer" || app === "client") {
         // Invite-only: must already be in the system
         if (!user) {
           console.log('[AuthService] Invite-only: no user for', dto.target);
@@ -287,7 +287,9 @@ export class AuthService {
 
         // Determine which membership qualifies for this app
         let membership: (typeof allMemberships)[0] | undefined;
-        if (app === "carer") {
+        if (app === "client") {
+          membership = allMemberships.find((m) => m.role === "CLIENT");
+        } else if (app === "carer") {
           membership = allMemberships.find((m) => m.role === "CARER");
         } else {
           membership = allMemberships.find((m) => ["ADMIN", "MANAGER", "STAFF"].includes(m.role));
@@ -301,7 +303,7 @@ export class AuthService {
         // Collect all roles in this org
         const orgMemberships = allMemberships.filter((m) => m.orgId === membership!.orgId);
         const allRoles = orgMemberships.map((m) => m.role);
-        const primaryRole = this.getHighestPrivilegeRole(allRoles);
+        const primaryRole = app === "client" ? "CLIENT" : this.getHighestPrivilegeRole(allRoles);
 
         // Resolve display name: User.name → Client.name → Carer.name
         const [relatedClientA, relatedCarerA] = await Promise.all([
@@ -345,145 +347,8 @@ export class AuthService {
         };
       }
 
-      // Client app: find or create user and org (self-signup allowed)
-      if (!user) {
-        console.log('[AuthService] Creating new user for:', dto.target);
-        try {
-          const phoneForCreate = dto.channel === "phone" ? (normalizePhone(dto.target) ?? dto.target) : undefined;
-          const emailForCreate = dto.channel === "email" ? dto.target : undefined;
-          user = await prisma.user.create({
-            data: { phone: phoneForCreate, email: emailForCreate },
-          });
-          console.log('[AuthService] User created:', user.id);
-        } catch (error: any) {
-          console.error('[AuthService] Failed to create user:', error);
-          throw new BadRequestException(`Failed to create user: ${error.message}`);
-        }
-      } else {
-        console.log('[AuthService] Found existing user:', user.id);
-      }
-
-      // Client app must always get a CLIENT-scoped token — never fall back to ADMIN/MANAGER
-      let membership = await prisma.orgMember.findFirst({
-        where: { userId: user.id, role: "CLIENT" },
-        orderBy: { createdAt: "asc" },
-        include: { org: true },
-      });
-
-      if (!membership) {
-        // Maybe they have a Client record but no CLIENT OrgMember — repair it
-        const clientRecord = await prisma.client.findFirst({
-          where: { userId: user.id },
-          select: { orgId: true },
-        });
-        if (clientRecord) {
-          console.log('[AuthService] Repairing missing CLIENT membership for user');
-          try {
-            membership = await prisma.orgMember.create({
-              data: { orgId: clientRecord.orgId, userId: user.id, role: "CLIENT" },
-              include: { org: true },
-            });
-          } catch (error: any) {
-            if (error.code === 'P2002') {
-              // Exact (orgId, userId, role=CLIENT) already exists — just fetch it
-              console.log('[AuthService] CLIENT membership already exists, fetching it');
-              membership = await prisma.orgMember.findFirst({
-                where: { userId: user.id, orgId: clientRecord.orgId, role: "CLIENT" },
-                include: { org: true },
-              });
-            } else {
-              console.error('[AuthService] Failed to repair membership:', error);
-              throw new BadRequestException(`Failed to set up membership: ${error.message}`);
-            }
-          }
-        } else {
-          console.log('[AuthService] Adding new user to existing org as CLIENT');
-          try {
-            const existingOrg = await prisma.organization.findFirst({
-              orderBy: { createdAt: "asc" },
-            });
-            if (!existingOrg) {
-              throw new BadRequestException("No organization found. Please contact support.");
-            }
-            membership = await prisma.orgMember.create({
-              data: { orgId: existingOrg.id, userId: user.id, role: "CLIENT" },
-              include: { org: true },
-            });
-          } catch (error: any) {
-            if (error.code === 'P2002') {
-              // Exact (orgId, userId, role=CLIENT) already exists — just fetch it
-              const existingOrg = await prisma.organization.findFirst({ orderBy: { createdAt: "asc" } });
-              if (existingOrg) {
-                membership = await prisma.orgMember.findFirst({
-                  where: { userId: user.id, orgId: existingOrg.id, role: "CLIENT" },
-                  include: { org: true },
-                });
-              }
-            } else {
-              console.error('[AuthService] Failed to create membership:', error);
-              throw new BadRequestException(`Failed to set up account: ${error.message}`);
-            }
-          }
-        }
-      } else {
-        console.log('[AuthService] Found existing membership, role:', membership.role);
-      }
-
-      // Fetch all roles for this user in the org to build multi-role JWT
-      const allOrgMemberships = await prisma.orgMember.findMany({
-        where: { userId: user.id, orgId: membership.orgId },
-      });
-      const allRoles = allOrgMemberships.map((m) => m.role);
-      // For client app, always present CLIENT as the primary role
-      const primaryRole = "CLIENT";
-
-      // Issue JWT
-      const jwtSecretRaw = this.configService.get<string>("JWT_SECRET");
-      if (!jwtSecretRaw && this.configService.get<string>("NODE_ENV") === "production") {
-        throw new Error("JWT_SECRET must be set in production");
-      }
-      const jwtSecret = jwtSecretRaw || "dev-secret-change-in-prod";
-      const token = this.jwtService.sign(
-        {
-          sub: user.id,
-          org_id: membership.orgId,
-          role: primaryRole,
-          roles: allRoles,
-        },
-        {
-          secret: jwtSecret,
-          expiresIn: this.configService.get<string>("JWT_EXPIRES_IN") || "7d",
-        }
-      );
-
-      console.log('[AuthService] JWT issued successfully');
-
-      // Resolve display name: User.name → Client.name fallback
-      const relatedClient = await prisma.client.findFirst({
-        where: { userId: user.id, orgId: membership.orgId },
-        select: { name: true },
-      }).catch(() => null);
-      const displayName = user.name || relatedClient?.name || null;
-
-      return {
-        token,
-        user: {
-          id: user.id,
-          phone: user.phone,
-          email: user.email,
-          name: displayName,
-        },
-        org: {
-          id: membership.org.id,
-          name: membership.org.name,
-        },
-        role: primaryRole,
-        roles: allRoles,
-      };
-    } catch (error: any) {
-      console.error('[AuthService] Error during user/org creation:', error);
-      throw error;
-    }
+      // All apps are now invite-only — no self-signup
+      throw new UnauthorizedException(INVITE_ONLY_MESSAGE);
   }
 
   private generateOtp(): string {
