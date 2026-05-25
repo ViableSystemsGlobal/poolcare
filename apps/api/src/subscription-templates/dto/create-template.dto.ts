@@ -15,9 +15,26 @@ export class CreateTemplateDto {
   @IsOptional()
   billingType?: string;
 
+  @IsOptional()
+  @IsEnum(["fixed", "range"])
+  pricingType?: string;
+
+  // Required when pricingType = "fixed" (cross-field validation in service)
+  @IsOptional()
   @IsInt()
   @Min(0)
-  priceCents: number;
+  priceCents?: number;
+
+  // Required when pricingType = "range" (cross-field validation in service)
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  priceMinCents?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  priceMaxCents?: number;
 
   @IsOptional()
   @IsString()

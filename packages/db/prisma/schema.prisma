@@ -324,7 +324,10 @@ model SubscriptionTemplate {
   description        String?
   frequency          String // weekly, biweekly, monthly, once_week, twice_week, once_month, twice_month
   billingType        String   @default("monthly") // per_visit, monthly, quarterly, annually
-  priceCents         Int
+  pricingType        String   @default("fixed") // fixed, range
+  priceCents         Int // fixed price; for range plans mirrors priceMinCents as a billing default
+  priceMinCents      Int? // lower bound when pricingType = range
+  priceMaxCents      Int? // upper bound when pricingType = range
   currency           String   @default("GHS")
   taxPct             Float    @default(0)
   discountPct        Float    @default(0)
@@ -361,7 +364,10 @@ model ServicePlan {
   serviceDurationMin   Int       @default(45)
   visitTemplateId      String?   @db.Uuid
   visitTemplateVersion Int?
-  priceCents           Int
+  pricingType          String    @default("fixed") // fixed, range
+  priceCents           Int // fixed price; for range plans mirrors priceMinCents as a billing default
+  priceMinCents        Int? // lower bound when pricingType = range
+  priceMaxCents        Int? // upper bound when pricingType = range
   currency             String    @default("GHS")
   taxPct               Float     @default(0)
   discountPct          Float     @default(0)

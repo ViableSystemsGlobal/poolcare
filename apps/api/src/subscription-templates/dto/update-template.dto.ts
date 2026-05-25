@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsInt, IsNumber, IsBoolean, IsEnum, IsObject } from "class-validator";
+import { IsString, IsOptional, IsInt, IsNumber, IsBoolean, IsEnum, IsObject, Min } from "class-validator";
 import { CreateTemplateDto } from "./create-template.dto";
 
 export class UpdateTemplateDto {
@@ -19,8 +19,22 @@ export class UpdateTemplateDto {
   billingType?: string;
 
   @IsOptional()
+  @IsEnum(["fixed", "range"])
+  pricingType?: string;
+
+  @IsOptional()
   @IsInt()
   priceCents?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  priceMinCents?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  priceMaxCents?: number;
 
   @IsOptional()
   @IsString()

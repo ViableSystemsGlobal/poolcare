@@ -6,7 +6,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Plus, Search, Calendar, Edit, Trash2, Pause, PlayCircle, FastForward, DollarSign, Clock, FileText, Droplet, Download, Info, ChevronLeft, ChevronRight } from "lucide-react";
+import { Plus, Search, Calendar, Edit, Trash2, Pause, PlayCircle, FastForward, DollarSign, Clock, FileText, Droplet, Download, ChevronLeft, ChevronRight } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Table,
@@ -88,7 +88,6 @@ export default function PlansPage() {
   });
 
   const [subscriptionTemplates, setSubscriptionTemplates] = useState<any[]>([]);
-  const [useTemplate, setUseTemplate] = useState(false);
 
   useEffect(() => {
     fetchPools();
@@ -104,26 +103,25 @@ export default function PlansPage() {
     }
   }, [searchParams]);
 
-  // Auto-fill form when template is selected
-  useEffect(() => {
-    if (useTemplate && formData.templateId) {
-      const selectedTemplate = subscriptionTemplates.find((t) => t.id === formData.templateId);
-      if (selectedTemplate) {
-        setFormData((prev) => ({
-          ...prev,
-          frequency: selectedTemplate.frequency || prev.frequency,
-          priceCents: selectedTemplate.priceCents ? (selectedTemplate.priceCents / 100).toString() : prev.priceCents,
-          currency: selectedTemplate.currency || prev.currency,
-          taxPct: selectedTemplate.taxPct?.toString() || prev.taxPct,
-          discountPct: selectedTemplate.discountPct?.toString() || prev.discountPct,
-          serviceDurationMin: selectedTemplate.serviceDurationMin?.toString() || prev.serviceDurationMin,
-          templateId: selectedTemplate.templateId || prev.templateId,
-          billingType: selectedTemplate.billingType || prev.billingType,
-          autoRenew: false, // Default to false, user can override
-        }));
-      }
+  // The PoolCare plan chosen for this subscription. Pricing, frequency, billing,
+  // duration etc. all come from it — the form only collects per-client details.
+  const selectedTemplate = useMemo(
+    () => subscriptionTemplates.find((t) => t.id === formData.templateId) || null,
+    [subscriptionTemplates, formData.templateId]
+  );
+  const planFrequency: string = selectedTemplate?.frequency || "";
+  const needsDayOfWeek = ["weekly", "biweekly", "once_week", "twice_week"].includes(planFrequency);
+  const needsDayOfMonth = ["monthly", "once_month", "twice_month"].includes(planFrequency);
+
+  // Human-readable price for the selected plan (single figure or a range).
+  const planPriceLabel = (t: any): string => {
+    if (!t) return "";
+    const sym = formatCurrencyForDisplay(t.currency || "GHS");
+    if (t.pricingType === "range" && t.priceMinCents != null && t.priceMaxCents != null) {
+      return `${sym}${(t.priceMinCents / 100).toFixed(2)} – ${sym}${(t.priceMaxCents / 100).toFixed(2)}`;
     }
-  }, [formData.templateId, useTemplate, subscriptionTemplates]);
+    return `${sym}${((t.priceCents || 0) / 100).toFixed(2)}`;
+  };
 
   const fetchSubscriptionTemplates = async () => {
     try {
@@ -361,39 +359,34 @@ export default function PlansPage() {
       templateId: "",
       preferredCarerId: "",
     });
-    setUseTemplate(false);
   };
 
   const handleCreate = async () => {
     try {
       const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
-      const payload: any = {
-        poolId: formData.poolId,
-        frequency: formData.frequency,
-        priceCents: parseFloat(formData.priceCents) * 100, // Convert to cents
-        currency: formData.currency,
-        taxPct: parseFloat(formData.taxPct) || 0,
-        discountPct: parseFloat(formData.discountPct) || 0,
-        serviceDurationMin: parseInt(formData.serviceDurationMin) || 45,
-      };
 
-      if (formData.frequency === "weekly" || formData.frequency === "biweekly") {
+      if (!formData.templateId) {
+        toast({ title: "Validation Error", description: "Select a PoolCare plan", variant: "destructive" });
+        return;
+      }
+      if (!formData.poolId) {
+        toast({ title: "Validation Error", description: "Select a pool", variant: "destructive" });
+        return;
+      }
+
+      // Only per-client overrides; pricing, frequency, billing and duration are
+      // inherited from the selected PoolCare plan by the from-template endpoint.
+      const payload: any = { poolId: formData.poolId };
+
+      if (needsDayOfWeek) {
         if (!formData.dow) {
-          toast({
-            title: "Validation Error",
-            description: "Day of week is required for weekly/biweekly plans",
-            variant: "destructive",
-          });
+          toast({ title: "Validation Error", description: "Day of week is required for this plan's frequency", variant: "destructive" });
           return;
         }
         payload.dow = formData.dow;
-      } else if (formData.frequency === "monthly") {
+      } else if (needsDayOfMonth) {
         if (!formData.dom) {
-          toast({
-            title: "Validation Error",
-            description: "Day of month is required for monthly plans",
-            variant: "destructive",
-          });
+          toast({ title: "Validation Error", description: "Day of month is required for this plan's frequency", variant: "destructive" });
           return;
         }
         payload.dom = parseInt(formData.dom);
@@ -411,16 +404,7 @@ export default function PlansPage() {
       if (formData.notes) payload.notes = formData.notes;
       if (formData.preferredCarerId) payload.preferredCarerId = formData.preferredCarerId;
 
-      // Subscription fields
-      if (formData.billingType) payload.billingType = formData.billingType;
-      if (formData.autoRenew) payload.autoRenew = formData.autoRenew;
-      if (formData.templateId && useTemplate) {
-        payload.templateId = formData.templateId;
-      }
-
-      const url = formData.templateId && useTemplate
-        ? `${API_URL}/service-plans/from-template/${formData.templateId}`
-        : `${API_URL}/service-plans`;
+      const url = `${API_URL}/service-plans/from-template/${formData.templateId}`;
 
       const response = await fetch(url, {
         method: "POST",
@@ -508,135 +492,54 @@ export default function PlansPage() {
                 </Select>
               </div>
 
-              {/* Subscription Settings - Moved to Top */}
-              <div className="border-t pt-4 mt-2">
-                <h3 className="text-lg font-semibold mb-4">Subscription Settings</h3>
-                
-                <div className="grid gap-4">
-                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                    <div className="flex items-start space-x-3">
-                      <Info className="h-5 w-5 text-blue-600 mt-0.5" />
-                      <div className="flex-1">
-                        <p className="text-sm font-medium text-blue-900 mb-1">
-                          Quick Start: Use a Template
-                        </p>
-                        <p className="text-xs text-blue-700">
-                          Select a subscription template to quickly create a plan with pre-configured settings. 
-                          You can also create a custom plan manually below.
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center space-x-2">
-                    <Checkbox
-                      id="useTemplate"
-                      checked={useTemplate}
-                      onCheckedChange={(checked) => {
-                        setUseTemplate(checked === true);
-                        if (!checked) {
-                          setFormData({ ...formData, templateId: "" });
-                        }
-                      }}
-                    />
-                    <Label htmlFor="useTemplate" className="cursor-pointer font-medium">
-                      Create from subscription template
-                    </Label>
-                  </div>
-
-                  {useTemplate && (
-                    <div className="grid gap-2">
-                      <Label htmlFor="templateId">Subscription Template *</Label>
-                      <Select
-                        value={formData.templateId}
-                        onValueChange={(value) => setFormData({ ...formData, templateId: value })}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select a template">
-                            {formData.templateId && (() => {
-                              const selectedTemplate = subscriptionTemplates.find((t) => t.id === formData.templateId);
-                              if (selectedTemplate) {
-                                const formattedPrice = `${formatCurrencyForDisplay(selectedTemplate.currency || "GHS")}${((selectedTemplate.priceCents || 0) / 100).toFixed(2)}`;
-                                return `${selectedTemplate.name} - ${selectedTemplate.billingType} (${formattedPrice})`;
-                              }
-                              return "Select a template";
-                            })()}
-                          </SelectValue>
-                        </SelectTrigger>
-                        <SelectContent>
-                          {subscriptionTemplates.filter((t) => t.isActive).map((template) => {
-                            const formattedPrice = `${formatCurrencyForDisplay(template.currency || "GHS")}${((template.priceCents || 0) / 100).toFixed(2)}`;
-                            return (
-                              <SelectItem key={template.id} value={template.id}>
-                                {template.name} - {template.billingType} ({formattedPrice})
-                              </SelectItem>
-                            );
-                          })}
-                        </SelectContent>
-                      </Select>
-                      {formData.templateId && (
-                        <p className="text-xs text-gray-500 mt-1">
-                          Template fields will be pre-filled. You can override any value before creating the plan.
-                        </p>
-                      )}
-                    </div>
-                  )}
-
-                  {!useTemplate && (
-                    <>
-                      <div className="grid gap-2">
-                        <Label htmlFor="billingType">Billing Type</Label>
-                        <Select
-                          value={formData.billingType}
-                          onValueChange={(value) => setFormData({ ...formData, billingType: value })}
-                        >
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="per_visit">Per Visit</SelectItem>
-                            <SelectItem value="monthly">Monthly</SelectItem>
-                            <SelectItem value="quarterly">Quarterly</SelectItem>
-                            <SelectItem value="annually">Annually</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-
-                      {formData.billingType !== "per_visit" && (
-                        <div className="flex items-center space-x-2">
-                          <Checkbox
-                            id="autoRenew"
-                            checked={formData.autoRenew}
-                            onCheckedChange={(checked) => setFormData({ ...formData, autoRenew: checked === true })}
-                          />
-                          <Label htmlFor="autoRenew" className="cursor-pointer">
-                            Auto-renew subscription
-                          </Label>
-                        </div>
-                      )}
-                    </>
-                  )}
-                </div>
-              </div>
-
+              {/* PoolCare Plan — defines pricing, frequency, billing and duration */}
               <div className="grid gap-2">
-                <Label htmlFor="frequency">Frequency *</Label>
+                <Label htmlFor="templateId">PoolCare Plan *</Label>
                 <Select
-                  value={formData.frequency}
-                  onValueChange={(value) => setFormData({ ...formData, frequency: value, dow: "", dom: "" })}
+                  value={formData.templateId}
+                  onValueChange={(value) => setFormData({ ...formData, templateId: value, dow: "", dom: "" })}
                 >
                   <SelectTrigger>
-                    <SelectValue />
+                    <SelectValue placeholder="Select a plan" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="weekly">Weekly</SelectItem>
-                    <SelectItem value="biweekly">Biweekly</SelectItem>
-                    <SelectItem value="monthly">Monthly</SelectItem>
+                    {subscriptionTemplates.filter((t) => t.isActive).map((template) => (
+                      <SelectItem key={template.id} value={template.id}>
+                        {template.name} — {planPriceLabel(template)}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
 
-              {(formData.frequency === "weekly" || formData.frequency === "biweekly") && (
+              {selectedTemplate && (
+                <div className="rounded-lg border bg-gray-50 p-4 grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
+                  <div className="col-span-2 font-medium text-gray-900">{selectedTemplate.name}</div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Price</span>
+                    <span className="font-medium">{planPriceLabel(selectedTemplate)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Billing</span>
+                    <span className="font-medium capitalize">{selectedTemplate.billingType}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Frequency</span>
+                    <span className="font-medium capitalize">{(selectedTemplate.frequency || "").replace(/_/g, " ")}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Duration</span>
+                    <span className="font-medium">{selectedTemplate.serviceDurationMin} min</span>
+                  </div>
+                  {selectedTemplate.pricingType === "range" && (
+                    <p className="col-span-2 text-xs text-gray-500">
+                      Range plan — you invoice a figure within this range at billing time.
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {needsDayOfWeek && (
                 <div className="grid gap-2">
                   <Label htmlFor="dow">Day of Week *</Label>
                   <Select
@@ -659,7 +562,7 @@ export default function PlansPage() {
                 </div>
               )}
 
-              {formData.frequency === "monthly" && (
+              {needsDayOfMonth && (
                 <div className="grid gap-2">
                   <Label htmlFor="dom">Day of Month * (1-28, or -1 for last day)</Label>
                   <Input
@@ -692,70 +595,6 @@ export default function PlansPage() {
                     value={formData.windowEnd}
                     onChange={(e) => setFormData({ ...formData, windowEnd: e.target.value })}
                   />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-3 gap-4">
-                <div className="grid gap-2">
-                  <Label htmlFor="priceCents">Price *</Label>
-                  <Input
-                    id="priceCents"
-                    type="number"
-                    step="0.01"
-                    placeholder="180.00"
-                    value={formData.priceCents}
-                    onChange={(e) => setFormData({ ...formData, priceCents: e.target.value })}
-                  />
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="taxPct">Tax %</Label>
-                  <Input
-                    id="taxPct"
-                    type="number"
-                    step="0.1"
-                    placeholder="0"
-                    value={formData.taxPct}
-                    onChange={(e) => setFormData({ ...formData, taxPct: e.target.value })}
-                  />
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="discountPct">Discount %</Label>
-                  <Input
-                    id="discountPct"
-                    type="number"
-                    step="0.1"
-                    placeholder="0"
-                    value={formData.discountPct}
-                    onChange={(e) => setFormData({ ...formData, discountPct: e.target.value })}
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="grid gap-2">
-                  <Label htmlFor="serviceDurationMin">Service Duration (minutes)</Label>
-                  <Input
-                    id="serviceDurationMin"
-                    type="number"
-                    placeholder="45"
-                    value={formData.serviceDurationMin}
-                    onChange={(e) => setFormData({ ...formData, serviceDurationMin: e.target.value })}
-                  />
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="currency">Currency</Label>
-                  <Select
-                    value={formData.currency}
-                    onValueChange={(value) => setFormData({ ...formData, currency: value })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="GHS">GH₵ (Ghana Cedis)</SelectItem>
-                      <SelectItem value="USD">USD (US Dollars)</SelectItem>
-                    </SelectContent>
-                  </Select>
                 </div>
               </div>
 
@@ -816,7 +655,7 @@ export default function PlansPage() {
                 <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
                   Cancel
                 </Button>
-                <Button onClick={handleCreate} disabled={!formData.poolId || !formData.priceCents}>
+                <Button onClick={handleCreate} disabled={!formData.poolId || !formData.templateId}>
                   Create Plan
                 </Button>
               </div>
@@ -1078,7 +917,7 @@ export default function PlansPage() {
                         )}
                       </TableCell>
                       <TableCell>
-                        {formatCurrencyForDisplay(plan.currency || "GHS")}{(plan.priceCents || 0) / 100}
+                        {planPriceLabel(plan)}
                       </TableCell>
                       <TableCell>
                         <div className="text-sm">

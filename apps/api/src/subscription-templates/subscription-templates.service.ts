@@ -4,6 +4,38 @@ import { CreateTemplateDto, UpdateTemplateDto } from "./dto";
 
 @Injectable()
 export class SubscriptionTemplatesService {
+  /**
+   * Validate and normalize pricing fields for a plan.
+   * - "fixed": requires priceCents; min/max cleared.
+   * - "range": requires priceMinCents <= priceMaxCents; priceCents mirrors the
+   *   minimum so downstream billing that reads priceCents still has a value.
+   */
+  private resolvePricing(input: {
+    pricingType?: string | null;
+    priceCents?: number | null;
+    priceMinCents?: number | null;
+    priceMaxCents?: number | null;
+  }): { pricingType: string; priceCents: number; priceMinCents: number | null; priceMaxCents: number | null } {
+    const pricingType = input.pricingType || "fixed";
+
+    if (pricingType === "range") {
+      const min = input.priceMinCents;
+      const max = input.priceMaxCents;
+      if (min === null || min === undefined || max === null || max === undefined) {
+        throw new BadRequestException("Range pricing requires both a minimum and maximum price");
+      }
+      if (min > max) {
+        throw new BadRequestException("Minimum price cannot be greater than maximum price");
+      }
+      return { pricingType, priceCents: min, priceMinCents: min, priceMaxCents: max };
+    }
+
+    if (input.priceCents === null || input.priceCents === undefined) {
+      throw new BadRequestException("A price is required for fixed pricing");
+    }
+    return { pricingType: "fixed", priceCents: input.priceCents, priceMinCents: null, priceMaxCents: null };
+  }
+
   async list(
     orgId: string,
     filters: {
@@ -85,6 +117,13 @@ export class SubscriptionTemplatesService {
       }
     }
 
+    const pricing = this.resolvePricing({
+      pricingType: dto.pricingType,
+      priceCents: dto.priceCents,
+      priceMinCents: dto.priceMinCents,
+      priceMaxCents: dto.priceMaxCents,
+    });
+
     const template = await prisma.subscriptionTemplate.create({
       data: {
         orgId,
@@ -92,7 +131,10 @@ export class SubscriptionTemplatesService {
         description: dto.description,
         frequency: dto.frequency,
         billingType: dto.billingType || "monthly",
-        priceCents: dto.priceCents,
+        pricingType: pricing.pricingType,
+        priceCents: pricing.priceCents,
+        priceMinCents: pricing.priceMinCents,
+        priceMaxCents: pricing.priceMaxCents,
         currency: dto.currency || "GHS",
         taxPct: dto.taxPct || 0,
         discountPct: dto.discountPct || 0,
@@ -139,6 +181,23 @@ export class SubscriptionTemplatesService {
       }
     }
 
+    // Re-resolve pricing when any pricing field is touched, merging with the
+    // existing template so partial updates stay internally consistent.
+    const pricingTouched =
+      dto.pricingType !== undefined ||
+      dto.priceCents !== undefined ||
+      dto.priceMinCents !== undefined ||
+      dto.priceMaxCents !== undefined;
+
+    const pricing = pricingTouched
+      ? this.resolvePricing({
+          pricingType: dto.pricingType ?? template.pricingType,
+          priceCents: dto.priceCents ?? template.priceCents,
+          priceMinCents: dto.priceMinCents ?? template.priceMinCents ?? undefined,
+          priceMaxCents: dto.priceMaxCents ?? template.priceMaxCents ?? undefined,
+        })
+      : null;
+
     const updated = await prisma.subscriptionTemplate.update({
       where: { id: templateId },
       data: {
@@ -146,7 +205,12 @@ export class SubscriptionTemplatesService {
         ...(dto.description !== undefined && { description: dto.description }),
         ...(dto.frequency !== undefined && { frequency: dto.frequency }),
         ...(dto.billingType !== undefined && { billingType: dto.billingType }),
-        ...(dto.priceCents !== undefined && { priceCents: dto.priceCents }),
+        ...(pricing && {
+          pricingType: pricing.pricingType,
+          priceCents: pricing.priceCents,
+          priceMinCents: pricing.priceMinCents,
+          priceMaxCents: pricing.priceMaxCents,
+        }),
         ...(dto.currency !== undefined && { currency: dto.currency }),
         ...(dto.taxPct !== undefined && { taxPct: dto.taxPct }),
         ...(dto.discountPct !== undefined && { discountPct: dto.discountPct }),
