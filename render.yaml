@@ -1,0 +1,96 @@
+# Render Blueprint for PoolCare (pnpm monorepo).
+#
+# The important bit: the API service runs `prisma migrate deploy` as a
+# preDeployCommand, so every deploy applies pending migrations to the
+# production database BEFORE the new code goes live. This prevents the
+# "column X does not exist" 500s that happen when code ships ahead of the DB.
+#
+# Notes before adopting this blueprint:
+#   - preDeployCommand requires a paid instance type (not the free plan).
+#   - Secrets / connection strings are marked `sync: false`; set them in the
+#     Render dashboard. They are intentionally NOT committed here.
+#   - If you adopt this as a Blueprint, it becomes the source of truth and may
+#     override existing dashboard settings — verify env vars are set first.
+
+services:
+  # ----------------------------------------------------------------------------
+  # API (NestJS)
+  # ----------------------------------------------------------------------------
+  - type: web
+    name: poolcare-api
+    runtime: node
+    region: frankfurt
+    plan: starter # preDeployCommand needs a paid plan; bump as needed
+    rootDir: .
+    buildCommand: >-
+      pnpm install --frozen-lockfile &&
+      pnpm --filter @poolcare/db generate &&
+      pnpm --filter @poolcare/api build
+    preDeployCommand: pnpm --filter @poolcare/db migrate:deploy
+    startCommand: pnpm --filter @poolcare/api start
+    healthCheckPath: /api/healthz
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      - key: NODE_ENV
+        value: production
+      # Connection string for the existing external Render Postgres.
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: JWT_EXPIRES_IN
+        sync: false
+      - key: NEXT_PUBLIC_APP_URL
+        sync: false
+      - key: MINIO_ENDPOINT
+        sync: false
+      - key: MINIO_PORT
+        sync: false
+      - key: MINIO_USE_SSL
+        sync: false
+      - key: MINIO_ACCESS_KEY
+        sync: false
+      - key: MINIO_SECRET_KEY
+        sync: false
+      - key: MINIO_BUCKET
+        sync: false
+      - key: DEYWURO_API_KEY
+        sync: false
+      - key: DEYWURO_SENDER_ID
+        sync: false
+      - key: PAYSTACK_SECRET_KEY
+        sync: false
+      - key: PAYSTACK_PUBLIC_KEY
+        sync: false
+      - key: REDIS_HOST
+        sync: false
+      - key: REDIS_PORT
+        sync: false
+      - key: APPLE_REVIEW_CLIENT_PHONE
+        sync: false
+      - key: APPLE_REVIEW_CARER_PHONE
+        sync: false
+
+  # ----------------------------------------------------------------------------
+  # Web (Next.js)
+  # ----------------------------------------------------------------------------
+  - type: web
+    name: poolcare-web
+    runtime: node
+    region: frankfurt
+    plan: starter
+    rootDir: .
+    buildCommand: >-
+      pnpm install --frozen-lockfile &&
+      pnpm --filter @poolcare/db generate &&
+      pnpm --filter @poolcare/web build
+    # Bind to the port Render provides (the package script hardcodes 3002).
+    startCommand: pnpm --filter @poolcare/web exec next start -p $PORT
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      - key: NODE_ENV
+        value: production
+      - key: NEXT_PUBLIC_APP_URL
+        sync: false
