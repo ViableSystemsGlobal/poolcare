@@ -11,7 +11,7 @@ export class UpdateTemplateDto {
   description?: string;
 
   @IsOptional()
-  @IsEnum(["weekly", "biweekly", "monthly", "once_week", "twice_week", "once_month", "twice_month"])
+  @IsEnum(["weekly", "biweekly", "monthly", "once_week", "twice_week", "thrice_week", "once_month", "twice_month", "thrice_month"])
   frequency?: string;
 
   @IsOptional()

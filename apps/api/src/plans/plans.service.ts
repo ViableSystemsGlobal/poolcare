@@ -109,12 +109,12 @@ export class PlansService {
     }
 
     // Validate frequency requirements
-    if ((dto.frequency === "weekly" || dto.frequency === "biweekly" || dto.frequency === "once_week" || dto.frequency === "twice_week") && !dto.dow) {
-      throw new BadRequestException("dow required for weekly/biweekly/once_week/twice_week frequency");
+    if ((dto.frequency === "weekly" || dto.frequency === "biweekly" || dto.frequency === "once_week" || dto.frequency === "twice_week" || dto.frequency === "thrice_week") && !dto.dow) {
+      throw new BadRequestException("dow required for weekly/biweekly/once_week/twice_week/thrice_week frequency");
     }
 
-    if ((dto.frequency === "monthly" || dto.frequency === "once_month" || dto.frequency === "twice_month") && dto.dom === undefined) {
-      throw new BadRequestException("dom required for monthly/once_month/twice_month frequency");
+    if ((dto.frequency === "monthly" || dto.frequency === "once_month" || dto.frequency === "twice_month" || dto.frequency === "thrice_month") && dto.dom === undefined) {
+      throw new BadRequestException("dom required for monthly/once_month/twice_month/thrice_month frequency");
     }
 
     // If creating from template, use template data
@@ -1120,10 +1120,10 @@ Thank you for choosing PoolCare!`;
           current.setDate(current.getDate() + (daysUntilTarget || 7));
         }
       }
-    } else if (frequency === "twice_week") {
+    } else if (frequency === "twice_week" || frequency === "thrice_week") {
       if (!dow) return occurrences;
-      
-      // For twice_week, we need two days - parse dow as comma-separated or use default pattern
+
+      // For twice/thrice_week, we need multiple days - parse dow as comma-separated or use default pattern
       const days = dow.split(",").map(d => d.trim().toLowerCase());
       const targetDows = days.map(d => dowMap[d]).filter(d => d !== undefined);
       
@@ -1222,6 +1222,31 @@ Thank you for choosing PoolCare!`;
       }
       
       occurrences.sort((a, b) => a.getTime() - b.getTime());
+    } else if (frequency === "thrice_month") {
+      if (dom === undefined) return occurrences;
+
+      // For thrice_month, spread three visits across the month starting from dom.
+      const rawDays = [dom, dom + 10, dom + 20].map(d => Math.min(Math.max(d, 1), 28));
+      const days = Array.from(new Set(rawDays));
+
+      const monthStart = new Date(current.getFullYear(), current.getMonth(), 1);
+      if (monthStart < current) {
+        monthStart.setMonth(monthStart.getMonth() + 1);
+      }
+
+      while (monthStart <= endDate) {
+        for (const targetDom of days) {
+          const occurrence = new Date(monthStart.getFullYear(), monthStart.getMonth(), targetDom);
+
+          if (occurrence >= startDate && occurrence <= endDate) {
+            occurrences.push(occurrence);
+          }
+        }
+
+        monthStart.setMonth(monthStart.getMonth() + 1);
+      }
+
+      occurrences.sort((a, b) => a.getTime() - b.getTime());
     }
 
     return occurrences;
@@ -1243,14 +1268,14 @@ Thank you for choosing PoolCare!`;
       // Skip one occurrence based on frequency
       if (frequency === "weekly" || frequency === "once_week") {
         baseDate.setDate(baseDate.getDate() + 7);
-      } else if (frequency === "twice_week") {
+      } else if (frequency === "twice_week" || frequency === "thrice_week") {
         baseDate.setDate(baseDate.getDate() + 7); // Next week
       } else if (frequency === "biweekly") {
         baseDate.setDate(baseDate.getDate() + 14);
       } else if (frequency === "monthly" || frequency === "once_month") {
         baseDate.setMonth(baseDate.getMonth() + 1);
-      } else if (frequency === "twice_month") {
-        baseDate.setDate(baseDate.getDate() + 15); // Approximate
+      } else if (frequency === "twice_month" || frequency === "thrice_month") {
+        baseDate.setDate(baseDate.getDate() + 10); // Approximate
       }
     }
 
@@ -1273,8 +1298,8 @@ Thank you for choosing PoolCare!`;
         nextDate.setDate(nextDate.getDate() + (daysUntilTarget || 7));
         return nextDate;
       }
-    } else if (frequency === "twice_week" && dow) {
-      // For twice_week, return the next occurrence (first day in the list)
+    } else if ((frequency === "twice_week" || frequency === "thrice_week") && dow) {
+      // For twice/thrice_week, return the next occurrence (first day in the list)
       const days = dow.split(",").map(d => d.trim().toLowerCase());
       const firstDay = days[0];
       const targetDow = dowMap[firstDay];

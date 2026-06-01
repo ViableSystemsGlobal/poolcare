@@ -322,7 +322,7 @@ model SubscriptionTemplate {
   orgId              String   @db.Uuid
   name               String
   description        String?
-  frequency          String // weekly, biweekly, monthly, once_week, twice_week, once_month, twice_month
+  frequency          String // weekly, biweekly, monthly, once_week, twice_week, thrice_week, once_month, twice_month, thrice_month
   billingType        String   @default("monthly") // per_visit, monthly, quarterly, annually
   pricingType        String   @default("fixed") // fixed, range
   priceCents         Int // fixed price; for range plans mirrors priceMinCents as a billing default
@@ -356,7 +356,7 @@ model ServicePlan {
   orgId                String    @db.Uuid
   poolId               String    @db.Uuid
   templateId           String?   @db.Uuid // Reference to SubscriptionTemplate
-  frequency            String // weekly, biweekly, monthly, once_week, twice_week, once_month, twice_month
+  frequency            String // weekly, biweekly, monthly, once_week, twice_week, thrice_week, once_month, twice_month, thrice_month
   dow                  String? // mon..sun for weekly/biweekly
   dom                  Int? // 1..28 or -1 for monthly
   windowStart          String? // HH:MM:SS

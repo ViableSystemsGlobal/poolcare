@@ -110,8 +110,8 @@ export default function PlansPage() {
     [subscriptionTemplates, formData.templateId]
   );
   const planFrequency: string = selectedTemplate?.frequency || "";
-  const needsDayOfWeek = ["weekly", "biweekly", "once_week", "twice_week"].includes(planFrequency);
-  const needsDayOfMonth = ["monthly", "once_month", "twice_month"].includes(planFrequency);
+  const needsDayOfWeek = ["weekly", "biweekly", "once_week", "twice_week", "thrice_week"].includes(planFrequency);
+  const needsDayOfMonth = ["monthly", "once_month", "twice_month", "thrice_month"].includes(planFrequency);
 
   // Human-readable price for the selected plan (single figure or a range).
   const planPriceLabel = (t: any): string => {
