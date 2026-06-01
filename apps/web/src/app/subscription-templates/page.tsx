@@ -395,10 +395,10 @@ export default function SubscriptionTemplatesPage() {
               <SelectItem value="monthly">Monthly</SelectItem>
               <SelectItem value="once_week">Once per Week</SelectItem>
               <SelectItem value="twice_week">Twice per Week</SelectItem>
-              <SelectItem value="thrice_week">3 times per Week</SelectItem>
+              <SelectItem value="thrice_week">Thrice per Week</SelectItem>
               <SelectItem value="once_month">Once per Month</SelectItem>
               <SelectItem value="twice_month">Twice per Month</SelectItem>
-              <SelectItem value="thrice_month">3 times per Month</SelectItem>
+              <SelectItem value="thrice_month">Thrice per Month</SelectItem>
             </SelectContent>
           </Select>
         </div>

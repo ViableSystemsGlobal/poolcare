@@ -140,10 +140,10 @@ export default function SubscriptionsScreen() {
       monthly: "Monthly",
       once_week: "Once per Week",
       twice_week: "Twice per Week",
-      thrice_week: "3 times per Week",
+      thrice_week: "Thrice per Week",
       once_month: "Once per Month",
       twice_month: "Twice per Month",
-      thrice_month: "3 times per Month",
+      thrice_month: "Thrice per Month",
     };
     return labels[frequency] || frequency;
   };
