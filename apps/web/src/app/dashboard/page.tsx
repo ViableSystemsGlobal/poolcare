@@ -341,45 +341,56 @@ export default function Dashboard() {
       </div>
 
       {/* ------------------------------------------------------------------ */}
-      {/* Today's Overview — 6 stat cards                                     */}
+      {/* AI card + Today's Overview — side by side like the list pages       */}
       {/* ------------------------------------------------------------------ */}
-      <section>
-        <h2 className="text-sm font-medium text-gray-500 uppercase tracking-wider mb-3">
-          Today&apos;s Overview
-        </h2>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+        <div className="lg:col-span-2">
+          <DashboardAICard
+            title="PoolCare AI"
+            subtitle="Your intelligent assistant"
+            recommendations={aiRecommendations}
+            onRecommendationComplete={(id) => console.log("Recommendation completed:", id)}
+            recommendationsSource={aiRecommendationsSource}
+          />
+        </div>
 
-        {loading ? (
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-            {Array.from({ length: 6 }).map((_, i) => (
-              <StatCardSkeleton key={i} />
-            ))}
-          </div>
-        ) : (
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-            {statCards.map((c) => {
-              const Icon = c.icon;
-              return (
-                <div
-                  key={c.label}
-                  className="bg-white rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow"
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs font-medium text-gray-500">{c.label}</span>
-                    <div
-                      className="h-7 w-7 rounded-lg flex items-center justify-center"
-                      style={{ backgroundColor: c.bgColor }}
-                    >
-                      <Icon className="h-3.5 w-3.5" style={{ color: c.color }} />
+        <section>
+          <h2 className="text-sm font-medium text-gray-500 uppercase tracking-wider mb-3">
+            Today&apos;s Overview
+          </h2>
+          {loading ? (
+            <div className="grid grid-cols-2 gap-3">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <StatCardSkeleton key={i} />
+              ))}
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-3">
+              {statCards.map((c) => {
+                const Icon = c.icon;
+                return (
+                  <div
+                    key={c.label}
+                    className="bg-white rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow"
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-xs font-medium text-gray-500">{c.label}</span>
+                      <div
+                        className="h-7 w-7 rounded-lg flex items-center justify-center"
+                        style={{ backgroundColor: c.bgColor }}
+                      >
+                        <Icon className="h-3.5 w-3.5" style={{ color: c.color }} />
+                      </div>
                     </div>
+                    <div className="text-2xl font-bold text-gray-900 tabular-nums">{c.value.toLocaleString()}</div>
+                    <div className="text-[11px] text-gray-400 mt-0.5">{c.sub}</div>
                   </div>
-                  <div className="text-2xl font-bold text-gray-900 tabular-nums">{c.value.toLocaleString()}</div>
-                  <div className="text-[11px] text-gray-400 mt-0.5">{c.sub}</div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </section>
+                );
+              })}
+            </div>
+          )}
+        </section>
+      </div>
 
       {/* ------------------------------------------------------------------ */}
       {/* Two-column body                                                     */}
@@ -511,78 +522,66 @@ export default function Dashboard() {
             )
           )}
 
+          {/* Recent Activity */}
+          {loading ? (
+            <CardSkeleton lines={5} />
+          ) : (
+            <div className="bg-white rounded-xl shadow-sm p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wider">
+                  Recent Activity
+                </h3>
+                <button
+                  onClick={() => router.push("/activity")}
+                  className="text-xs font-medium flex items-center gap-1 hover:underline"
+                  style={{ color: themeHex }}
+                >
+                  View all <ArrowRight className="h-3 w-3" />
+                </button>
+              </div>
+
+              {recentActivity.length === 0 ? (
+                <div className="text-center py-10">
+                  <div className="h-12 w-12 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-3">
+                    <FileText className="h-5 w-5 text-gray-400" />
+                  </div>
+                  <p className="text-sm font-medium text-gray-900 mb-1">No activity yet</p>
+                  <p className="text-xs text-gray-500">Start by creating your first job or plan</p>
+                </div>
+              ) : (
+                <div className="space-y-1">
+                  {recentActivity.map((a) => {
+                    const Icon = activityIconMap[a.type] || FileText;
+                    const iconColor = activityColorMap[a.type] || themeHex;
+                    return (
+                      <div
+                        key={`${a.type}-${a.id}`}
+                        className="flex items-start gap-3 p-2.5 rounded-lg hover:bg-gray-50 transition-colors cursor-pointer -mx-1"
+                      >
+                        <div
+                          className="h-8 w-8 rounded-lg flex items-center justify-center shrink-0 mt-0.5"
+                          style={{ backgroundColor: `${iconColor}15` }}
+                        >
+                          <Icon className="h-3.5 w-3.5" style={{ color: iconColor }} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-gray-900 truncate">{a.title}</p>
+                          <p className="text-xs text-gray-500 truncate">{a.description}</p>
+                        </div>
+                        <span className="text-[11px] text-gray-400 whitespace-nowrap shrink-0">
+                          {timeAgo(a.timestamp)}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
         </div>
       </div>
 
-      {/* Recent Activity + AI Recommendations — side by side */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Recent Activity */}
-        {loading ? (
-          <CardSkeleton lines={5} />
-        ) : (
-          <div className="bg-white rounded-xl shadow-sm p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wider">
-                Recent Activity
-              </h3>
-              <button
-                onClick={() => router.push("/activity")}
-                className="text-xs font-medium flex items-center gap-1 hover:underline"
-                style={{ color: themeHex }}
-              >
-                View all <ArrowRight className="h-3 w-3" />
-              </button>
-            </div>
-
-            {recentActivity.length === 0 ? (
-              <div className="text-center py-10">
-                <div className="h-12 w-12 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-3">
-                  <FileText className="h-5 w-5 text-gray-400" />
-                </div>
-                <p className="text-sm font-medium text-gray-900 mb-1">No activity yet</p>
-                <p className="text-xs text-gray-500">Start by creating your first job or plan</p>
-              </div>
-            ) : (
-              <div className="space-y-1">
-                {recentActivity.map((a) => {
-                  const Icon = activityIconMap[a.type] || FileText;
-                  const iconColor = activityColorMap[a.type] || themeHex;
-                  return (
-                    <div
-                      key={`${a.type}-${a.id}`}
-                      className="flex items-start gap-3 p-2.5 rounded-lg hover:bg-gray-50 transition-colors cursor-pointer -mx-1"
-                    >
-                      <div
-                        className="h-8 w-8 rounded-lg flex items-center justify-center shrink-0 mt-0.5"
-                        style={{ backgroundColor: `${iconColor}15` }}
-                      >
-                        <Icon className="h-3.5 w-3.5" style={{ color: iconColor }} />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-gray-900 truncate">{a.title}</p>
-                        <p className="text-xs text-gray-500 truncate">{a.description}</p>
-                      </div>
-                      <span className="text-[11px] text-gray-400 whitespace-nowrap shrink-0">
-                        {timeAgo(a.timestamp)}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* AI Recommendations */}
-        <DashboardAICard
-          title="PoolCare AI"
-          subtitle="Your intelligent assistant"
-          recommendations={aiRecommendations}
-          onRecommendationComplete={(id) => console.log("Recommendation completed:", id)}
-          layout="vertical"
-          recommendationsSource={aiRecommendationsSource}
-        />
-      </div>
     </div>
   );
 }
