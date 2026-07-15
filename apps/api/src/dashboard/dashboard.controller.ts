@@ -14,5 +14,11 @@ export class DashboardController {
   ) {
     return this.dashboardService.getDashboardData(user.org_id, user.sub);
   }
+
+  // Chart data: 12-month revenue series + active plan mix.
+  @Get("trends")
+  async getTrends(@CurrentUser() user: { org_id: string }) {
+    return this.dashboardService.getTrends(user.org_id);
+  }
 }
 

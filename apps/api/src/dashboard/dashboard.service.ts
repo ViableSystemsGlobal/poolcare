@@ -419,5 +419,63 @@ export class DashboardService {
       recentActivity,
     };
   }
+
+  /** Chart data for the dashboard: 12-month revenue series + active plan mix. */
+  async getTrends(orgId: string) {
+    const now = new Date();
+    const start = new Date(now.getFullYear(), now.getMonth() - 11, 1);
+
+    const [invoices, payments, plans] = await Promise.all([
+      prisma.invoice.findMany({
+        where: { orgId, createdAt: { gte: start } },
+        select: { createdAt: true, totalCents: true },
+      }),
+      prisma.payment.findMany({
+        where: { orgId, status: "completed", processedAt: { gte: start } },
+        select: { processedAt: true, amountCents: true },
+      }),
+      prisma.servicePlan.findMany({
+        where: { orgId, status: "active" },
+        select: { template: { select: { name: true } } },
+      }),
+    ]);
+
+    // 12 monthly buckets, oldest first
+    const months: { key: string; label: string; invoiced: number; collected: number }[] = [];
+    for (let i = 11; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      months.push({
+        key: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`,
+        label: d.toLocaleDateString("en-US", { month: "short" }),
+        invoiced: 0,
+        collected: 0,
+      });
+    }
+    const bucket = (date: Date) => {
+      const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+      return months.find((m) => m.key === key);
+    };
+    for (const inv of invoices) {
+      const m = bucket(new Date(inv.createdAt));
+      if (m) m.invoiced += inv.totalCents || 0;
+    }
+    for (const p of payments) {
+      if (!p.processedAt) continue;
+      const m = bucket(new Date(p.processedAt));
+      if (m) m.collected += p.amountCents || 0;
+    }
+
+    // Active plans grouped by package name (templateless plans = "Custom")
+    const mixMap = new Map<string, number>();
+    for (const p of plans) {
+      const name = p.template?.name || "Custom";
+      mixMap.set(name, (mixMap.get(name) || 0) + 1);
+    }
+    const planMix = [...mixMap.entries()]
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count);
+
+    return { revenue: months, planMix };
+  }
 }
 

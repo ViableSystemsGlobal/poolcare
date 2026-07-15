@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { useTheme } from "@/contexts/theme-context";
 import { useAuth } from "@/contexts/auth-context";
 import { DashboardAICard } from "@/components/dashboard-ai-card";
+import { RevenueTrendChart, PlanMixDonut, RevenuePoint, PlanMixSlice } from "@/components/dashboard-charts";
 import {
   Calendar,
   Users,
@@ -204,6 +205,7 @@ export default function Dashboard() {
   const themeHex = getThemeColor();
 
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
+  const [trends, setTrends] = useState<{ revenue: RevenuePoint[]; planMix: PlanMixSlice[] } | null>(null);
   const [aiRecommendations, setAiRecommendations] = useState<AIRecommendation[]>([]);
   const [aiRecommendationsSource, setAiRecommendationsSource] = useState<"api" | "fallback" | null>(null);
   const [loading, setLoading] = useState(true);
@@ -215,13 +217,15 @@ export default function Dashboard() {
         const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
         const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
 
-        const [dashRes, recRes] = await Promise.all([
+        const [dashRes, trendsRes, recRes] = await Promise.all([
           fetch(`${API_URL}/dashboard`, { headers, cache: "no-store" as RequestCache }),
+          fetch(`${API_URL}/dashboard/trends`, { headers, cache: "no-store" as RequestCache }),
           fetch(`${API_URL}/ai/recommendations?context=dashboard`, { headers, cache: "no-store" as RequestCache }),
         ]);
 
         const data: DashboardData | null = dashRes.ok ? await dashRes.json() : null;
         if (data) setDashboardData(data);
+        if (trendsRes.ok) setTrends(await trendsRes.json());
 
         if (recRes.ok) {
           const recData = await recRes.json();
@@ -368,7 +372,7 @@ export default function Dashboard() {
                       <Icon className="h-3.5 w-3.5" style={{ color: c.color }} />
                     </div>
                   </div>
-                  <div className="text-2xl font-bold text-gray-900">{c.value.toLocaleString()}</div>
+                  <div className="text-2xl font-bold text-gray-900 tabular-nums">{c.value.toLocaleString()}</div>
                   <div className="text-[11px] text-gray-400 mt-0.5">{c.sub}</div>
                 </div>
               );
@@ -393,7 +397,7 @@ export default function Dashboard() {
               </h3>
 
               <div className="mb-5">
-                <span className="text-3xl font-bold text-gray-900">
+                <span className="text-3xl font-bold text-gray-900 tabular-nums">
                   {currency(finance.monthlyRevenue)}
                 </span>
                 <span className="text-sm text-gray-400 ml-2">this month</span>
@@ -431,6 +435,18 @@ export default function Dashboard() {
                   />
                 </div>
               </div>
+
+              {/* 12-month trend */}
+              {trends && (
+                <div className="mt-6 pt-5 border-t border-gray-100">
+                  <div className="flex items-center justify-between mb-1">
+                    <h4 className="text-[11px] font-medium text-gray-400 uppercase tracking-wider">
+                      Last 12 months
+                    </h4>
+                  </div>
+                  <RevenueTrendChart data={trends.revenue} />
+                </div>
+              )}
             </div>
           )}
 
@@ -438,6 +454,21 @@ export default function Dashboard() {
 
         {/* ============ Right column (2/5 = 40%) ============ */}
         <div className="lg:col-span-2 space-y-6">
+          {/* Plan Mix */}
+          {loading ? (
+            <CardSkeleton lines={4} />
+          ) : (
+            trends && (
+              <div className="bg-white rounded-xl shadow-sm p-6">
+                <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wider mb-1">
+                  Plan Mix
+                </h3>
+                <p className="text-xs text-gray-400 mb-3">Active service plans by package</p>
+                <PlanMixDonut data={trends.planMix} />
+              </div>
+            )
+          )}
+
           {/* Business Snapshot */}
           {loading ? (
             <CardSkeleton lines={5} />
