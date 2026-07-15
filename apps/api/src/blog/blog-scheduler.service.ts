@@ -3,8 +3,9 @@ import { Cron } from "@nestjs/schedule";
 import { BlogService } from "./blog.service";
 
 /**
- * Auto-generates a blog DRAFT from the topic queue on the configured cadence
- * (default daily). Drafts go to the review queue — never auto-published.
+ * Auto-generates a blog post from the topic queue on the configured cadence
+ * (default daily). By default drafts wait in the review queue; when the org
+ * enables autoPublish, the generated post goes live immediately.
  */
 @Injectable()
 export class BlogSchedulerService {
@@ -27,7 +28,12 @@ export class BlogSchedulerService {
       const post = await this.blog.generateFromNextTopic(orgId);
       if (post) {
         await this.blog.updateSettings({ lastGeneratedAt: new Date().toISOString() });
-        this.logger.log(`Auto-generated blog draft: "${post.title}"`);
+        if (settings.autoPublish) {
+          await this.blog.publishPost(post.id);
+          this.logger.log(`Auto-generated AND published blog post: "${post.title}"`);
+        } else {
+          this.logger.log(`Auto-generated blog draft: "${post.title}"`);
+        }
       } else {
         this.logger.warn("Blog auto-generate skipped: no pending topics in the queue.");
       }

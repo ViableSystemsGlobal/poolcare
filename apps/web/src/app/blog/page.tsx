@@ -230,9 +230,19 @@ export default function BlogPage() {
           <label className="flex items-center justify-between gap-4 cursor-pointer">
             <div>
               <div className="text-sm font-medium text-gray-900">Auto-generate drafts</div>
-              <div className="text-xs text-gray-500">When on, the AI writes a draft from your topic queue on a schedule. Drafts wait in review — never auto-published.</div>
+              <div className="text-xs text-gray-500">When on, the AI writes a draft from your topic queue on a schedule.</div>
             </div>
             <input type="checkbox" checked={!!settings?.autoGenerate} onChange={(e) => saveSettings({ autoGenerate: e.target.checked })} className="h-5 w-5 shrink-0" style={{ accentColor: accent }} />
+          </label>
+
+          <label className={`flex items-center justify-between gap-4 ${settings?.autoGenerate ? "cursor-pointer" : "opacity-50"}`}>
+            <div>
+              <div className="text-sm font-medium text-gray-900">Publish automatically</div>
+              <div className="text-xs text-gray-500">
+                Generated posts go live on the website immediately, without review. Leave off to keep drafts in the review queue — recommended unless you trust the output fully.
+              </div>
+            </div>
+            <input type="checkbox" disabled={!settings?.autoGenerate} checked={!!settings?.autoPublish} onChange={(e) => saveSettings({ autoPublish: e.target.checked })} className="h-5 w-5 shrink-0" style={{ accentColor: accent }} />
           </label>
           <div>
             <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wider mb-1">Cadence (days between posts)</label>

@@ -14,7 +14,7 @@ const OTHER_COLOR = "#9ca3af"; // reserved neutral for the "Other" fold
 const INVOICED = CHART_COLORS[1]; // blue
 const COLLECTED = CHART_COLORS[0]; // green — money in
 
-const fmtCedi = (cents: number) => `GH₵${(cents / 100).toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
+const fmtCedi = (cents: number) => `GH₵${(cents / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const fmtCompact = (cents: number) => {
   const v = cents / 100;
   if (v >= 1000) return `₵${(v / 1000).toLocaleString("en-US", { maximumFractionDigits: 1 })}k`;

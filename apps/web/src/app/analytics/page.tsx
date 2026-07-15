@@ -139,7 +139,7 @@ export default function AnalyticsPage() {
   };
 
   const currency = (cents: number, c = "GHS") =>
-    `${formatCurrencyForDisplay(c)}${(cents / 100).toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
+    `${formatCurrencyForDisplay(c)}${(cents / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   const formatNumber = (n: number) => new Intl.NumberFormat().format(n);
 
   const collectionRate = (m: FinanceMetrics | null) =>

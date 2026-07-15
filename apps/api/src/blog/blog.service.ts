@@ -7,10 +7,12 @@ const slugify = (s: string) =>
 
 export interface BlogSettings {
   autoGenerate: boolean;
+  /** When true, scheduler-generated posts go live immediately (no review). */
+  autoPublish: boolean;
   cadenceDays: number;
   lastGeneratedAt: string | null;
 }
-const DEFAULT_SETTINGS: BlogSettings = { autoGenerate: false, cadenceDays: 1, lastGeneratedAt: null };
+const DEFAULT_SETTINGS: BlogSettings = { autoGenerate: false, autoPublish: false, cadenceDays: 1, lastGeneratedAt: null };
 
 @Injectable()
 export class BlogService {

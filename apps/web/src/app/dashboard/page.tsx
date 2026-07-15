@@ -121,7 +121,7 @@ function formatDate(): string {
 }
 
 function currency(cents: number): string {
-  return `GH\u20B5${(cents / 100).toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+  return `GH\u20B5${(cents / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 function timeAgo(ts: string): string {
