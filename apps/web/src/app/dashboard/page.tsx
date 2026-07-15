@@ -447,6 +447,48 @@ export default function Dashboard() {
                   <RevenueTrendChart data={trends.revenue} />
                 </div>
               )}
+
+              {/* Business snapshot */}
+              <div className="mt-6 pt-5 border-t border-gray-100">
+                <h4 className="text-[11px] font-medium text-gray-400 uppercase tracking-wider mb-2">
+                  Business Snapshot
+                </h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1">
+                  <SnapshotRow
+                    icon={Users}
+                    label="Active Clients"
+                    value={business.totalClients.toLocaleString()}
+                    color="#6b7280"
+                  />
+                  <SnapshotRow
+                    icon={Droplet}
+                    label="Active Pools"
+                    value={business.activePools.toLocaleString()}
+                    color="#2563eb"
+                  />
+                  <SnapshotRow
+                    icon={FileText}
+                    label="Pending Quotes"
+                    value={business.pendingQuotes.toLocaleString()}
+                    color="#d97706"
+                    onClick={() => router.push("/quotes")}
+                  />
+                  <SnapshotRow
+                    icon={TrendingUp}
+                    label="On-Time Rate"
+                    value={`${operations.onTimePercentage}%`}
+                    color="#16a34a"
+                  />
+                  {supplies.pendingRequests > 0 && (
+                    <SnapshotRow
+                      icon={Package}
+                      label="Supply Requests"
+                      value={supplies.pendingRequests.toLocaleString()}
+                      color="#dc2626"
+                    />
+                  )}
+                </div>
+              </div>
             </div>
           )}
 
@@ -467,52 +509,6 @@ export default function Dashboard() {
                 <PlanMixDonut data={trends.planMix} />
               </div>
             )
-          )}
-
-          {/* Business Snapshot */}
-          {loading ? (
-            <CardSkeleton lines={5} />
-          ) : (
-            <div className="bg-white rounded-xl shadow-sm p-6">
-              <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wider mb-4">
-                Business Snapshot
-              </h3>
-              <div className="space-y-1">
-                <SnapshotRow
-                  icon={Users}
-                  label="Active Clients"
-                  value={business.totalClients.toLocaleString()}
-                  color="#6b7280"
-                />
-                <SnapshotRow
-                  icon={Droplet}
-                  label="Active Pools"
-                  value={business.activePools.toLocaleString()}
-                  color="#2563eb"
-                />
-                <SnapshotRow
-                  icon={FileText}
-                  label="Pending Quotes"
-                  value={business.pendingQuotes.toLocaleString()}
-                  color="#d97706"
-                  onClick={() => router.push("/quotes")}
-                />
-                <SnapshotRow
-                  icon={TrendingUp}
-                  label="On-Time Rate"
-                  value={`${operations.onTimePercentage}%`}
-                  color="#16a34a"
-                />
-                {supplies.pendingRequests > 0 && (
-                  <SnapshotRow
-                    icon={Package}
-                    label="Supply Requests"
-                    value={supplies.pendingRequests.toLocaleString()}
-                    color="#dc2626"
-                  />
-                )}
-              </div>
-            </div>
           )}
 
         </div>
