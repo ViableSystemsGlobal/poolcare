@@ -1,4 +1,20 @@
 packages:
-  - "apps/*"
-  - "packages/*"
-
+  - apps/*
+  - packages/*
+onlyBuiltDependencies:
+  - /
+  - '@'
+  - '@nestjs/core'
+  - '@prisma/client'
+  - '@prisma/engines'
+  - c
+  - e
+  - esbuild
+  - j
+  - n
+  - o
+  - prisma
+  - r
+  - s
+  - t
+  - unrs-resolver

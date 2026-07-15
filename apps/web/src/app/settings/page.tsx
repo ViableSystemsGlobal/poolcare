@@ -13,7 +13,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Settings, Building, DollarSign, Save, Globe, MapPin, Mail, Phone, CheckCircle, Image, Palette, Map, Loader2, Send, Sparkles, FileText, Lightbulb, MessageCircleQuestion, Calendar } from "lucide-react";
+import { Settings, Building, DollarSign, Save, Globe, MapPin, Mail, Phone, CheckCircle, Image, Palette, Map, Loader2, Send, Sparkles, FileText, Lightbulb, MessageCircleQuestion, Calendar, Inbox, BookOpen } from "lucide-react";
+import LeadSourcesPage from "./lead-sources/page";
+import KnowledgeBasePage from "../knowledge/page";
 import {
   Dialog,
   DialogContent,
@@ -58,7 +60,7 @@ function closestThemeColor(hex: string): string {
   return bestKey.split('-')[0];
 }
 
-type SettingsTab = "org" | "tax" | "policies" | "integrations" | "tips";
+type SettingsTab = "org" | "tax" | "policies" | "integrations" | "tips" | "lead-sources" | "knowledge";
 
 interface OrgProfile {
   name: string;
@@ -1369,11 +1371,13 @@ export default function SettingsPage() {
     }
   };
 
-  const tabs = [
+  const tabs: { id: SettingsTab; label: string; icon: typeof Building; disabled?: boolean }[] = [
     { id: "org" as SettingsTab, label: "Organization", icon: Building },
     { id: "tax" as SettingsTab, label: "Tax & Finance", icon: DollarSign },
     { id: "policies" as SettingsTab, label: "Policies", icon: FileText },
     { id: "integrations" as SettingsTab, label: "Integrations", icon: Settings },
+    { id: "lead-sources" as SettingsTab, label: "Lead Sources", icon: Inbox },
+    { id: "knowledge" as SettingsTab, label: "Knowledge Base", icon: BookOpen },
     { id: "tips" as SettingsTab, label: "Tips", icon: Lightbulb },
   ];
 
@@ -3764,6 +3768,12 @@ export default function SettingsPage() {
               </Card>
             </div>
           )}
+
+          {/* Lead Sources (embedded) */}
+          {activeTab === "lead-sources" && <LeadSourcesPage />}
+
+          {/* Knowledge Base (embedded) */}
+          {activeTab === "knowledge" && <KnowledgeBasePage />}
         </>
       )}
 

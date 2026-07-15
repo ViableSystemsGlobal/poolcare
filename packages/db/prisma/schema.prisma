@@ -45,8 +45,16 @@ model User {
   createdAt    DateTime @default(now()) @db.Timestamptz(6)
   updatedAt    DateTime @updatedAt @db.Timestamptz(6)
 
-  memberships OrgMember[]
-  carers      Carer[]
+  memberships        OrgMember[]
+  carers             Carer[]
+  // CRM (Module: crm) — assignment / authoring
+  ownedAccounts      Account[]
+  ownedLeads         Lead[]
+  ownedOpportunities Opportunity[]
+  createdActivities  Activity[]
+  assessments        AssessmentReport[]
+  jobAppNotes        JobApplicationNote[]
+  jobAppReviews      JobApplicationReview[]
 
   @@index([phone])
   @@index([email])
@@ -99,6 +107,181 @@ model Organization {
   businessPartnerChats  BusinessPartnerChat[]
   clientChats           ClientChat[]
   shopOrders            ShopOrder[]
+  // CRM (Module: crm)
+  accounts              Account[]
+  contacts              Contact[]
+  leads                 Lead[]
+  opportunities         Opportunity[]
+  activities            Activity[]
+  leadSources           LeadSource[]
+  assessmentReports     AssessmentReport[]
+  websiteContents       WebsiteContent[]
+  blogPosts             BlogPost[]
+  blogTopics            BlogTopic[]
+  jobPostings           JobPosting[]
+  jobApplications       JobApplication[]
+  jobApplicationNotes   JobApplicationNote[]
+  jobApplicationReviews JobApplicationReview[]
+}
+
+// CMS (Website Studio) — draft/published content documents for the public marketing site.
+// One row per editable page/section, keyed by `key` (e.g. "plans", "page.home").
+model WebsiteContent {
+  id          String    @id @default(uuid()) @db.Uuid
+  orgId       String    @db.Uuid
+  key         String // logical content key, e.g. "plans", "page.about"
+  draft       Json // working copy edited in the Studio
+  published   Json? // live copy served to the public site (null until first publish)
+  publishedAt DateTime? @db.Timestamptz(6)
+  updatedById String?   @db.Uuid
+  createdAt   DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime  @updatedAt @db.Timestamptz(6)
+
+  org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@unique([orgId, key])
+  @@index([orgId])
+}
+
+// Blog post (managed in the admin Blog section, NOT the visual page CMS).
+model BlogPost {
+  id             String    @id @default(uuid()) @db.Uuid
+  orgId          String    @db.Uuid
+  type           String    @default("article") // article, case-study
+  title          String
+  slug           String
+  excerpt        String?
+  body           String // markdown
+  coverImage     String?
+  // Case-study-only fields
+  client         String?
+  beforeImage    String?
+  afterImage     String?
+  outcome        String?
+  status         String    @default("draft") // draft, scheduled, published, archived
+  publishedAt    DateTime? @db.Timestamptz(6)
+  scheduledFor   DateTime? @db.Timestamptz(6)
+  author         String    @default("PoolCare")
+  aiGenerated    Boolean   @default(false)
+  seoTitle       String?
+  seoDescription String?
+  ogImage        String?
+  tags           String[]  @default([])
+  createdAt      DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt      DateTime  @updatedAt @db.Timestamptz(6)
+
+  org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@unique([orgId, slug])
+  @@index([orgId, status, publishedAt])
+  @@index([orgId, type, status])
+}
+
+// Topic queue that feeds the AI blog generator.
+model BlogTopic {
+  id        String    @id @default(uuid()) @db.Uuid
+  orgId     String    @db.Uuid
+  topic     String
+  keywords  String?
+  status    String    @default("pending") // pending, used, skipped
+  usedAt    DateTime? @db.Timestamptz(6)
+  postId    String?   @db.Uuid
+  createdAt DateTime  @default(now()) @db.Timestamptz(6)
+
+  org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId, status])
+}
+
+// Careers: job postings shown on the public website + applications from it.
+model JobPosting {
+  id             String    @id @default(uuid()) @db.Uuid
+  orgId          String    @db.Uuid
+  title          String
+  slug           String
+  department     String?
+  location       String    @default("Accra, Ghana")
+  employmentType String    @default("full-time") // full-time, part-time, contract
+  summary        String?
+  description    String // markdown
+  requirements   String? // markdown
+  salaryRange    String? // optional, shown only if set
+  criteria       String[]  @default([]) // reviewer scorecard criteria, e.g. ["Technical knowledge", "Communication"]
+  status         String    @default("draft") // draft, open, closed
+  postedAt       DateTime? @db.Timestamptz(6)
+  closesAt       DateTime? @db.Timestamptz(6)
+  createdAt      DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt      DateTime  @updatedAt @db.Timestamptz(6)
+
+  org          Organization     @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  applications JobApplication[]
+
+  @@unique([orgId, slug])
+  @@index([orgId, status, postedAt])
+}
+
+model JobApplication {
+  id         String   @id @default(uuid()) @db.Uuid
+  orgId      String   @db.Uuid
+  postingId  String   @db.Uuid
+  name       String
+  email      String
+  phone      String?
+  coverNote  String?
+  cvUrl      String?
+  cvFileName String?
+  status     String   @default("new") // new, shortlisted, interview, offer, hired, rejected
+  notes      String? // legacy single-field notes (superseded by JobApplicationNote thread)
+  carerId    String?  @db.Uuid // set when a hired applicant is converted to a Carer
+  createdAt  DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt  DateTime @updatedAt @db.Timestamptz(6)
+
+  org     Organization           @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  posting JobPosting             @relation(fields: [postingId], references: [id], onDelete: Cascade)
+  threadNotes JobApplicationNote[]
+  reviews     JobApplicationReview[]
+
+  @@index([orgId, postingId, status])
+  @@index([orgId, createdAt])
+}
+
+// Discussion thread on an application: reviewer comments + system events
+// (stage moves, verdict changes). authorId is null for system entries.
+model JobApplicationNote {
+  id            String   @id @default(uuid()) @db.Uuid
+  orgId         String   @db.Uuid
+  applicationId String   @db.Uuid
+  authorId      String?  @db.Uuid
+  kind          String   @default("comment") // comment, system
+  body          String
+  createdAt     DateTime @default(now()) @db.Timestamptz(6)
+
+  org         Organization   @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  application JobApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  author      User?          @relation(fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@index([orgId, applicationId, createdAt])
+}
+
+// One verdict per reviewer per application. `scores` reserved for future
+// per-criteria scorecards.
+model JobApplicationReview {
+  id            String   @id @default(uuid()) @db.Uuid
+  orgId         String   @db.Uuid
+  applicationId String   @db.Uuid
+  reviewerId    String   @db.Uuid
+  verdict       String // advance, hold, reject
+  rating        Int? // 1-5 overall
+  scores        Json?
+  createdAt     DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt     DateTime @updatedAt @db.Timestamptz(6)
+
+  org         Organization   @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  application JobApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  reviewer    User           @relation(fields: [reviewerId], references: [id], onDelete: Cascade)
+
+  @@unique([applicationId, reviewerId])
+  @@index([orgId, applicationId])
 }
 
 model OrgMember {
@@ -150,23 +333,24 @@ model Carer {
   active             Boolean   @default(true)
   createdAt          DateTime  @default(now()) @db.Timestamptz(6)
 
-  org            Organization    @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  assignedJobs   Job[]
-  supplyRequests SupplyRequest[]
-  preferredInPlans ServicePlan[]
+  org              Organization    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  user             User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  assignedJobs        Job[]
+  supplyRequests      SupplyRequest[]
+  preferredInPlans    ServicePlan[]
+  assignedAssessments AssessmentReport[]
 
   @@index([orgId, active])
   @@index([orgId, name])
 }
 
 model Household {
-  id        String   @id @default(uuid()) @db.Uuid
-  orgId     String   @db.Uuid
-  name      String   // e.g., "The Smith Family"
+  id              String   @id @default(uuid()) @db.Uuid
+  orgId           String   @db.Uuid
+  name            String // e.g., "The Smith Family"
   primaryClientId String   @unique @db.Uuid // The main client who created the household
-  createdAt DateTime @default(now()) @db.Timestamptz(6)
-  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+  createdAt       DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime @updatedAt @db.Timestamptz(6)
 
   org           Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
   primaryClient Client       @relation("PrimaryHousehold", fields: [primaryClientId], references: [id], onDelete: Cascade)
@@ -189,15 +373,16 @@ model Client {
   notes             String?
   createdAt         DateTime @default(now()) @db.Timestamptz(6)
 
-  org           Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  household     Household?   @relation("HouseholdMembers", fields: [householdId], references: [id], onDelete: SetNull)
-  primaryHousehold Household? @relation("PrimaryHousehold")
-  pools         Pool[]
-  quotes        Quote[]
-  invoices      Invoice[]
-  threads       Thread[]
-  creditNotes   CreditNote[]
-  shopOrders    ShopOrder[]
+  org              Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  household        Household?   @relation("HouseholdMembers", fields: [householdId], references: [id], onDelete: SetNull)
+  primaryHousehold Household?   @relation("PrimaryHousehold")
+  pools            Pool[]
+  quotes           Quote[]
+  invoices         Invoice[]
+  threads          Thread[]
+  creditNotes      CreditNote[]
+  shopOrders       ShopOrder[]
+  crmAccount       Account? // set when a CRM Account is converted to this Client
 
   @@index([orgId, name])
   @@index([orgId, phone])
@@ -207,16 +392,16 @@ model Client {
 
 // Client shop orders (PoolShop)
 model ShopOrder {
-  id          String   @id @default(uuid()) @db.Uuid
-  orgId       String   @db.Uuid
-  clientId    String   @db.Uuid
-  items       Json     // [{ productId, name, quantity, unitPrice, total }]
-  totalCents  Int      // Total in cents to avoid float
-  currency    String   @default("GHS")
-  status      String   @default("pending") // pending, confirmed, fulfilled, cancelled
-  notes       String?
-  createdAt   DateTime @default(now()) @db.Timestamptz(6)
-  updatedAt   DateTime @updatedAt @db.Timestamptz(6)
+  id         String   @id @default(uuid()) @db.Uuid
+  orgId      String   @db.Uuid
+  clientId   String   @db.Uuid
+  items      Json // [{ productId, name, quantity, unitPrice, total }]
+  totalCents Int // Total in cents to avoid float
+  currency   String   @default("GHS")
+  status     String   @default("pending") // pending, confirmed, fulfilled, cancelled
+  notes      String?
+  createdAt  DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt  DateTime @updatedAt @db.Timestamptz(6)
 
   org    Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
   client Client       @relation(fields: [clientId], references: [id], onDelete: Cascade)
@@ -228,23 +413,23 @@ model ShopOrder {
 
 // Pools (Module 3)
 model Pool {
-  id              String   @id @default(uuid()) @db.Uuid
-  orgId           String   @db.Uuid
-  clientId        String   @db.Uuid
-  name            String?
-  address         String?
-  imageUrls       String[] @default([]) // Array of image URLs for multiple images
-  lat             Float?
-  lng             Float?
-  volumeL         Int?
-  surfaceType     String?
-  poolType        String?  // infinity, skimmer, skimmerless, outdoor_spa, etc.
-  filtrationType  String? // freshwater, saltwater, chlorine, etc.
-  dimensions      Json?    // { length, width, depth, unit: "m"|"ft" }
-  equipment       Json?
-  targets         Json?
-  notes           String?
-  createdAt       DateTime @default(now()) @db.Timestamptz(6)
+  id             String   @id @default(uuid()) @db.Uuid
+  orgId          String   @db.Uuid
+  clientId       String   @db.Uuid
+  name           String?
+  address        String?
+  imageUrls      String[] @default([]) // Array of image URLs for multiple images
+  lat            Float?
+  lng            Float?
+  volumeL        Int?
+  surfaceType    String?
+  poolType       String? // infinity, skimmer, skimmerless, outdoor_spa, etc.
+  filtrationType String? // freshwater, saltwater, chlorine, etc.
+  dimensions     Json? // { length, width, depth, unit: "m"|"ft" }
+  equipment      Json?
+  targets        Json?
+  notes          String?
+  createdAt      DateTime @default(now()) @db.Timestamptz(6)
 
   org          Organization  @relation(fields: [orgId], references: [id], onDelete: Cascade)
   client       Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
@@ -507,8 +692,8 @@ model Reading {
   calciumHardness Int?     @map("calcium_hardness")
   cyanuricAcid    Int?     @map("cyanuric_acid")
   tempC           Float?
-  tds             Float?   // Total Dissolved Solids
-  salinity        Float?   // For saltwater pools
+  tds             Float? // Total Dissolved Solids
+  salinity        Float? // For saltwater pools
   measuredAt      DateTime @default(now()) @db.Timestamptz(6)
 
   visit VisitEntry   @relation(fields: [visitId], references: [id], onDelete: Cascade)
@@ -905,7 +1090,7 @@ model ClientChat {
   orgId     String   @db.Uuid
   userId    String   @db.Uuid
   title     String   @default("New chat")
-  messages  Json     // [{ role: "user"|"assistant", content: string }]
+  messages  Json // [{ role: "user"|"assistant", content: string }]
   createdAt DateTime @default(now()) @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @db.Timestamptz(6)
 
@@ -921,7 +1106,7 @@ model BusinessPartnerChat {
   orgId     String   @db.Uuid
   userId    String   @db.Uuid
   title     String   @default("New chat") // first user message truncated
-  messages  Json     // [{ role: "user"|"assistant", content: string }]
+  messages  Json // [{ role: "user"|"assistant", content: string }]
   createdAt DateTime @default(now()) @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @db.Timestamptz(6)
 
@@ -980,11 +1165,11 @@ model Product {
   createdAt    DateTime @default(now()) @db.Timestamptz(6)
   updatedAt    DateTime @updatedAt @db.Timestamptz(6)
 
-  org             Organization          @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  stockItems      StockItem[]
-  movements       StockMovement[]
+  org              Organization      @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  stockItems       StockItem[]
+  movements        StockMovement[]
   productSuppliers ProductSupplier[]
-  stocktakeItems  StocktakeItem[]
+  stocktakeItems   StocktakeItem[]
 
   @@unique([orgId, sku])
   @@unique([orgId, barcode])
@@ -1073,18 +1258,18 @@ model Supplier {
 
 // Product-Supplier relationship (for tracking supplier prices)
 model ProductSupplier {
-  id             String   @id @default(uuid()) @db.Uuid
-  orgId          String   @db.Uuid
-  productId      String   @db.Uuid
-  supplierId     String   @db.Uuid
-  supplierSku    String? // Supplier's product code
-  costPrice      Float? // Price from this supplier
-  currency       String   @default("GHS")
-  leadTimeDays   Int? // Delivery lead time
-  minOrderQty    Float? // Minimum order quantity
-  isPrimary      Boolean  @default(false)
-  createdAt      DateTime @default(now()) @db.Timestamptz(6)
-  updatedAt      DateTime @updatedAt @db.Timestamptz(6)
+  id           String   @id @default(uuid()) @db.Uuid
+  orgId        String   @db.Uuid
+  productId    String   @db.Uuid
+  supplierId   String   @db.Uuid
+  supplierSku  String? // Supplier's product code
+  costPrice    Float? // Price from this supplier
+  currency     String   @default("GHS")
+  leadTimeDays Int? // Delivery lead time
+  minOrderQty  Float? // Minimum order quantity
+  isPrimary    Boolean  @default(false)
+  createdAt    DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt    DateTime @updatedAt @db.Timestamptz(6)
 
   org      Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
   product  Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
@@ -1156,24 +1341,24 @@ model StocktakeSession {
 
 // Stocktake Items (individual product counts in a stocktake)
 model StocktakeItem {
-  id              String   @id @default(uuid()) @db.Uuid
-  orgId           String   @db.Uuid
-  stocktakeId     String   @db.Uuid
-  productId       String   @db.Uuid
-  stockItemId     String?  @db.Uuid
-  expectedQty     Float // System quantity at time of count
-  countedQty      Float? // Actual counted quantity
-  variance        Float? // countedQty - expectedQty
-  notes           String?
-  countedBy       String?  @db.Uuid
-  countedAt       DateTime? @db.Timestamptz(6)
-  createdAt       DateTime @default(now()) @db.Timestamptz(6)
-  updatedAt       DateTime @updatedAt @db.Timestamptz(6)
+  id          String    @id @default(uuid()) @db.Uuid
+  orgId       String    @db.Uuid
+  stocktakeId String    @db.Uuid
+  productId   String    @db.Uuid
+  stockItemId String?   @db.Uuid
+  expectedQty Float // System quantity at time of count
+  countedQty  Float? // Actual counted quantity
+  variance    Float? // countedQty - expectedQty
+  notes       String?
+  countedBy   String?   @db.Uuid
+  countedAt   DateTime? @db.Timestamptz(6)
+  createdAt   DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime  @updatedAt @db.Timestamptz(6)
 
-  org       Organization      @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  stocktake StocktakeSession  @relation(fields: [stocktakeId], references: [id], onDelete: Cascade)
-  product   Product           @relation(fields: [productId], references: [id], onDelete: Cascade)
-  stockItem StockItem?        @relation(fields: [stockItemId], references: [id], onDelete: SetNull)
+  org       Organization     @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  stocktake StocktakeSession @relation(fields: [stocktakeId], references: [id], onDelete: Cascade)
+  product   Product          @relation(fields: [productId], references: [id], onDelete: Cascade)
+  stockItem StockItem?       @relation(fields: [stockItemId], references: [id], onDelete: SetNull)
 
   @@unique([stocktakeId, productId])
   @@index([orgId, stocktakeId])
@@ -1217,4 +1402,252 @@ model SupplyRequest {
   @@index([orgId, status, requestedAt(sort: Desc)])
   @@index([orgId, carerId, requestedAt(sort: Desc)])
   @@index([status, requestedAt])
+}
+
+// ===== CRM (Module: crm) — modeled on adpoolsgroup =====
+// Account (customer) -> has many Contacts and Opportunities. Lead is inbound
+// (from website forms) and converts into an Account + Contact + Opportunity.
+// Opportunity holds the pipeline stage. Activity is the shared timeline.
+
+enum AccountType {
+  INDIVIDUAL
+  COMPANY
+  PROJECT
+}
+
+enum LeadStatus {
+  NEW
+  CONTACTED
+  QUALIFIED
+  CONVERTED
+  LOST
+}
+
+enum OpportunityStage {
+  ASSESSMENT_BOOKED
+  QUOTED
+  NEGOTIATION
+  WON
+  LOST
+}
+
+enum CrmActivityType {
+  NOTE
+  CALL
+  EMAIL
+  SMS
+  PUSH
+  MEETING
+  TASK
+  STATUS_CHANGE
+}
+
+model Account {
+  id        String      @id @default(uuid()) @db.Uuid
+  orgId     String      @db.Uuid
+  type      AccountType @default(INDIVIDUAL)
+  name      String
+  email     String?
+  phone     String?
+  address   String?
+  city      String?
+  notes     String?
+  ownerId   String?     @db.Uuid // assigned sales rep (User)
+  clientId  String?     @unique @db.Uuid // set when converted to a poolcare Client
+  createdAt DateTime    @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime    @updatedAt @db.Timestamptz(6)
+
+  org           Organization  @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  owner         User?         @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+  client        Client?       @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  contacts      Contact[]
+  opportunities Opportunity[]
+  activities    Activity[]
+
+  @@index([orgId, name])
+  @@index([orgId, type])
+  @@index([ownerId])
+}
+
+model Contact {
+  id        String   @id @default(uuid()) @db.Uuid
+  orgId     String   @db.Uuid
+  accountId String   @db.Uuid
+  firstName String
+  lastName  String?
+  email     String?
+  phone     String?
+  position  String?
+  isPrimary Boolean  @default(false)
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  org        Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  account    Account      @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  activities Activity[]
+
+  @@index([orgId, accountId])
+  @@index([orgId, lastName])
+}
+
+model Lead {
+  id           String     @id @default(uuid()) @db.Uuid
+  orgId        String     @db.Uuid
+  name         String
+  email        String?
+  phone        String?
+  company      String?
+  leadType     String?    @default("INDIVIDUAL") // INDIVIDUAL | COMPANY
+  subject      String?
+  source       String? // website:quote | website:assessment | website:contact | manual | or LeadSource name
+  status       LeadStatus @default(NEW)
+  followUpDate DateTime?  @db.Timestamptz(6)
+  notes        String?
+  poolSize     String? // captured from the quote form
+  chemicals    String? // client-supplied | included
+  address      String?
+  photoUrls    String[]   @default([]) // pool photos, uploaded via files/MinIO
+  ownerId      String?    @db.Uuid // assigned sales rep (User)
+  createdAt    DateTime   @default(now()) @db.Timestamptz(6)
+  updatedAt    DateTime   @updatedAt @db.Timestamptz(6)
+
+  org           Organization  @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  owner         User?         @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+  opportunities Opportunity[]
+  activities    Activity[]
+
+  @@index([orgId, status])
+  @@index([orgId, source])
+  @@index([orgId, createdAt(sort: Desc)])
+}
+
+model Opportunity {
+  id                String           @id @default(uuid()) @db.Uuid
+  orgId             String           @db.Uuid
+  accountId         String           @db.Uuid
+  leadId            String?          @db.Uuid // originating lead, if any
+  name              String
+  stage             OpportunityStage @default(ASSESSMENT_BOOKED)
+  valueCents        Int?
+  currency          String           @default("GHS")
+  probability       Int? // 0-100
+  expectedCloseDate DateTime?        @db.Timestamptz(6)
+  wonAt             DateTime?        @db.Timestamptz(6)
+  lostReason        String?
+  ownerId           String?          @db.Uuid
+  createdAt         DateTime         @default(now()) @db.Timestamptz(6)
+  updatedAt         DateTime         @updatedAt @db.Timestamptz(6)
+
+  org        Organization      @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  account    Account           @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  lead       Lead?             @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  owner      User?             @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+  activities Activity[]
+  assessment AssessmentReport?
+
+  @@index([orgId, stage])
+  @@index([orgId, accountId])
+  @@index([ownerId])
+}
+
+// On-site assessment findings for an opportunity (the visit booked at
+// ASSESSMENT_BOOKED). Pre-customer, so it is not tied to a Job/Pool/VisitEntry.
+model AssessmentReport {
+  id            String   @id @default(uuid()) @db.Uuid
+  orgId         String   @db.Uuid
+  opportunityId String   @unique @db.Uuid
+  status        String   @default("PENDING") // PENDING, DISPATCHED, COMPLETED
+  assessedAt    DateTime? @db.Timestamptz(6)
+  assessorId    String?  @db.Uuid
+
+  // Carer dispatch (Phase 2): the field carer assigned to perform the on-site
+  // assessment, the scheduled visit time, and when they were dispatched/notified.
+  // The assigned team member is `assessorId` (a User); `assignedCarerId` is the
+  // optional Carer record if that user is a carer.
+  assignedCarerId String?   @db.Uuid
+  scheduledAt     DateTime? @db.Timestamptz(6)
+  dispatchedAt    DateTime? @db.Timestamptz(6)
+
+  // Public assessment form: a secure token the assignee opens (no login) to fill
+  // the report from the field, and when the link email was last sent.
+  formToken  String?   @unique
+  formSentAt DateTime? @db.Timestamptz(6)
+
+  // Observed pool details
+  poolType       String? // infinity, skimmer, outdoor_spa, etc.
+  surfaceType    String?
+  filtrationType String? // freshwater, saltwater, chlorine
+  volumeL        Int?
+  dimensions     String? // freeform e.g. "8m x 4m x 1.5m"
+
+  // Water chemistry readings (mirrors Reading)
+  ph              Float?
+  chlorineFree    Float?
+  alkalinity      Int?
+  calciumHardness Int?
+  cyanuricAcid    Int?
+  salinity        Float?
+
+  // Findings
+  conditionRating Int? // 1-5 overall pool condition
+  equipmentNotes  String?
+  findings        String?
+  recommendation  String?
+  recommendedPlan String?
+  estimatedCostCents Int?
+  photoUrls       String[] @default([])
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  org           Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  opportunity   Opportunity  @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+  assessor      User?        @relation(fields: [assessorId], references: [id], onDelete: SetNull)
+  assignedCarer Carer?       @relation(fields: [assignedCarerId], references: [id], onDelete: SetNull)
+
+  @@index([orgId, status])
+  @@index([orgId, assignedCarerId])
+}
+
+model Activity {
+  id            String          @id @default(uuid()) @db.Uuid
+  orgId         String          @db.Uuid
+  type          CrmActivityType @default(NOTE)
+  body          String?
+  dueDate       DateTime?       @db.Timestamptz(6) // for TASK / follow-up
+  completedAt   DateTime?       @db.Timestamptz(6)
+  leadId        String?         @db.Uuid
+  accountId     String?         @db.Uuid
+  opportunityId String?         @db.Uuid
+  contactId     String?         @db.Uuid
+  createdById   String?         @db.Uuid
+  createdAt     DateTime        @default(now()) @db.Timestamptz(6)
+
+  org         Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  lead        Lead?        @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  account     Account?     @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  opportunity Opportunity? @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+  contact     Contact?     @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  createdBy   User?        @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([orgId, leadId])
+  @@index([orgId, accountId])
+  @@index([orgId, opportunityId])
+  @@index([orgId, contactId])
+  @@index([orgId, type, completedAt])
+}
+
+model LeadSource {
+  id          String   @id @default(uuid()) @db.Uuid
+  orgId       String   @db.Uuid
+  name        String   // "Website", "Referral", "Walk-in", "Cold Call", etc.
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(6)
+
+  org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@unique([orgId, name])
+  @@index([orgId])
 }

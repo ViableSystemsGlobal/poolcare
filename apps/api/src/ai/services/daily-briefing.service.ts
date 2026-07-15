@@ -303,7 +303,15 @@ SUPPLIES:
 - Pending supply requests: ${metrics.supplies.pending}
 - Urgent supply requests: ${metrics.supplies.urgent}`;
 
-    const llmResponse = await this.callLlm(config, systemPrompt, userPrompt);
+    const llmResponseRaw = await this.callLlm(config, systemPrompt, userPrompt);
+
+    // LLMs sometimes wrap the HTML in a markdown code fence (```html ... ```)
+    // despite the prompt, which then renders literally in the email. Strip a
+    // leading/trailing fence if present.
+    const llmResponse = llmResponseRaw
+      .replace(/^\s*```(?:html)?\s*\n?/i, "")
+      .replace(/\n?\s*```\s*$/i, "")
+      .trim();
 
     // Wrap in standard email template
     const emailSettings = await getOrgEmailSettings(orgId);

@@ -736,7 +736,7 @@ interface DayViewGridProps {
   isToday: boolean;
   currentTimeTop: number | null;
   themeHex: string;
-  gridRef: React.RefObject<HTMLDivElement | null>;
+  gridRef: React.RefObject<HTMLDivElement>;
   onJobClick: (id: string) => void;
   onSlotClick: (carerId: string, hour: number, minute: number) => void;
   dayJobsByCarer: Map<string, Job[]>;

@@ -83,6 +83,9 @@ class ApiClient {
         ...restOptions,
         headers: requestHeaders,
         signal: controller.signal,
+        // Authenticated, always-dynamic API — never serve a stale cached body
+        // (otherwise a refetch right after a mutation can show old data).
+        cache: "no-store",
       });
       
       clearTimeout(timeoutId);
@@ -488,6 +491,92 @@ class ApiClient {
 
   async deleteKnowledgeDoc(id: string) {
     return this.request(`/knowledge/${id}`, { method: "DELETE" });
+  }
+
+  // ===== CRM =====
+  private qs(params?: Record<string, any>) {
+    const filtered = Object.fromEntries(
+      Object.entries(params ?? {})
+        .filter(([, v]) => v !== undefined && v !== null && v !== "")
+        .map(([k, v]) => [k, String(v)])
+    );
+    const s = new URLSearchParams(filtered).toString();
+    return s ? `?${s}` : "";
+  }
+
+  // Leads
+  async getLeads(params?: { query?: string; status?: string; source?: string; page?: number; limit?: number }) {
+    return this.request<{ items: any[]; total: number; page: number; limit: number }>(`/crm/leads${this.qs(params)}`);
+  }
+  async getLead(id: string) { return this.request<any>(`/crm/leads/${id}`); }
+  async createLead(data: any) { return this.request<any>(`/crm/leads`, { method: "POST", body: JSON.stringify(data) }); }
+  async updateLead(id: string, data: any) { return this.request(`/crm/leads/${id}`, { method: "PATCH", body: JSON.stringify(data) }); }
+  async deleteLead(id: string) { return this.request(`/crm/leads/${id}`, { method: "DELETE" }); }
+  async convertLead(id: string, data: any) { return this.request<any>(`/crm/leads/${id}/convert`, { method: "POST", body: JSON.stringify(data) }); }
+  async bookAssessment(id: string, data: { assessmentDate: string; assessmentNotes?: string; accountType?: string; opportunityName?: string; valueCents?: number }) {
+    return this.request<any>(`/crm/leads/${id}/book-assessment`, { method: "POST", body: JSON.stringify(data) });
+  }
+
+  // Lead Sources
+  async getLeadSources() { return this.request<{ items: any[] }>(`/crm/lead-sources`); }
+  async createLeadSource(data: { name: string; description?: string }) { return this.request<any>(`/crm/lead-sources`, { method: "POST", body: JSON.stringify(data) }); }
+  async updateLeadSource(id: string, data: any) { return this.request(`/crm/lead-sources/${id}`, { method: "PATCH", body: JSON.stringify(data) }); }
+  async deleteLeadSource(id: string) { return this.request(`/crm/lead-sources/${id}`, { method: "DELETE" }); }
+
+  // Accounts
+  async getAccounts(params?: { query?: string; type?: string; page?: number; limit?: number }) {
+    return this.request<{ items: any[]; total: number; page: number; limit: number }>(`/crm/accounts${this.qs(params)}`);
+  }
+  async getAccount(id: string) { return this.request<any>(`/crm/accounts/${id}`); }
+  async createAccount(data: any) { return this.request(`/crm/accounts`, { method: "POST", body: JSON.stringify(data) }); }
+  async updateAccount(id: string, data: any) { return this.request(`/crm/accounts/${id}`, { method: "PATCH", body: JSON.stringify(data) }); }
+  async deleteAccount(id: string) { return this.request(`/crm/accounts/${id}`, { method: "DELETE" }); }
+  async convertAccountToClient(id: string) { return this.request<any>(`/crm/accounts/${id}/convert-to-client`, { method: "POST" }); }
+
+  // Contacts
+  async getContacts(params?: { query?: string; accountId?: string; page?: number; limit?: number }) {
+    return this.request<{ items: any[]; total: number; page: number; limit: number }>(`/crm/contacts${this.qs(params)}`);
+  }
+  async getContact(id: string) { return this.request<any>(`/crm/contacts/${id}`); }
+  async createContact(data: any) { return this.request(`/crm/contacts`, { method: "POST", body: JSON.stringify(data) }); }
+  async updateContact(id: string, data: any) { return this.request(`/crm/contacts/${id}`, { method: "PATCH", body: JSON.stringify(data) }); }
+  async deleteContact(id: string) { return this.request(`/crm/contacts/${id}`, { method: "DELETE" }); }
+
+  // Opportunities
+  async getOpportunities(params?: { stage?: string; accountId?: string; page?: number; limit?: number }) {
+    return this.request<{ items: any[]; total: number; page: number; limit: number }>(`/crm/opportunities${this.qs(params)}`);
+  }
+  async getOpportunity(id: string) { return this.request<any>(`/crm/opportunities/${id}`); }
+  async saveAssessment(id: string, data: any) { return this.request<any>(`/crm/opportunities/${id}/assessment`, { method: "POST", body: JSON.stringify(data) }); }
+  async dispatchAssessment(id: string, data: { assigneeId: string; scheduledAt: string; note?: string }) { return this.request<any>(`/crm/opportunities/${id}/assessment/dispatch`, { method: "POST", body: JSON.stringify(data) }); }
+  async getMembers() { return this.request<{ items: { userId: string; role: string; user: { id: string; name?: string; email?: string } }[]; total: number }>(`/orgs/members`); }
+  async createOpportunity(data: any) { return this.request(`/crm/opportunities`, { method: "POST", body: JSON.stringify(data) }); }
+  async updateOpportunity(id: string, data: any) { return this.request(`/crm/opportunities/${id}`, { method: "PATCH", body: JSON.stringify(data) }); }
+  async deleteOpportunity(id: string) { return this.request(`/crm/opportunities/${id}`, { method: "DELETE" }); }
+  async getOpportunityMetrics() {
+    return this.request<{ byStage: { stage: string; count: number; valueCents: number }[]; openValueCents: number; total: number }>(`/crm/opportunities/metrics`);
+  }
+
+  // Activities (timeline)
+  async getActivities(params?: { leadId?: string; accountId?: string; opportunityId?: string }) {
+    return this.request<any[]>(`/crm/activities${this.qs(params)}`);
+  }
+  async createActivity(data: any) { return this.request(`/crm/activities`, { method: "POST", body: JSON.stringify(data) }); }
+  async completeActivity(id: string) { return this.request(`/crm/activities/${id}/complete`, { method: "POST" }); }
+  async deleteActivity(id: string) { return this.request(`/crm/activities/${id}`, { method: "DELETE" }); }
+
+  // Send a real Email / SMS / Push to a CRM entity (logged on the timeline).
+  async sendLeadMessage(id: string, data: { channel: "email" | "sms" | "push"; subject?: string; body: string }) {
+    return this.request<any>(`/crm/leads/${id}/message`, { method: "POST", body: JSON.stringify(data) });
+  }
+  async sendAccountMessage(id: string, data: { channel: "email" | "sms" | "push"; subject?: string; body: string }) {
+    return this.request<any>(`/crm/accounts/${id}/message`, { method: "POST", body: JSON.stringify(data) });
+  }
+  async sendOpportunityMessage(id: string, data: { channel: "email" | "sms" | "push"; subject?: string; body: string }) {
+    return this.request<any>(`/crm/opportunities/${id}/message`, { method: "POST", body: JSON.stringify(data) });
+  }
+  async sendContactMessage(id: string, data: { channel: "email" | "sms" | "push"; subject?: string; body: string }) {
+    return this.request<any>(`/crm/contacts/${id}/message`, { method: "POST", body: JSON.stringify(data) });
   }
 }
 

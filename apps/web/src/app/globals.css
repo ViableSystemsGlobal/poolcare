@@ -33,6 +33,9 @@
   }
   body {
     @apply bg-background text-foreground;
+    /* Global 90% zoom — bakes in the manual "reduce by 10%" so the whole admin
+       fits without zooming the browser each time. */
+    zoom: 0.9;
   }
 }
 

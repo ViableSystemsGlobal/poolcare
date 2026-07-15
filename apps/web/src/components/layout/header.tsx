@@ -6,10 +6,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useTheme } from "@/contexts/theme-context";
 import { useAuth } from "@/contexts/auth-context";
-import { Search, Bell, HelpCircle, User, LogOut } from "lucide-react";
+import { Search, Bell, HelpCircle, User, LogOut, PanelLeft } from "lucide-react";
 import { useHelpDialog } from "@/contexts/help-dialog-context";
 
-export function Header() {
+export function Header({ collapsed = false, onToggleSidebar }: { collapsed?: boolean; onToggleSidebar?: () => void }) {
   const router = useRouter();
   const { getThemeColor } = useTheme();
   const themeHex = getThemeColor();
@@ -32,6 +32,16 @@ export function Header() {
   return (
     <header className="flex h-16 items-center justify-between border-b border-gray-200 bg-white px-6">
       <div className="flex items-center space-x-4">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-9 w-9 text-gray-500 -ml-2"
+          onClick={onToggleSidebar}
+          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          {...hoverHandlers("text")}
+        >
+          <PanelLeft className="h-4 w-4" />
+        </Button>
         <div className="relative">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
           <Input
