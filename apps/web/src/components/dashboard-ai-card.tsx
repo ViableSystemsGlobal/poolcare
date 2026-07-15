@@ -29,6 +29,8 @@ interface DashboardAICardProps {
   layout?: "vertical" | "horizontal"; // vertical for dashboard (1 per row), horizontal for list pages (3 per row)
   /** Cap how many recommendation cards render (e.g. 3 keeps horizontal to one row) */
   maxItems?: number;
+  /** Single-line rows (no description/badges) — smallest possible footprint */
+  compact?: boolean;
   /** When set (dashboard only), shows whether cards came from API or fallback */
   recommendationsSource?: "api" | "fallback" | null;
 }
@@ -42,6 +44,7 @@ export function DashboardAICard({
   className = "",
   layout = "horizontal", // Default to horizontal for list pages
   maxItems,
+  compact = false,
   recommendationsSource,
 }: DashboardAICardProps) {
   const shownRecommendations = maxItems ? recommendations.slice(0, maxItems) : recommendations;
@@ -199,18 +202,56 @@ export function DashboardAICard({
       </div>
 
       <div className="space-y-1">
-        <div className="flex items-center space-x-1 mb-1">
-          <div
-            className={`w-3 h-3 ${getSmallIconBackgroundClasses()} rounded-full flex items-center justify-center`}
-          >
-            <Sparkles className="w-2 h-2 text-white" />
+        {!compact && (
+          <div className="flex items-center space-x-1 mb-1">
+            <div
+              className={`w-3 h-3 ${getSmallIconBackgroundClasses()} rounded-full flex items-center justify-center`}
+            >
+              <Sparkles className="w-2 h-2 text-white" />
+            </div>
+            <h4 className="text-xs font-semibold text-gray-800">
+              Recommendations
+            </h4>
           </div>
-          <h4 className="text-xs font-semibold text-gray-800">
-            Recommendations
-          </h4>
-        </div>
+        )}
 
-        {layout === "vertical" ? (
+        {compact ? (
+          // Compact: one line per recommendation — priority dot, title, action
+          <div className="space-y-1">
+            {shownRecommendations.length === 0 ? (
+              <p className="text-xs text-gray-500 text-center py-3">No recommendations</p>
+            ) : (
+              shownRecommendations.map((rec) => {
+                const isCompleted = completedItems.includes(rec.id);
+                const dot = rec.priority === "high" ? "#dc2626" : rec.priority === "medium" ? "#d97706" : "#9ca3af";
+                return (
+                  <div
+                    key={rec.id}
+                    onClick={() => handleRecommendationClick(rec)}
+                    className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg border bg-white transition-colors ${
+                      isCompleted ? "border-green-200 bg-green-50" : "border-gray-200 hover:border-gray-300"
+                    } ${rec.href ? "cursor-pointer" : ""}`}
+                  >
+                    <span title={`${rec.priority} priority`} className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: dot }} />
+                    <span className={`text-xs font-medium flex-1 truncate ${isCompleted ? "text-gray-400 line-through" : "text-gray-900"}`}>
+                      {rec.title}
+                    </span>
+                    {rec.href && <ArrowRight className="h-3 w-3 shrink-0" style={{ color: themeColorHex }} />}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={(e) => { e.stopPropagation(); if (!isCompleted) handleComplete(rec.id); }}
+                      disabled={isCompleted}
+                      className={`h-4 w-4 p-0 shrink-0 ${isCompleted ? "text-green-600" : "text-gray-300 hover:text-green-600"}`}
+                    >
+                      <Check className="w-3 h-3" />
+                    </Button>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        ) : layout === "vertical" ? (
           // Vertical layout for dashboard (1 per row, max 5)
           <div className="space-y-1.5">
             {shownRecommendations.length === 0 ? (

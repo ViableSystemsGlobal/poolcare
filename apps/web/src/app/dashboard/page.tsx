@@ -350,7 +350,8 @@ export default function Dashboard() {
             subtitle="Your intelligent assistant"
             recommendations={aiRecommendations}
             onRecommendationComplete={(id) => console.log("Recommendation completed:", id)}
-            maxItems={3}
+            compact
+            maxItems={5}
             recommendationsSource={aiRecommendationsSource}
           />
         </div>
@@ -360,31 +361,31 @@ export default function Dashboard() {
             Today&apos;s Overview
           </h2>
           {loading ? (
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-2">
               {Array.from({ length: 6 }).map((_, i) => (
-                <StatCardSkeleton key={i} />
+                <div key={i} className="bg-white rounded-xl p-3 shadow-sm animate-pulse h-[52px]" />
               ))}
             </div>
           ) : (
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-2">
               {statCards.map((c) => {
                 const Icon = c.icon;
                 return (
                   <div
                     key={c.label}
-                    className="bg-white rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow"
+                    title={c.sub}
+                    className="bg-white rounded-xl px-3 py-2.5 shadow-sm hover:shadow-md transition-shadow flex items-center gap-2.5"
                   >
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-xs font-medium text-gray-500">{c.label}</span>
-                      <div
-                        className="h-7 w-7 rounded-lg flex items-center justify-center"
-                        style={{ backgroundColor: c.bgColor }}
-                      >
-                        <Icon className="h-3.5 w-3.5" style={{ color: c.color }} />
-                      </div>
+                    <div
+                      className="h-8 w-8 rounded-lg flex items-center justify-center shrink-0"
+                      style={{ backgroundColor: c.bgColor }}
+                    >
+                      <Icon className="h-3.5 w-3.5" style={{ color: c.color }} />
                     </div>
-                    <div className="text-2xl font-bold text-gray-900 tabular-nums">{c.value.toLocaleString()}</div>
-                    <div className="text-[11px] text-gray-400 mt-0.5">{c.sub}</div>
+                    <div className="min-w-0">
+                      <div className="text-[11px] font-medium text-gray-500 truncate">{c.label}</div>
+                      <div className="text-lg leading-tight font-bold text-gray-900 tabular-nums">{c.value.toLocaleString()}</div>
+                    </div>
                   </div>
                 );
               })}
