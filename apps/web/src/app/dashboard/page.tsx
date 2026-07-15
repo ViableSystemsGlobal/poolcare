@@ -406,19 +406,19 @@ export default function Dashboard() {
                 <span className="text-sm text-gray-400 ml-2">this month</span>
               </div>
 
-              {/* Three sub-stats */}
-              <div className="grid grid-cols-3 gap-4 mb-5">
-                <div className="bg-gray-50 rounded-lg p-3">
-                  <p className="text-[11px] text-gray-400 uppercase tracking-wider">Invoiced</p>
-                  <p className="text-lg font-semibold text-gray-900">{currency(invoiced)}</p>
+              {/* Three sub-stats — same hairline-cell language as Today's Overview */}
+              <div className="grid grid-cols-3 gap-px bg-gray-100 rounded-lg overflow-hidden mb-5">
+                <div className="bg-white px-4 py-3">
+                  <p className="text-[11px] font-medium text-gray-500 uppercase tracking-wide mb-1">Invoiced</p>
+                  <p className="text-lg font-semibold text-gray-900 tabular-nums leading-none">{currency(invoiced)}</p>
                 </div>
-                <div className="bg-gray-50 rounded-lg p-3">
-                  <p className="text-[11px] text-gray-400 uppercase tracking-wider">Collected</p>
-                  <p className="text-lg font-semibold text-green-600">{currency(collected)}</p>
+                <div className="bg-white px-4 py-3">
+                  <p className="text-[11px] font-medium text-gray-500 uppercase tracking-wide mb-1">Collected</p>
+                  <p className="text-lg font-semibold text-green-600 tabular-nums leading-none">{currency(collected)}</p>
                 </div>
-                <div className="bg-gray-50 rounded-lg p-3">
-                  <p className="text-[11px] text-gray-400 uppercase tracking-wider">Outstanding</p>
-                  <p className="text-lg font-semibold text-amber-600">{currency(outstanding)}</p>
+                <div className="bg-white px-4 py-3">
+                  <p className="text-[11px] font-medium text-gray-500 uppercase tracking-wide mb-1">Outstanding</p>
+                  <p className="text-lg font-semibold text-amber-600 tabular-nums leading-none">{currency(outstanding)}</p>
                 </div>
               </div>
 
@@ -534,28 +534,21 @@ export default function Dashboard() {
 
               {recentActivity.length === 0 ? (
                 <div className="text-center py-10">
-                  <div className="h-12 w-12 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-3">
-                    <FileText className="h-5 w-5 text-gray-400" />
-                  </div>
+                  <FileText className="h-8 w-8 text-gray-300 mx-auto mb-3" />
                   <p className="text-sm font-medium text-gray-900 mb-1">No activity yet</p>
                   <p className="text-xs text-gray-500">Start by creating your first job or plan</p>
                 </div>
               ) : (
-                <div className="space-y-1">
+                <div className="divide-y divide-gray-50">
                   {recentActivity.map((a) => {
                     const Icon = activityIconMap[a.type] || FileText;
                     const iconColor = activityColorMap[a.type] || themeHex;
                     return (
                       <div
                         key={`${a.type}-${a.id}`}
-                        className="flex items-start gap-3 p-2.5 rounded-lg hover:bg-gray-50 transition-colors cursor-pointer -mx-1"
+                        className="flex items-start gap-2.5 py-2.5 px-1 rounded-lg hover:bg-gray-50 transition-colors cursor-pointer"
                       >
-                        <div
-                          className="h-8 w-8 rounded-lg flex items-center justify-center shrink-0 mt-0.5"
-                          style={{ backgroundColor: `${iconColor}15` }}
-                        >
-                          <Icon className="h-3.5 w-3.5" style={{ color: iconColor }} />
-                        </div>
+                        <Icon className="h-4 w-4 shrink-0 mt-0.5" style={{ color: iconColor }} />
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-medium text-gray-900 truncate">{a.title}</p>
                           <p className="text-xs text-gray-500 truncate">{a.description}</p>
@@ -598,21 +591,14 @@ function SnapshotRow({
   const Wrapper = onClick ? "button" : "div";
   return (
     <Wrapper
-      className={`flex items-center justify-between py-1.5 px-3 rounded-lg ${
+      className={`flex items-center gap-2.5 py-2 px-1 rounded-lg ${
         onClick ? "hover:bg-gray-50 cursor-pointer w-full text-left" : ""
       }`}
       {...(onClick ? { onClick } : {})}
     >
-      <div className="flex items-center gap-3">
-        <div
-          className="h-8 w-8 rounded-lg flex items-center justify-center"
-          style={{ backgroundColor: `${color}15` }}
-        >
-          <Icon className="h-3.5 w-3.5" style={{ color }} />
-        </div>
-        <span className="text-sm text-gray-600">{label}</span>
-      </div>
-      <span className="text-sm font-semibold text-gray-900">{value}</span>
+      <Icon className="h-4 w-4 shrink-0" style={{ color }} />
+      <span className="text-sm text-gray-600 flex-1 truncate">{label}</span>
+      <span className="text-sm font-semibold text-gray-900 tabular-nums">{value}</span>
     </Wrapper>
   );
 }
