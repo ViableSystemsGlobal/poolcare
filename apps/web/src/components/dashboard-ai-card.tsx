@@ -179,6 +179,61 @@ export function DashboardAICard({
     );
   };
 
+  // Compact mode drops the gradient chrome and matches the admin's plain
+  // white card language (borderless, rounded-xl, shadow-sm, eyebrow header).
+  if (compact) {
+    return (
+      <div className={`bg-white rounded-xl shadow-sm p-5 h-full flex flex-col ${className}`}>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wider flex items-center gap-1.5">
+            <Sparkles className="h-3.5 w-3.5" style={{ color: themeColorHex }} />
+            {title}
+          </h3>
+          <span className="text-[11px] text-gray-400">
+            {completedItems.length}/{recommendations.length} done
+          </span>
+        </div>
+        {shownRecommendations.length === 0 ? (
+          <p className="text-sm text-gray-400 text-center py-6">No recommendations right now.</p>
+        ) : (
+          <div className="divide-y divide-gray-50 -mx-1 flex-1">
+            {shownRecommendations.map((rec) => {
+              const isCompleted = completedItems.includes(rec.id);
+              const dot = rec.priority === "high" ? "#dc2626" : rec.priority === "medium" ? "#d97706" : "#9ca3af";
+              // Titles from the AI often lead with an emoji — strip it here.
+              const cleanTitle = rec.title.replace(/^[^\p{L}\p{N}]+\s*/u, "");
+              return (
+                <div
+                  key={rec.id}
+                  onClick={() => handleRecommendationClick(rec)}
+                  className={`group flex items-center gap-2.5 px-1 py-2 transition-colors ${
+                    rec.href ? "cursor-pointer hover:bg-gray-50 rounded-lg" : ""
+                  }`}
+                >
+                  <span title={`${rec.priority} priority`} className="h-1.5 w-1.5 rounded-full shrink-0" style={{ backgroundColor: dot }} />
+                  <span className={`text-sm flex-1 truncate ${isCompleted ? "text-gray-300 line-through" : "text-gray-700"}`}>
+                    {cleanTitle}
+                  </span>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); if (!isCompleted) handleComplete(rec.id); }}
+                    disabled={isCompleted}
+                    title="Mark done"
+                    className={`shrink-0 ${isCompleted ? "text-green-500" : "text-gray-200 hover:text-green-600"}`}
+                  >
+                    <Check className="w-3.5 h-3.5" />
+                  </button>
+                  {rec.href && (
+                    <ArrowRight className="h-3.5 w-3.5 shrink-0 text-gray-300 group-hover:translate-x-0.5 transition-transform" style={undefined} />
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <Card
       className={`p-3 bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 border border-blue-200 shadow-lg h-full ${className}`}
@@ -215,43 +270,7 @@ export function DashboardAICard({
           </div>
         )}
 
-        {compact ? (
-          // Compact: one line per recommendation — priority dot, title, action
-          <div className="space-y-1">
-            {shownRecommendations.length === 0 ? (
-              <p className="text-xs text-gray-500 text-center py-3">No recommendations</p>
-            ) : (
-              shownRecommendations.map((rec) => {
-                const isCompleted = completedItems.includes(rec.id);
-                const dot = rec.priority === "high" ? "#dc2626" : rec.priority === "medium" ? "#d97706" : "#9ca3af";
-                return (
-                  <div
-                    key={rec.id}
-                    onClick={() => handleRecommendationClick(rec)}
-                    className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg border bg-white transition-colors ${
-                      isCompleted ? "border-green-200 bg-green-50" : "border-gray-200 hover:border-gray-300"
-                    } ${rec.href ? "cursor-pointer" : ""}`}
-                  >
-                    <span title={`${rec.priority} priority`} className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: dot }} />
-                    <span className={`text-xs font-medium flex-1 truncate ${isCompleted ? "text-gray-400 line-through" : "text-gray-900"}`}>
-                      {rec.title}
-                    </span>
-                    {rec.href && <ArrowRight className="h-3 w-3 shrink-0" style={{ color: themeColorHex }} />}
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={(e) => { e.stopPropagation(); if (!isCompleted) handleComplete(rec.id); }}
-                      disabled={isCompleted}
-                      className={`h-4 w-4 p-0 shrink-0 ${isCompleted ? "text-green-600" : "text-gray-300 hover:text-green-600"}`}
-                    >
-                      <Check className="w-3 h-3" />
-                    </Button>
-                  </div>
-                );
-              })
-            )}
-          </div>
-        ) : layout === "vertical" ? (
+        {layout === "vertical" ? (
           // Vertical layout for dashboard (1 per row, max 5)
           <div className="space-y-1.5">
             {shownRecommendations.length === 0 ? (

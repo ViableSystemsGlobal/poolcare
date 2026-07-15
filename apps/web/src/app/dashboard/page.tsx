@@ -343,55 +343,45 @@ export default function Dashboard() {
       {/* ------------------------------------------------------------------ */}
       {/* AI card + Today's Overview — side by side like the list pages       */}
       {/* ------------------------------------------------------------------ */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
-        <div>
-          <DashboardAICard
-            title="PoolCare AI"
-            subtitle="Your intelligent assistant"
-            recommendations={aiRecommendations}
-            onRecommendationComplete={(id) => console.log("Recommendation completed:", id)}
-            compact
-            maxItems={5}
-            recommendationsSource={aiRecommendationsSource}
-          />
-        </div>
-
-        <section className="lg:col-span-2">
-          <h2 className="text-sm font-medium text-gray-500 uppercase tracking-wider mb-3">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
+        {/* Today's Overview — one KPI card, hairline-divided cells */}
+        <section className="lg:col-span-2 bg-white rounded-xl shadow-sm p-5 sm:p-6">
+          <h2 className="text-sm font-medium text-gray-500 uppercase tracking-wider mb-4">
             Today&apos;s Overview
           </h2>
           {loading ? (
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
               {Array.from({ length: 6 }).map((_, i) => (
-                <div key={i} className="bg-white rounded-xl p-3 shadow-sm animate-pulse h-[52px]" />
+                <div key={i} className="h-16 bg-gray-50 rounded-lg animate-pulse" />
               ))}
             </div>
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-px bg-gray-100 rounded-lg overflow-hidden">
               {statCards.map((c) => {
                 const Icon = c.icon;
                 return (
-                  <div
-                    key={c.label}
-                    title={c.sub}
-                    className="bg-white rounded-xl px-3 py-2.5 shadow-sm hover:shadow-md transition-shadow flex items-center gap-2.5"
-                  >
-                    <div
-                      className="h-8 w-8 rounded-lg flex items-center justify-center shrink-0"
-                      style={{ backgroundColor: c.bgColor }}
-                    >
+                  <div key={c.label} title={c.sub} className="bg-white px-4 py-4">
+                    <div className="flex items-center gap-1.5 mb-1.5">
                       <Icon className="h-3.5 w-3.5" style={{ color: c.color }} />
+                      <span className="text-[11px] font-medium text-gray-500 uppercase tracking-wide truncate">{c.label}</span>
                     </div>
-                    <div className="min-w-0">
-                      <div className="text-[11px] font-medium text-gray-500 truncate">{c.label}</div>
-                      <div className="text-lg leading-tight font-bold text-gray-900 tabular-nums">{c.value.toLocaleString()}</div>
-                    </div>
+                    <div className="text-2xl font-bold text-gray-900 tabular-nums leading-none">{c.value.toLocaleString()}</div>
                   </div>
                 );
               })}
             </div>
           )}
         </section>
+
+        <DashboardAICard
+          title="AI Suggestions"
+          subtitle="Your intelligent assistant"
+          recommendations={aiRecommendations}
+          onRecommendationComplete={(id) => console.log("Recommendation completed:", id)}
+          compact
+          maxItems={5}
+          recommendationsSource={aiRecommendationsSource}
+        />
       </div>
 
       {/* ------------------------------------------------------------------ */}
