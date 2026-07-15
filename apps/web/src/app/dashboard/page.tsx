@@ -389,12 +389,12 @@ export default function Dashboard() {
       {/* ------------------------------------------------------------------ */}
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
         {/* ============ Left column (3/5 = 60%) ============ */}
-        <div className="lg:col-span-3 space-y-6">
+        <div className="lg:col-span-3">
           {/* Revenue Overview */}
           {loading ? (
             <CardSkeleton lines={3} />
           ) : (
-            <div className="bg-white rounded-xl shadow-sm p-6">
+            <div className="bg-white rounded-xl shadow-sm p-6 h-full">
               <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wider mb-4">
                 Revenue Overview
               </h3>
@@ -451,70 +451,82 @@ export default function Dashboard() {
                 </div>
               )}
 
-              {/* Business snapshot */}
-              <div className="mt-6 pt-5 border-t border-gray-100">
-                <h4 className="text-[11px] font-medium text-gray-400 uppercase tracking-wider mb-2">
-                  Business Snapshot
-                </h4>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1">
-                  <SnapshotRow
-                    icon={Users}
-                    label="Active Clients"
-                    value={business.totalClients.toLocaleString()}
-                    color="#6b7280"
-                  />
-                  <SnapshotRow
-                    icon={Droplet}
-                    label="Active Pools"
-                    value={business.activePools.toLocaleString()}
-                    color="#2563eb"
-                  />
-                  <SnapshotRow
-                    icon={FileText}
-                    label="Pending Quotes"
-                    value={business.pendingQuotes.toLocaleString()}
-                    color="#d97706"
-                    onClick={() => router.push("/quotes")}
-                  />
-                  <SnapshotRow
-                    icon={TrendingUp}
-                    label="On-Time Rate"
-                    value={`${operations.onTimePercentage}%`}
-                    color="#16a34a"
-                  />
-                  {supplies.pendingRequests > 0 && (
-                    <SnapshotRow
-                      icon={Package}
-                      label="Supply Requests"
-                      value={supplies.pendingRequests.toLocaleString()}
-                      color="#dc2626"
-                    />
-                  )}
-                </div>
-              </div>
             </div>
           )}
 
         </div>
 
         {/* ============ Right column (2/5 = 40%) ============ */}
-        <div className="lg:col-span-2 space-y-6">
-          {/* Plan Mix */}
+        <div className="lg:col-span-2 flex flex-col gap-6">
+          {/* Business Snapshot */}
+          {loading ? (
+            <CardSkeleton lines={4} />
+          ) : (
+            <div className="bg-white rounded-xl shadow-sm p-6">
+              <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wider mb-2">
+                Business Snapshot
+              </h3>
+              <div className="divide-y divide-gray-50">
+                <SnapshotRow
+                  icon={Users}
+                  label="Active Clients"
+                  value={business.totalClients.toLocaleString()}
+                  color="#6b7280"
+                />
+                <SnapshotRow
+                  icon={Droplet}
+                  label="Active Pools"
+                  value={business.activePools.toLocaleString()}
+                  color="#2563eb"
+                />
+                <SnapshotRow
+                  icon={FileText}
+                  label="Pending Quotes"
+                  value={business.pendingQuotes.toLocaleString()}
+                  color="#d97706"
+                  onClick={() => router.push("/quotes")}
+                />
+                <SnapshotRow
+                  icon={TrendingUp}
+                  label="On-Time Rate"
+                  value={`${operations.onTimePercentage}%`}
+                  color="#16a34a"
+                />
+                {supplies.pendingRequests > 0 && (
+                  <SnapshotRow
+                    icon={Package}
+                    label="Supply Requests"
+                    value={supplies.pendingRequests.toLocaleString()}
+                    color="#dc2626"
+                  />
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Plan Mix — stretches so both columns end together */}
           {loading ? (
             <CardSkeleton lines={4} />
           ) : (
             trends && (
-              <div className="bg-white rounded-xl shadow-sm p-6">
+              <div className="bg-white rounded-xl shadow-sm p-6 flex-1 flex flex-col">
                 <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wider mb-1">
                   Plan Mix
                 </h3>
                 <p className="text-xs text-gray-400 mb-3">Active service plans by package</p>
-                <PlanMixDonut data={trends.planMix} />
+                <div className="flex-1 flex items-center">
+                  <PlanMixDonut data={trends.planMix} />
+                </div>
               </div>
             )
           )}
+        </div>
+      </div>
 
-          {/* Recent Activity */}
+      {/* ------------------------------------------------------------------ */}
+      {/* Recent Activity — full width                                        */}
+      {/* ------------------------------------------------------------------ */}
+      <div>
           {loading ? (
             <CardSkeleton lines={5} />
           ) : (
@@ -563,8 +575,6 @@ export default function Dashboard() {
               )}
             </div>
           )}
-
-        </div>
       </div>
 
     </div>
