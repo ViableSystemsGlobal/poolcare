@@ -5,7 +5,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useTheme } from "@/contexts/theme-context";
+import { useConfirm } from "@/components/ui/confirm-provider";
 import { Sparkles, Send, Loader2, User, Bot, MessageSquarePlus, Trash2 } from "lucide-react";
+
+const STARTER_PROMPTS = [
+  "What should I focus on today?",
+  "How is our pipeline looking?",
+  "Where are we losing revenue?",
+];
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
 
@@ -32,6 +39,7 @@ function getAuthHeaders() {
 export default function AiPartnerPage() {
   const { getThemeColor } = useTheme();
   const themeColorHex = getThemeColor();
+  const confirm = useConfirm();
   const [chatList, setChatList] = useState<ChatSummary[]>([]);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [currentTitle, setCurrentTitle] = useState<string | null>(null);
@@ -91,7 +99,7 @@ export default function AiPartnerPage() {
 
   const deleteChat = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!confirm("Delete this conversation?")) return;
+    if (!(await confirm({ title: "Delete this conversation?", destructive: true, confirmLabel: "Delete" }))) return;
     try {
       const res = await fetch(`${API_URL}/ai/business-partner/chats/${id}`, {
         method: "DELETE",
@@ -171,82 +179,92 @@ export default function AiPartnerPage() {
   };
 
   return (
-    <div className="p-6 flex gap-6 max-w-6xl mx-auto">
-      {/* History sidebar */}
-      <Card className="w-56 flex-shrink-0 hidden sm:block">
-        <CardHeader className="py-4">
+    <div className="space-y-6 pb-12">
+      {/* Page header */}
+      <div className="flex items-center gap-3">
+        <div className="h-10 w-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: `${themeColorHex}15` }}>
+          <Sparkles className="h-5 w-5" style={{ color: themeColorHex }} />
+        </div>
+        <div>
+          <h1 className="text-2xl font-semibold text-gray-900 tracking-tight">AI Partner</h1>
+          <p className="text-sm text-gray-500 mt-0.5">Your strategic advisor — operations, revenue, priorities, next steps.</p>
+        </div>
+      </div>
+
+      <div className="flex gap-6 items-start">
+        {/* History sidebar */}
+        <div className="w-60 flex-shrink-0 hidden sm:block bg-white rounded-xl shadow-sm p-4">
           <Button
             variant="outline"
             size="sm"
-            className="w-full justify-start gap-2"
+            className="w-full justify-start gap-2 mb-4"
             onClick={startNewChat}
           >
             <MessageSquarePlus className="h-4 w-4" />
             New chat
           </Button>
-        </CardHeader>
-        <CardContent className="pt-0">
-          <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">History</p>
+          <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider mb-2">History</p>
           {loadingHistory ? (
             <p className="text-sm text-gray-400">Loading...</p>
           ) : chatList.length === 0 ? (
             <p className="text-sm text-gray-400">No conversations yet</p>
           ) : (
-            <ul className="space-y-1">
+            <ul className="divide-y divide-gray-50">
               {chatList.map((chat) => (
                 <li key={chat.id}>
-                  <button
-                    type="button"
+                  <div
+                    role="button"
+                    tabIndex={0}
                     onClick={() => loadChat(chat.id)}
-                    className={`w-full text-left rounded-md px-2 py-1.5 text-sm flex items-center gap-2 group ${
-                      conversationId === chat.id ? "bg-gray-100 font-medium" : "hover:bg-gray-50"
+                    onKeyDown={(e) => { if (e.key === "Enter") loadChat(chat.id); }}
+                    className={`w-full text-left rounded-lg px-2 py-2 text-sm flex items-center gap-2 group cursor-pointer ${
+                      conversationId === chat.id ? "bg-gray-50 font-medium" : "hover:bg-gray-50"
                     }`}
                   >
-                    <span className="flex-1 truncate">{chat.title}</span>
-                    <span className="text-xs text-gray-400 flex-shrink-0">{formatDate(chat.updatedAt)}</span>
+                    <span className="flex-1 truncate text-gray-700">{chat.title}</span>
+                    <span className="text-[11px] text-gray-400 flex-shrink-0">{formatDate(chat.updatedAt)}</span>
                     <button
                       type="button"
                       onClick={(e) => deleteChat(chat.id, e)}
-                      className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-red-100 text-red-600 flex-shrink-0"
+                      className="opacity-0 group-hover:opacity-100 p-0.5 rounded text-gray-300 hover:text-red-600 flex-shrink-0"
                       aria-label="Delete"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
-                  </button>
+                  </div>
                 </li>
               ))}
             </ul>
           )}
-        </CardContent>
-      </Card>
+        </div>
 
-      {/* Main chat */}
-      <Card className="flex-1 min-w-0">
-        <CardHeader>
+        {/* Main chat */}
+        <div className="flex-1 min-w-0 bg-white rounded-xl shadow-sm p-5 sm:p-6 space-y-4">
           <div className="flex items-center justify-between gap-2">
-            <CardTitle className="flex items-center gap-2">
-              <div
-                className="p-2 rounded-lg"
-                style={{ backgroundColor: `${themeColorHex}20` }}
-              >
-                <Sparkles className="h-5 w-5" style={{ color: themeColorHex }} />
-              </div>
-              {currentTitle || "AI Business Partner"}
-            </CardTitle>
+            <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wider truncate">
+              {currentTitle || "New conversation"}
+            </h3>
             <Button variant="ghost" size="sm" className="sm:hidden gap-1" onClick={startNewChat}>
               <MessageSquarePlus className="h-4 w-4" /> New
             </Button>
           </div>
-          <CardDescription>
-            Your strategic advisor. Ask anything about your business—operations, revenue, priorities, or next steps.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="min-h-[360px] max-h-[55vh] overflow-y-auto rounded-lg border bg-gray-50/50 p-4 space-y-4">
+          <div className="min-h-[400px] max-h-[58vh] overflow-y-auto rounded-lg bg-gray-50 p-4 space-y-4">
             {messages.length === 0 && (
-              <div className="text-center text-gray-500 py-8">
-                <p className="font-medium">Start a conversation</p>
-                <p className="text-sm mt-1">e.g. &quot;What should I focus on today?&quot; or &quot;How&apos;s our pipeline looking?&quot;</p>
+              <div className="text-center py-10">
+                <Sparkles className="h-8 w-8 mx-auto mb-3" style={{ color: `${themeColorHex}66` }} />
+                <p className="font-medium text-gray-900">Start a conversation</p>
+                <p className="text-sm text-gray-500 mt-1 mb-5">Grounded in your live business data.</p>
+                <div className="flex flex-wrap justify-center gap-2">
+                  {STARTER_PROMPTS.map((p) => (
+                    <button
+                      key={p}
+                      onClick={() => setInput(p)}
+                      className="text-sm px-3.5 py-1.5 rounded-full bg-white shadow-sm text-gray-700 hover:shadow transition-shadow"
+                    >
+                      {p}
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
             {messages.map((m, i) => (
@@ -263,8 +281,8 @@ export default function AiPartnerPage() {
                   </div>
                 )}
                 <div
-                  className={`max-w-[85%] rounded-lg px-4 py-2.5 ${
-                    m.role === "user" ? "text-white" : "bg-white border shadow-sm"
+                  className={`max-w-[85%] rounded-xl px-4 py-2.5 ${
+                    m.role === "user" ? "text-white" : "bg-white shadow-sm"
                   }`}
                   style={m.role === "user" ? { backgroundColor: themeColorHex } : undefined}
                 >
@@ -285,7 +303,7 @@ export default function AiPartnerPage() {
                 >
                   <Loader2 className="h-4 w-4 animate-spin" style={{ color: themeColorHex }} />
                 </div>
-                <div className="rounded-lg px-4 py-2.5 bg-white border shadow-sm text-gray-500 text-sm">
+                <div className="rounded-xl px-4 py-2.5 bg-white shadow-sm text-gray-500 text-sm">
                   Thinking...
                 </div>
               </div>
@@ -306,14 +324,14 @@ export default function AiPartnerPage() {
             <Button
               onClick={sendMessage}
               disabled={loading || !input.trim()}
-              className="self-end"
+              className="self-end text-white border-0"
               style={{ backgroundColor: themeColorHex }}
             >
               {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
             </Button>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     </div>
   );
 }
