@@ -1184,21 +1184,26 @@ export default function JobsPage() {
       {/* AI Recommendation and Metrics Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* AI Recommendation Card - Left Side (2/3) */}
-        <div className="lg:col-span-2">
+        <div className="lg:order-2">
           <DashboardAICard
             title="Jobs AI Insights"
             subtitle="Intelligent recommendations for job management"
             recommendations={jobAIRecommendations}
             onRecommendationComplete={handleRecommendationComplete}
             recommendationsSource={jobAIRecommendationsSource}
+            compact
+            maxItems={5}
+          
           />
         </div>
 
         {/* Metrics — hairline KPI cells (1/3) */}
         {loading ? (
-          <div className="bg-white rounded-xl shadow-sm p-5 animate-pulse h-full min-h-[180px]" />
+          <div className="lg:order-1 lg:col-span-2 bg-white rounded-xl shadow-sm p-5 animate-pulse h-full min-h-[180px]" />
         ) : (
           <StatCellsCard
+            className="lg:order-1 lg:col-span-2"
+            columns={4}
             title="Overview"
             items={[
               { label: "Total Jobs", value: metrics.totalJobs, icon: FileText },

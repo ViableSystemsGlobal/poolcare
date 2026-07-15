@@ -124,18 +124,19 @@ export default function OpportunitiesPage() {
 
       {/* AI + Metrics */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2">
+        <div className="lg:order-2">
           <DashboardAICard
             title="Pipeline AI Insights"
             subtitle="Intelligent recommendations to move deals forward"
             recommendations={recommendations}
             onRecommendationComplete={(id) => console.log("rec done", id)}
-            icon={<Sparkles className="h-5 w-5 text-white" />}
+            compact
+            maxItems={5}
           />
         </div>
-        <div className="bg-white rounded-xl shadow-sm p-5">
+        <div className="lg:order-1 lg:col-span-2 bg-white rounded-xl shadow-sm p-5">
           <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wider mb-3">Overview</h3>
-          <div className="grid grid-cols-2 gap-px bg-gray-100 rounded-lg overflow-hidden">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-px bg-gray-100 rounded-lg overflow-hidden">
           <MetricCard label="Open Pipeline" value={fmtMoney(metrics?.openValueCents ?? 0)} icon={<DollarSign className="h-8 w-8 text-gray-400" />} />
           <MetricCard label="Total Deals" value={metrics?.total ?? 0} icon={<Layers className="h-8 w-8 text-gray-400" />} />
           <MetricCard label="Won" value={countFor("WON")} valueClass="text-green-600" icon={<Trophy className="h-8 w-8 text-green-400" />} />

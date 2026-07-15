@@ -228,7 +228,7 @@ export default function PaymentsPage() {
       {/* AI Recommendation and Metrics Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* AI Recommendation Card - Left Side (2/3) */}
-        <div className="lg:col-span-2">
+        <div className="lg:order-2">
           <DashboardAICard
             title="Payment Management AI"
             subtitle="Your intelligent assistant for payment tracking"
@@ -264,13 +264,16 @@ export default function PaymentsPage() {
             onRecommendationComplete={(id) => {
               console.log("Recommendation completed:", id);
             }}
+            compact
+            maxItems={5}
+          
           />
         </div>
 
         {/* Metrics Cards - Right Side (1/3, 2x2 Grid) */}
-        <div className="bg-white rounded-xl shadow-sm p-5">
+        <div className="lg:order-1 lg:col-span-2 bg-white rounded-xl shadow-sm p-5">
           <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wider mb-3">Overview</h3>
-          <div className="grid grid-cols-2 gap-px bg-gray-100 rounded-lg overflow-hidden">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-px bg-gray-100 rounded-lg overflow-hidden">
           <div className="bg-white px-4 py-4">
                 <div className="flex items-center gap-1.5 mb-1.5">
                   <Receipt className="h-3.5 w-3.5 text-gray-400" />

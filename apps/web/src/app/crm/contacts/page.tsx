@@ -150,18 +150,19 @@ export default function ContactsPage() {
 
       {/* AI + Metrics */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2">
+        <div className="lg:order-2">
           <DashboardAICard
             title="Contacts AI Insights"
             subtitle="Intelligent recommendations for contact management"
             recommendations={recommendations}
             onRecommendationComplete={(id) => console.log("rec done", id)}
-            icon={<Sparkles className="h-5 w-5 text-white" />}
+            compact
+            maxItems={5}
           />
         </div>
-        <div className="bg-white rounded-xl shadow-sm p-5">
+        <div className="lg:order-1 lg:col-span-2 bg-white rounded-xl shadow-sm p-5">
           <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wider mb-3">Overview</h3>
-          <div className="grid grid-cols-2 gap-px bg-gray-100 rounded-lg overflow-hidden">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-px bg-gray-100 rounded-lg overflow-hidden">
           <MetricCard label="Total Contacts" value={metrics.total} icon={<Users className="h-8 w-8 text-gray-400" />} />
           <MetricCard label="Primary" value={metrics.primary} valueClass="text-blue-600" icon={<Star className="h-8 w-8 text-blue-400" />} />
           <MetricCard label="With Email" value={metrics.withEmail} valueClass="text-green-600" icon={<Mail className="h-8 w-8 text-green-400" />} />
