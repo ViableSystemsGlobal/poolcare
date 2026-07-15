@@ -741,13 +741,13 @@ export default function SubscriptionTemplatesPage() {
                       <TableCell>
                         {template.pricingType === "range" && template.priceMinCents != null && template.priceMaxCents != null ? (
                           <span>
-                            {formatCurrencyForDisplay(template.currency || "GHS")}{(template.priceMinCents / 100).toFixed(2)}
+                            {formatCurrencyForDisplay(template.currency || "GHS")}{(template.priceMinCents / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             {" – "}
-                            {formatCurrencyForDisplay(template.currency || "GHS")}{(template.priceMaxCents / 100).toFixed(2)}
+                            {formatCurrencyForDisplay(template.currency || "GHS")}{(template.priceMaxCents / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </span>
                         ) : (
                           <span>
-                            {formatCurrencyForDisplay(template.currency || "GHS")}{((template.priceCents || 0) / 100).toFixed(2)}
+                            {formatCurrencyForDisplay(template.currency || "GHS")}{((template.priceCents || 0) / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </span>
                         )}
                       </TableCell>

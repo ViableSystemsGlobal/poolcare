@@ -515,7 +515,7 @@ export default function QuotesPage() {
       recommendations.push({
         id: "track-quote-value",
         title: "📊 Track quote value",
-        description: `Total quote value: ${formatCurrencyForDisplay(formData.currency)}${metrics.totalValue.toFixed(2)}`,
+        description: `Total quote value: ${formatCurrencyForDisplay(formData.currency)}${metrics.totalValue.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
         priority: "low" as const,
         action: "View Analytics",
         href: "/analytics",
@@ -602,10 +602,9 @@ export default function QuotesPage() {
                   <DollarSign className="h-3.5 w-3.5 text-emerald-400" />
                   <span className="text-[11px] font-medium text-gray-500 uppercase tracking-wide truncate">Total Value</span>
                 </div>
-                <p className="text-2xl font-bold tabular-nums leading-none text-emerald-700">
-                      {metrics.totalValue.toFixed(0)}
-                    </p>
-                    <p className="text-xs text-gray-500">{formatCurrencyForDisplay(formData.currency)}</p>
+                <p className="text-xl font-bold tabular-nums leading-none text-emerald-700">
+                  {formatCurrencyForDisplay(formData.currency)}{metrics.totalValue.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </p>
               </div>
             </div>
           </div>
@@ -763,17 +762,17 @@ export default function QuotesPage() {
                       </TableCell>
                       <TableCell>
                         <span className="text-sm">
-                          {formatCurrencyForDisplay(quote.currency)}{(quote.subtotalCents / 100).toFixed(2)}
+                          {formatCurrencyForDisplay(quote.currency)}{(quote.subtotalCents / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </span>
                       </TableCell>
                       <TableCell>
                         <span className="text-sm">
-                          {formatCurrencyForDisplay(quote.currency)}{(quote.taxCents / 100).toFixed(2)}
+                          {formatCurrencyForDisplay(quote.currency)}{(quote.taxCents / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </span>
                       </TableCell>
                       <TableCell>
                         <span className="text-sm font-medium">
-                          {formatCurrencyForDisplay(quote.currency)}{(quote.totalCents / 100).toFixed(2)}
+                          {formatCurrencyForDisplay(quote.currency)}{(quote.totalCents / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </span>
                       </TableCell>
                       <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>

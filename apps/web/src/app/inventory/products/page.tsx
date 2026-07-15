@@ -477,12 +477,12 @@ export default function ProductsPage() {
                     </TableCell>
                     <TableCell className="text-right">
                       {product.price
-                        ? `${formatCurrencyForDisplay(product.currency)}${product.price.toFixed(2)}`
+                        ? `${formatCurrencyForDisplay(product.currency)}${product.price.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
                         : "-"}
                     </TableCell>
                     <TableCell className="text-right">
                       {product.cost
-                        ? `${formatCurrencyForDisplay(product.currency)}${product.cost.toFixed(2)}`
+                        ? `${formatCurrencyForDisplay(product.currency)}${product.cost.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
                         : "-"}
                     </TableCell>
                     <TableCell className="text-right">

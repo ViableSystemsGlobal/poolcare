@@ -122,7 +122,7 @@ export default function ReceiptsPage() {
   };
 
   const formatCurrency = (cents: number, currency = "GHS") => {
-    return `${formatCurrencyForDisplay(currency)}${(cents / 100).toFixed(2)}`;
+    return `${formatCurrencyForDisplay(currency)}${(cents / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
 
   const filteredReceipts = receipts.filter((receipt) => {

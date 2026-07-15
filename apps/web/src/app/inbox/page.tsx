@@ -920,7 +920,7 @@ export default function InboxPage() {
                                 {invoice.invoiceNumber}
                               </p>
                               <p className="text-xs text-gray-500">
-                                {(invoice.totalCents / 100).toFixed(2)} {invoice.currency}
+                                {(invoice.totalCents / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {invoice.currency}
                               </p>
                             </div>
                             <ExternalLink className="h-4 w-4 text-gray-400 flex-shrink-0" />
@@ -949,7 +949,7 @@ export default function InboxPage() {
                                 Quote #{quote.id.slice(0, 8)}
                               </p>
                               <p className="text-xs text-gray-500">
-                                {(quote.totalCents / 100).toFixed(2)} {quote.currency}
+                                {(quote.totalCents / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {quote.currency}
                               </p>
                             </div>
                             <ExternalLink className="h-4 w-4 text-gray-400 flex-shrink-0" />

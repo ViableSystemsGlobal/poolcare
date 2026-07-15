@@ -118,9 +118,9 @@ export default function PlansPage() {
     if (!t) return "";
     const sym = formatCurrencyForDisplay(t.currency || "GHS");
     if (t.pricingType === "range" && t.priceMinCents != null && t.priceMaxCents != null) {
-      return `${sym}${(t.priceMinCents / 100).toFixed(2)} – ${sym}${(t.priceMaxCents / 100).toFixed(2)}`;
+      return `${sym}${(t.priceMinCents / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} – ${sym}${(t.priceMaxCents / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     }
-    return `${sym}${((t.priceCents || 0) / 100).toFixed(2)}`;
+    return `${sym}${((t.priceCents || 0) / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
 
   const fetchSubscriptionTemplates = async () => {

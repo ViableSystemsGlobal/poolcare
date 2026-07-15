@@ -167,7 +167,7 @@ export default function OrdersPage() {
   };
 
   const formatTotal = (totalCents: number, currency: string) => {
-    const amount = (totalCents / 100).toFixed(2);
+    const amount = (totalCents / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     return currency === "GHS" ? `GH₵${amount}` : `${currency} ${amount}`;
   };
 
@@ -356,7 +356,7 @@ export default function OrdersPage() {
                   {(selectedOrder.items as OrderItem[]).map((item, i) => (
                     <li key={i} className="flex justify-between px-4 py-2 text-sm">
                       <span>{item.name} × {item.quantity}</span>
-                      <span>{selectedOrder.currency === "GHS" ? "GH₵" : selectedOrder.currency} {(item.total).toFixed(2)}</span>
+                      <span>{selectedOrder.currency === "GHS" ? "GH₵" : selectedOrder.currency} {(item.total).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                     </li>
                   ))}
                 </ul>
