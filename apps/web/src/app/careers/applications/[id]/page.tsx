@@ -306,7 +306,7 @@ export default function ApplicationDetailPage() {
         {isRejected ? (
           <div className="flex items-center justify-between flex-wrap gap-3">
             <div className="flex items-center gap-3">
-              <div className="p-2 rounded-full bg-red-50"><XCircle className="w-5 h-5 text-red-500" /></div>
+              <XCircle className="w-5 h-5 text-red-500" />
               <div>
                 <h3 className="text-lg font-semibold text-gray-900">Application rejected</h3>
                 <p className="text-sm text-gray-600">This candidate is out of the running — reinstate to put them back in the pipeline.</p>
@@ -352,7 +352,7 @@ export default function ApplicationDetailPage() {
           {/* Cover note */}
           <Card className="p-6">
             <div className="flex items-center gap-3 mb-4">
-              <div className="p-2 rounded-full" style={{ backgroundColor: tint }}><MessageSquare className="w-5 h-5" style={{ color: accent }} /></div>
+              <MessageSquare className="w-5 h-5" style={{ color: accent }} />
               <h3 className="text-lg font-semibold text-gray-900">Cover note</h3>
             </div>
             {app.coverNote ? (
@@ -369,7 +369,7 @@ export default function ApplicationDetailPage() {
           <Card className="p-6">
             <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
               <div className="flex items-center gap-3">
-                <div className="p-2 rounded-full" style={{ backgroundColor: tint }}><Star className="w-5 h-5" style={{ color: accent }} /></div>
+                <Star className="w-5 h-5" style={{ color: accent }} />
                 <div>
                   <h3 className="text-lg font-semibold text-gray-900">Review &amp; discussion</h3>
                   <p className="text-sm text-gray-600">Every admin and manager can weigh in. Verdicts are per-person.</p>

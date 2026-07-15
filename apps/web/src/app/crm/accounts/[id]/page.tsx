@@ -258,7 +258,7 @@ export default function ProspectDetailPage() {
             icon={<Sparkles className="h-5 w-5 text-white" />}
           />
         </div>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-2 gap-px bg-gray-100 rounded-xl overflow-hidden shadow-sm">
           <MetricCard label="Contacts" value={metrics.contacts} icon={<Users className="w-5 h-5" style={{ color: accent }} />} tint={tint} />
           <MetricCard label="Opportunities" value={metrics.opps} icon={<Target className="w-5 h-5" style={{ color: accent }} />} tint={tint} />
           <MetricCard label="Open Pipeline" value={fmtMoney(metrics.pipeline)} icon={<DollarSign className="w-5 h-5 text-green-600" />} tint="bg-green-100" />
@@ -346,9 +346,7 @@ export default function ProspectDetailPage() {
       <Card className="p-6">
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">
-            <div className="p-2 rounded-full" style={{ backgroundColor: tint }}>
-              <Activity className="w-5 h-5" style={{ color: accent }} />
-            </div>
+            <Activity className="w-5 h-5" style={{ color: accent }} />
             <div>
               <h3 className="text-lg font-semibold text-gray-900">Activity Timeline</h3>
               <p className="text-sm text-gray-600">
@@ -496,15 +494,13 @@ export default function ProspectDetailPage() {
 
 function MetricCard({ label, value, icon, tint }: { label: string; value: React.ReactNode; icon: React.ReactNode; tint?: string }) {
   return (
-    <Card className="p-4">
-      <div className="flex items-center justify-between">
-        <div className="min-w-0">
-          <p className="text-sm font-medium text-gray-600">{label}</p>
-          <div className="text-xl font-bold text-gray-900 mt-1 truncate">{value}</div>
-        </div>
-        <div className={`p-2 rounded-full shrink-0 ${tint || ""}`}>{icon}</div>
+    <div className="bg-white px-4 py-4">
+      <div className="flex items-center gap-1.5 mb-1.5 [&_svg]:h-3.5 [&_svg]:w-3.5">
+        {icon}
+        <span className="text-[11px] font-medium text-gray-500 uppercase tracking-wide truncate">{label}</span>
       </div>
-    </Card>
+      <div className="text-xl font-bold tabular-nums leading-none text-gray-900 truncate">{value}</div>
+    </div>
   );
 }
 
