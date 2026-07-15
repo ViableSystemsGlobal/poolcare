@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { useToast } from "@/hooks/use-toast";
+import { useConfirm } from "@/components/ui/confirm-provider";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -37,6 +38,7 @@ import { formatCurrencyForDisplay } from "@/lib/utils";
 
 export default function SubscriptionTemplatesPage() {
   const { toast } = useToast();
+  const confirm = useConfirm();
   const { getThemeClasses } = useTheme();
   const theme = getThemeClasses();
 
@@ -45,6 +47,7 @@ export default function SubscriptionTemplatesPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [page, setPage] = useState(1);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<any>(null);
 
@@ -280,8 +283,52 @@ export default function SubscriptionTemplatesPage() {
     }
   };
 
+  // ---- bulk selection ----
+  const toggleSelect = (id: string, checked: boolean) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  };
+
+  const authHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem("auth_token")}` });
+  const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+
+  const bulkSetActive = async (active: boolean) => {
+    const ids = [...selected];
+    await Promise.allSettled(
+      ids.map((id) =>
+        fetch(`${API_URL}/subscription-templates/${id}/${active ? "activate" : "deactivate"}`, {
+          method: "POST",
+          headers: authHeaders(),
+        }),
+      ),
+    );
+    setSelected(new Set());
+    fetchTemplates();
+    toast({ title: `${ids.length} plan${ids.length !== 1 ? "s" : ""} ${active ? "activated" : "deactivated"}` });
+  };
+
+  const bulkDelete = async () => {
+    const ids = [...selected];
+    if (!(await confirm({
+      title: `Delete ${ids.length} plan${ids.length !== 1 ? "s" : ""}?`,
+      description: "Clients on these plans keep their existing service plans. This cannot be undone.",
+      destructive: true,
+      confirmLabel: "Delete",
+    }))) return;
+    await Promise.allSettled(
+      ids.map((id) => fetch(`${API_URL}/subscription-templates/${id}`, { method: "DELETE", headers: authHeaders() })),
+    );
+    setSelected(new Set());
+    fetchTemplates();
+    toast({ title: `${ids.length} plan${ids.length !== 1 ? "s" : ""} deleted` });
+  };
+
   const handleDelete = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this plan?")) return;
+    if (!(await confirm({ title: "Delete this plan?", description: "This cannot be undone.", destructive: true, confirmLabel: "Delete" }))) return;
 
     try {
       const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
@@ -628,9 +675,40 @@ export default function SubscriptionTemplatesPage() {
             </div>
           ) : (
             <div className="rounded-md border">
+              {selected.size > 0 && (
+                <div className="flex items-center justify-between px-4 py-2.5 border-b bg-gray-50/60">
+                  <span className="text-sm font-medium text-gray-700">
+                    {selected.size} plan{selected.size !== 1 ? "s" : ""} selected
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <Button size="sm" variant="outline" onClick={() => bulkSetActive(true)}>
+                      <PlayCircle className="h-3.5 w-3.5 mr-1.5" /> Activate
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => bulkSetActive(false)}>
+                      <Pause className="h-3.5 w-3.5 mr-1.5" /> Deactivate
+                    </Button>
+                    <Button size="sm" variant="outline" className="text-red-600 border-red-200 hover:bg-red-50" onClick={bulkDelete}>
+                      <Trash2 className="h-3.5 w-3.5 mr-1.5" /> Delete
+                    </Button>
+                  </div>
+                </div>
+              )}
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="w-10">
+                      <Checkbox
+                        checked={paginatedTemplates.length > 0 && paginatedTemplates.every((t) => selected.has(t.id))}
+                        onCheckedChange={(checked) => {
+                          setSelected((prev) => {
+                            const next = new Set(prev);
+                            paginatedTemplates.forEach((t) => (checked ? next.add(t.id) : next.delete(t.id)));
+                            return next;
+                          });
+                        }}
+                        aria-label="Select all plans on this page"
+                      />
+                    </TableHead>
                     <TableHead>Name</TableHead>
                     <TableHead>Frequency</TableHead>
                     <TableHead>Billing</TableHead>
@@ -642,7 +720,14 @@ export default function SubscriptionTemplatesPage() {
                 </TableHeader>
                 <TableBody>
                   {paginatedTemplates.map((template) => (
-                    <TableRow key={template.id}>
+                    <TableRow key={template.id} data-state={selected.has(template.id) ? "selected" : undefined}>
+                      <TableCell className="w-10">
+                        <Checkbox
+                          checked={selected.has(template.id)}
+                          onCheckedChange={(checked) => toggleSelect(template.id, !!checked)}
+                          aria-label={`Select ${template.name}`}
+                        />
+                      </TableCell>
                       <TableCell>
                         <div>
                           <p className="font-medium">{template.name}</p>
