@@ -22,6 +22,11 @@ export class CreateJobDto {
   @IsUUID()
   assignedCarerId?: string;
 
+  /** Visit checklist template for this job (defaults to the plan's template). */
+  @IsOptional()
+  @IsUUID()
+  templateId?: string;
+
   @IsOptional()
   @IsString()
   notes?: string;

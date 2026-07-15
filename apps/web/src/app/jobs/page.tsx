@@ -93,6 +93,16 @@ export default function JobsPage() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [pools, setPools] = useState<Pool[]>([]);
   const [carers, setCarers] = useState<Carer[]>([]);
+  const [visitTemplates, setVisitTemplates] = useState<any[]>([]);
+
+  useEffect(() => {
+    const token = localStorage.getItem("auth_token");
+    const base = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+    fetch(`${base}/visit-templates`, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => setVisitTemplates(d?.items || []))
+      .catch(() => {});
+  }, []);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("");
@@ -130,6 +140,7 @@ export default function JobsPage() {
     windowStart: "",
     windowEnd: "",
     assignedCarerId: "",
+    templateId: "",
     notes: "",
   });
 
@@ -422,6 +433,7 @@ export default function JobsPage() {
       windowStart: "",
       windowEnd: "",
       assignedCarerId: "",
+      templateId: "",
       notes: "",
     });
   };
@@ -480,6 +492,7 @@ export default function JobsPage() {
 
       // Only include optional fields if they have values (not empty strings)
       if (formData.planId && formData.planId.trim()) payload.planId = formData.planId;
+      if (formData.templateId && formData.templateId.trim()) payload.templateId = formData.templateId;
       if (formData.assignedCarerId && formData.assignedCarerId !== "__none__" && formData.assignedCarerId.trim()) {
         payload.assignedCarerId = formData.assignedCarerId;
       }
@@ -1149,6 +1162,27 @@ export default function JobsPage() {
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="templateId">Visit checklist (optional)</Label>
+                <Select
+                  value={formData.templateId || "__none__"}
+                  onValueChange={(value) => setFormData({ ...formData, templateId: value === "__none__" ? "" : value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="No checklist" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">No checklist</SelectItem>
+                    {visitTemplates.map((t) => (
+                      <SelectItem key={t.id} value={t.id}>
+                        {t.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-gray-400">Jobs created from a service plan use the plan&apos;s checklist automatically.</p>
               </div>
 
               <div className="grid gap-2">

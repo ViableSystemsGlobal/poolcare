@@ -36,14 +36,32 @@ export class JobsService {
     }
 
     // Verify plan if provided
+    let planTemplateId: string | null = null;
     if (dto.planId) {
       const plan = await prisma.servicePlan.findFirst({
         where: { id: dto.planId, orgId, poolId: dto.poolId },
+        select: { id: true, visitTemplateId: true },
       });
 
       if (!plan) {
         throw new NotFoundException("Service plan not found");
       }
+      planTemplateId = plan.visitTemplateId;
+    }
+
+    // Resolve the visit checklist template: explicit choice wins, else the plan's.
+    let templateId: string | null = dto.templateId || planTemplateId;
+    let templateVersion: number | null = null;
+    if (templateId) {
+      const template = await prisma.visitTemplate.findFirst({
+        where: { id: templateId, orgId },
+        select: { id: true, version: true },
+      });
+      if (dto.templateId && !template) {
+        throw new NotFoundException("Visit template not found");
+      }
+      templateId = template?.id ?? null;
+      templateVersion = template?.version ?? null;
     }
 
     // Verify carer if provided
@@ -110,6 +128,8 @@ export class JobsService {
         windowEnd,
         assignedCarerId: dto.assignedCarerId,
         notes: dto.notes,
+        templateId,
+        templateVersion,
         status: "scheduled",
       },
       include: {
@@ -1077,9 +1097,14 @@ export class JobsService {
 
     const arrivedAt = dto.occurredAt ? new Date(dto.occurredAt) : new Date();
 
-    // Resolve visit template checklist from the job's template or the plan's template
-    const visitTemplate = (job as any).plan?.visitTemplate || null;
-    const templateId = job.templateId || visitTemplate?.id || null;
+    // Resolve visit template checklist: the job's own template wins (ad-hoc
+    // jobs and per-job overrides), falling back to the plan's template.
+    let visitTemplate: any = null;
+    if (job.templateId) {
+      visitTemplate = await prisma.visitTemplate.findFirst({ where: { id: job.templateId, orgId } });
+    }
+    if (!visitTemplate) visitTemplate = (job as any).plan?.visitTemplate || null;
+    const templateId = visitTemplate?.id || null;
     const templateVersion = job.templateVersion || visitTemplate?.version || null;
     // Build initial checklist from template: mark all items as not-completed
     let initialChecklist: any[] | undefined;
