@@ -124,7 +124,7 @@ export class DashboardService {
         id: quote.id,
         type: "quote",
         title: `New quote created`,
-        description: `Quote for ${quote.pool.name} - GH₵${(quote.totalCents / 100).toFixed(2)}`,
+        description: `Quote for ${quote.pool.name} - GH₵${(quote.totalCents / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
         timestamp: quote.createdAt,
       })),
       ...recentJobs.map((job) => ({

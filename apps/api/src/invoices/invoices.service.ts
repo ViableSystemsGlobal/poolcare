@@ -297,7 +297,7 @@ export class InvoicesService {
     try {
       const client = invoice.client;
       const pool = invoice.pool;
-      const totalAmount = (invoice.totalCents / 100).toFixed(2);
+      const totalAmount = (invoice.totalCents / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
       const currency = invoice.currency || "GHS";
       const invoiceNumber = invoice.invoiceNumber;
       const dueDateStr = dueDate.toLocaleDateString("en-GB", {
@@ -348,10 +348,10 @@ Thank you for choosing PoolCare!`;
           ${items.map((item) => `
             <div style="margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid #e5e5e5;">
               <strong style="display: block; margin-bottom: 4px;">${item.label || item.name || "Item"}</strong>
-              <span style="color: #666666; font-size: 14px;">Quantity: ${item.qty || 1} × ${currency} ${((item.unitPriceCents || 0) / 100).toFixed(2)} = ${currency} ${(((item.unitPriceCents || 0) * (item.qty || 1)) / 100).toFixed(2)}</span>
+              <span style="color: #666666; font-size: 14px;">Quantity: ${item.qty || 1} × ${currency} ${((item.unitPriceCents || 0) / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} = ${currency} ${(((item.unitPriceCents || 0) * (item.qty || 1)) / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
             </div>
           `).join("")}
-          ${invoice.taxCents > 0 ? `<div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid #d1d5db;"><strong>Tax:</strong> ${currency} ${(invoice.taxCents / 100).toFixed(2)}</div>` : ""}
+          ${invoice.taxCents > 0 ? `<div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid #d1d5db;"><strong>Tax:</strong> ${currency} ${(invoice.taxCents / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>` : ""}
           <div style="margin-top: 16px; padding-top: 16px; border-top: 2px solid ${orgSettings.primaryColor}; font-size: 18px; font-weight: bold; color: ${orgSettings.primaryColor};">
             <strong>Total: ${currency} ${totalAmount}</strong>
           </div>

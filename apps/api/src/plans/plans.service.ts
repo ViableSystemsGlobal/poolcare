@@ -317,7 +317,7 @@ export class PlansService {
       const client = planWithDetails.pool.client;
       const pool = planWithDetails.pool;
       const planName = planWithDetails.template?.name || "Service Plan";
-      const price = ((planWithDetails.priceCents || 0) / 100).toFixed(2);
+      const price = ((planWithDetails.priceCents || 0) / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
       const currency = planWithDetails.currency || "GHS";
       const frequency = planWithDetails.frequency || "N/A";
       const startDate = planWithDetails.startsOn

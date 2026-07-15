@@ -134,8 +134,8 @@ export class DailyBriefingService {
       yesterday: { completed: yesterdayCompleted, total: yesterdayTotal, completionRate: yesterdayCompletionRate },
       business: { totalClients, activePools, pendingQuotes, openIssues, activeCarers },
       finance: {
-        monthlyRevenueCedis: (monthlyRevenue / 100).toFixed(2),
-        accountsReceivableCedis: (accountsReceivable / 100).toFixed(2),
+        monthlyRevenueCedis: (monthlyRevenue / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+        accountsReceivableCedis: (accountsReceivable / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
         overdueCount,
       },
       operations: { jobsLast30Days, visitsLast30Days: completedVisits30d },

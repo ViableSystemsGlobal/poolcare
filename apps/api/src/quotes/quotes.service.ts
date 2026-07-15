@@ -373,7 +373,7 @@ export class QuotesService {
       });
 
       const poolName = updated.pool?.name || "Pool";
-      const totalAmount = (updated.totalCents / 100).toFixed(2);
+      const totalAmount = (updated.totalCents / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
       const currency = updated.currency || "GHS";
 
       for (const manager of managers) {

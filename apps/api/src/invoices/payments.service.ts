@@ -312,7 +312,7 @@ export class PaymentsService {
             },
           });
 
-          const amount = (payment.amountCents / 100).toFixed(2);
+          const amount = (payment.amountCents / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
           const currency = payment.currency || "GHS";
           const clientName = invoice.client?.name || "Client";
           const invoiceNumber = invoice.invoiceNumber;
@@ -445,7 +445,7 @@ export class PaymentsService {
     // Payment details
     doc.fontSize(12).text("Payment Details:", { underline: true });
     doc.text(`Invoice: ${invoice.invoiceNumber || invoiceId}`);
-    doc.text(`Amount Paid: ${(payment.amountCents / 100).toFixed(2)} ${invoice.currency}`);
+    doc.text(`Amount Paid: ${(payment.amountCents / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${invoice.currency}`);
     doc.text(`Payment Method: ${payment.method || "Card"}`);
     doc.text(`Payment Date: ${payment.processedAt?.toLocaleDateString() || new Date().toLocaleDateString()}`);
     doc.moveDown();

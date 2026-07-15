@@ -437,7 +437,7 @@ export default function ProductDetailPage() {
                             <TableCell className="text-right text-yellow-600">{item.reserved} {product.uom}</TableCell>
                             <TableCell className="text-right">
                               {formatCurrencyForDisplay(product.currency)}
-                              {(item.totalValueCents / 100).toFixed(2)}
+                              {(item.totalValueCents / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </TableCell>
                           </TableRow>
                         ))}
@@ -574,7 +574,7 @@ export default function ProductDetailPage() {
                         </TableCell>
                         <TableCell className="text-right">
                           {movement.totalCostCents
-                            ? `${formatCurrencyForDisplay(product.currency)}${(movement.totalCostCents / 100).toFixed(2)}`
+                            ? `${formatCurrencyForDisplay(product.currency)}${(movement.totalCostCents / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
                             : "-"}
                         </TableCell>
                         <TableCell>
@@ -622,7 +622,7 @@ export default function ProductDetailPage() {
                 <Label className="text-sm text-gray-600">Total Inventory Value</Label>
                 <p className="text-2xl font-bold">
                   {formatCurrencyForDisplay(product.currency)}
-                  {(totalValue / 100).toFixed(2)}
+                  {(totalValue / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </p>
               </div>
             </CardContent>

@@ -131,7 +131,7 @@ export class BusinessPartnerService {
       }),
     ]);
 
-    const monthlyRevenue = (monthlyRevenueCents / 100).toFixed(2);
+    const monthlyRevenue = (monthlyRevenueCents / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
     const lines: string[] = [
       `Organization: ${orgName}.`,
@@ -155,7 +155,7 @@ export class BusinessPartnerService {
       lines.push("", "— Recent quotes —");
       for (const q of recentQuotes) {
         lines.push(
-          `- ${q.pool?.name || "Pool"} / ${q.client?.name || "Client"}: ${(q.totalCents / 100).toFixed(2)}, status: ${q.status}, created ${new Date(q.createdAt).toLocaleDateString()}`
+          `- ${q.pool?.name || "Pool"} / ${q.client?.name || "Client"}: ${(q.totalCents / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}, status: ${q.status}, created ${new Date(q.createdAt).toLocaleDateString()}`
         );
       }
     }

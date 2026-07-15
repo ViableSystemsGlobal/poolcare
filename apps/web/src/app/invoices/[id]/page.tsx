@@ -225,7 +225,7 @@ export default function InvoiceDetailPage() {
 
       if (response.ok) {
         const data = await response.json();
-        const amount = (data.amountCents / 100).toFixed(2);
+        const amount = (data.amountCents / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         const currency = data.currency || invoice?.currency || "GHS";
         
         // Close dialog and reset form

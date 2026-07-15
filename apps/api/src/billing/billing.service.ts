@@ -302,7 +302,7 @@ export class BillingService {
     }
 
     const currency = invoice.currency || "GHS";
-    const totalAmount = (invoice.totalCents / 100).toFixed(2);
+    const totalAmount = (invoice.totalCents / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const invoiceNumber = invoice.invoiceNumber;
     const dueDate = invoice.dueDate ? new Date(invoice.dueDate).toLocaleDateString("en-GB", {
       day: "numeric",

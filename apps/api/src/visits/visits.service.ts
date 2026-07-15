@@ -767,7 +767,7 @@ export class VisitsService {
         const quantity = chem.qty || chem.quantity || 0;
         const unit = chem.unit || "ml";
         const lotNo = chem.lotNo ? ` (Lot: ${chem.lotNo})` : "";
-        const cost = chem.costCents ? ` - Cost: ${(chem.costCents / 100).toFixed(2)}` : "";
+        const cost = chem.costCents ? ` - Cost: ${(chem.costCents / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "";
         doc.text(`• ${chemicalName}: ${quantity} ${unit}${lotNo}${cost}`);
       });
       doc.moveDown(1);
@@ -1328,7 +1328,7 @@ export class VisitsService {
     const poolName = pool?.name || "the pool";
     const clientName = client?.name || "the client";
     const amount = visit.paymentAmountCents 
-      ? `GH₵${(visit.paymentAmountCents / 100).toFixed(2)}`
+      ? `GH₵${(visit.paymentAmountCents / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
       : "payment";
 
     const message = `Your visit to ${poolName} has been approved!\n\n` +
