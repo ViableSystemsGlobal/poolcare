@@ -34,6 +34,12 @@ import {
   MonitorSmartphone,
   BookOpen,
   Shield,
+  Inbox,
+  Building2,
+  Target,
+  Handshake,
+  Globe,
+  BriefcaseBusiness,
 } from "lucide-react";
 
 const navigationGroups = [
@@ -94,6 +100,18 @@ const navigationGroups = [
     label: "Customers",
     items: [
       {
+        name: "CRM",
+        href: "/crm/leads",
+        icon: Handshake,
+        module: "crm",
+        children: [
+          { name: "Leads", href: "/crm/leads", icon: Inbox },
+          { name: "Prospects", href: "/crm/accounts", icon: Building2 },
+          { name: "Opportunities", href: "/crm/opportunities", icon: Target },
+          { name: "Contacts", href: "/crm/contacts", icon: Users },
+        ],
+      },
+      {
         name: "Clients & Pools",
         href: "/clients",
         icon: Users,
@@ -102,6 +120,12 @@ const navigationGroups = [
           { name: "Clients", href: "/clients", icon: Users },
           { name: "Pools", href: "/pools", icon: Droplet },
         ],
+      },
+      {
+        name: "App Users",
+        href: "/users",
+        icon: MonitorSmartphone,
+        module: "users",
       },
       {
         name: "Service Plans",
@@ -141,48 +165,24 @@ const navigationGroups = [
     ],
   },
   {
-    label: "Communication",
-    items: [
-      {
-        name: "Inbox",
-        href: "/inbox",
-        icon: MessageSquare,
-        module: "inbox",
-      },
-      {
-        name: "Notifications",
-        href: "/notifications",
-        icon: Bell,
-        module: "notifications",
-      },
-      {
-        name: "Newsletter",
-        href: "/newsletter",
-        icon: Newspaper,
-        module: "newsletter",
-      },
-    ],
-  },
-  {
     label: "Management",
     items: [
+      {
+        name: "Communication",
+        href: "/inbox",
+        icon: MessageSquare,
+        module: "communication",
+        children: [
+          { name: "Inbox", href: "/inbox", icon: MessageSquare },
+          { name: "Notifications", href: "/notifications", icon: Bell },
+          { name: "Newsletter", href: "/newsletter", icon: Newspaper },
+        ],
+      },
       {
         name: "AI Partner",
         href: "/ai-partner",
         icon: Sparkles,
         module: "ai-partner",
-      },
-      {
-        name: "Knowledge Base",
-        href: "/knowledge",
-        icon: BookOpen,
-        module: "knowledge",
-      },
-      {
-        name: "App Users",
-        href: "/users",
-        icon: MonitorSmartphone,
-        module: "users",
       },
       {
         name: "Reports",
@@ -195,24 +195,44 @@ const navigationGroups = [
         ],
       },
       {
-        name: "Settings",
-        href: "/settings",
-        icon: Settings,
-        module: "settings",
+        name: "Website",
+        href: "/website",
+        icon: Globe,
+        module: "website",
+        children: [
+          { name: "Studio", href: "/website", icon: Globe },
+          { name: "Blog", href: "/blog", icon: Newspaper },
+          { name: "Careers", href: "/careers", icon: BriefcaseBusiness },
+        ],
       },
     ],
   },
 ];
 
-export default function Sidebar() {
+// Settings is a single footer link → /settings, which has tabs (General,
+// Lead Sources, Knowledge Base, etc.).
+
+export default function Sidebar({ collapsed = false }: { collapsed?: boolean }) {
   const pathname = usePathname();
   const [expandedSections, setExpandedSections] = useState<string[]>([]);
-  const [collapsed, setCollapsed] = useState(false);
   const [logoError, setLogoError] = useState(false);
+  const [newApplications, setNewApplications] = useState(0);
   const { getThemeClasses, customLogo, getThemeColor } = useTheme();
   const { setHelpOpen } = useHelpDialog();
 
   useEffect(() => { setLogoError(false); }, [customLogo]);
+
+  // Badge: count of unprocessed job applications (refreshed on navigation).
+  useEffect(() => {
+    const token = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
+    if (!token) return;
+    fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api"}/careers/stats`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => setNewApplications(d?.newApplications ?? 0))
+      .catch(() => {});
+  }, [pathname]);
 
   const isActive = (href: string, isChild = false) => {
     // Exact match always counts
@@ -325,6 +345,11 @@ export default function Sidebar() {
                         {!collapsed && (
                           <>
                             {item.name}
+                            {item.name === "Website" && !isExpanded && newApplications > 0 && (
+                              <span className="ml-2 text-[10px] font-semibold px-1.5 py-0.5 rounded-full text-white bg-red-500">
+                                {newApplications}
+                              </span>
+                            )}
                             <span
                               className={cn(
                                 "ml-auto transition-colors",
@@ -365,6 +390,11 @@ export default function Sidebar() {
                           >
                             <child.icon className="mr-3 h-4 w-4 flex-shrink-0" />
                             {child.name}
+                            {child.name === "Careers" && newApplications > 0 && (
+                              <span className="ml-auto text-[10px] font-semibold px-1.5 py-0.5 rounded-full text-white" style={{ backgroundColor: themeHex }}>
+                                {newApplications}
+                              </span>
+                            )}
                           </Link>
                         ))}
                       </div>
@@ -378,28 +408,37 @@ export default function Sidebar() {
       </nav>
 
       {/* Footer */}
-      <div className="border-t border-gray-200 p-4">
+      <div className="border-t border-gray-200 px-2 py-1.5 space-y-0.5">
+        {collapsed ? (
+          <Link
+            href="/settings"
+            className="flex items-center justify-center w-full rounded-lg px-3 py-1.5 text-gray-500 hover:bg-gray-50 hover:text-gray-700 transition-colors"
+            title="Settings"
+          >
+            <Settings className="h-5 w-5" />
+          </Link>
+        ) : (
+          <Link
+            href="/settings"
+            className="group flex w-full items-center rounded-lg px-3 py-1.5 text-sm font-medium transition-colors text-gray-700 hover:bg-gray-50"
+            style={pathname.startsWith("/settings") ? { color: themeHex } : undefined}
+          >
+            <Settings className="mr-3 h-5 w-5 flex-shrink-0" />
+            Settings
+          </Link>
+        )}
+
         {!collapsed && (
           <button
-            className="flex items-center w-full text-sm text-gray-500 transition-colors hover:text-[#397d54]"
+            className="flex items-center w-full px-3 py-1.5 text-sm text-gray-500 transition-colors hover:text-[#397d54] whitespace-nowrap"
             onClick={() => setHelpOpen(true)}
           >
-            <HelpCircle className="mr-2 h-4 w-4" />
-            Help & Keyboard shortcuts
+            <HelpCircle className="mr-2 h-4 w-4 flex-shrink-0" />
+            Help &amp; shortcuts
           </button>
         )}
       </div>
 
-      {/* Collapse Toggle */}
-      <div className="border-t border-gray-200 p-2">
-        <button
-          onClick={() => setCollapsed(!collapsed)}
-          className="w-full rounded-lg px-3 py-2 text-sm text-gray-500 hover:bg-gray-50 hover:text-gray-700 transition-colors"
-          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-        >
-          {collapsed ? "▶" : "◀"}
-        </button>
-      </div>
     </div>
   );
 }

@@ -132,6 +132,9 @@ export class FilesController {
       gif: "image/gif",
       svg: "image/svg+xml",
       ico: "image/x-icon",
+      pdf: "application/pdf",
+      doc: "application/msword",
+      docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     };
     const contentType = contentTypeMap[ext || ""] || "application/octet-stream";
 

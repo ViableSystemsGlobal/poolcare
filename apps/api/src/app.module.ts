@@ -23,6 +23,7 @@ import { InboxModule } from "./inbox/inbox.module";
 import { AiModule } from "./ai/ai.module";
 import { MobileModule } from "./mobile/mobile.module";
 import { DashboardModule } from "./dashboard/dashboard.module";
+import { AnalyticsModule } from "./analytics/analytics.module";
 import { SettingsModule } from "./settings/settings.module";
 import { SmsModule } from "./sms/sms.module";
 import { EmailModule } from "./email/email.module";
@@ -32,6 +33,10 @@ import { BillingModule } from "./billing/billing.module";
 import { InventoryModule } from "./inventory/inventory.module";
 import { OrdersModule } from "./orders/orders.module";
 import { KnowledgeModule } from "./knowledge/knowledge.module";
+import { CrmModule } from "./crm/crm.module";
+import { WebsiteModule } from "./website/website.module";
+import { BlogModule } from "./blog/blog.module";
+import { CareersModule } from "./careers/careers.module";
 import { RlsInterceptor } from "./core/rls.interceptor";
 
 @Module({
@@ -64,6 +69,7 @@ import { RlsInterceptor } from "./core/rls.interceptor";
     AiModule,
     MobileModule,
     DashboardModule,
+    AnalyticsModule,
     SettingsModule,
     SmsModule,
     EmailModule,
@@ -73,6 +79,10 @@ import { RlsInterceptor } from "./core/rls.interceptor";
     InventoryModule,
     OrdersModule,
     KnowledgeModule,
+    CrmModule,
+    WebsiteModule,
+    BlogModule,
+    CareersModule,
   ],
   controllers: [AppController],
   providers: [

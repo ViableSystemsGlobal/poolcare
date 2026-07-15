@@ -225,6 +225,44 @@ export class FilesService {
     }));
   }
 
+  /**
+   * List uploaded images for an org/scope as { id, url, uploadedAt }, newest
+   * first — used by the Website Studio's image-library picker. Reconstructs the
+   * same public URL the upload returned (local-disk route or MinIO presigned).
+   */
+  async listImages(orgId: string, scope: string, limit = 200) {
+    const files = await prisma.fileObject.findMany({
+      where: { orgId, scope, deletedAt: null, contentType: { startsWith: "image/" } },
+      orderBy: { uploadedAt: "desc" },
+      take: limit,
+    });
+    return Promise.all(files.map(async (f) => ({
+      id: f.id,
+      url: await this.publicUrlFor(f.storageBucket, f.storageKey),
+      contentType: f.contentType,
+      uploadedAt: f.uploadedAt,
+    })));
+  }
+
+  private localBaseUrl(): string {
+    return this.configService.get<string>("API_PUBLIC_URL")
+      || this.configService.get<string>("RENDER_EXTERNAL_URL")
+      || this.configService.get<string>("API_URL")
+      || this.configService.get<string>("NEXT_PUBLIC_APP_URL")
+      || "http://localhost:4000";
+  }
+
+  private async publicUrlFor(bucket: string, key: string): Promise<string> {
+    if (bucket === "local") {
+      return `${this.localBaseUrl()}/api/files/local/${key.replace(/^local\//, "")}`;
+    }
+    try {
+      return await this.minioClient.presignedGetObject(this.bucket, key, 7 * 24 * 60 * 60);
+    } catch {
+      return this.getPublicUrl(key);
+    }
+  }
+
   private getPublicUrl(key: string): string {
     const endpoint = this.configService.get<string>("MINIO_PUBLIC_ENDPOINT") || this.configService.get<string>("MINIO_ENDPOINT") || "localhost";
     const port = this.configService.get<string>("MINIO_PORT") || "9000";
@@ -323,6 +361,23 @@ export class FilesService {
       throw new BadRequestException(`File type ${file.mimetype} not allowed. Allowed types: ${mediaTypes.join(", ")}`);
     }
     const maxSize = 10 * 1024 * 1024; // 10MB
+    if (file.size > maxSize) {
+      throw new BadRequestException(`File size ${file.size} exceeds maximum allowed size of ${maxSize} bytes`);
+    }
+    return this._storeFile(orgId, file, scope, refId);
+  }
+
+  // Documents (CVs etc.) — PDF and Word only, 5MB cap.
+  async uploadDocument(orgId: string, file: Express.Multer.File, scope: string, refId: string): Promise<string> {
+    const docTypes = [
+      "application/pdf",
+      "application/msword",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ];
+    if (!docTypes.includes(file.mimetype)) {
+      throw new BadRequestException("Only PDF or Word documents are allowed");
+    }
+    const maxSize = 5 * 1024 * 1024; // 5MB
     if (file.size > maxSize) {
       throw new BadRequestException(`File size ${file.size} exceeds maximum allowed size of ${maxSize} bytes`);
     }
