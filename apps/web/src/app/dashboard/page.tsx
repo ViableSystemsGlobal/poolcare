@@ -344,7 +344,7 @@ export default function Dashboard() {
       {/* AI card + Today's Overview — side by side like the list pages       */}
       {/* ------------------------------------------------------------------ */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
-        <div className="lg:col-span-2">
+        <div>
           <DashboardAICard
             title="PoolCare AI"
             subtitle="Your intelligent assistant"
@@ -356,18 +356,18 @@ export default function Dashboard() {
           />
         </div>
 
-        <section>
+        <section className="lg:col-span-2">
           <h2 className="text-sm font-medium text-gray-500 uppercase tracking-wider mb-3">
             Today&apos;s Overview
           </h2>
           {loading ? (
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
               {Array.from({ length: 6 }).map((_, i) => (
                 <div key={i} className="bg-white rounded-xl p-3 shadow-sm animate-pulse h-[52px]" />
               ))}
             </div>
           ) : (
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
               {statCards.map((c) => {
                 const Icon = c.icon;
                 return (
