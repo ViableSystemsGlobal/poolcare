@@ -129,6 +129,7 @@ export default function OpportunityDetailPage() {
     if (opp.stage === "QUOTED") recs.push({ id: "follow", title: "💰 Follow up on the quote", description: "The quote is out — chase the customer to move into negotiation.", priority: "medium", action: "Send message", completed: false });
     if (opp.stage === "NEGOTIATION") recs.push({ id: "close", title: "🤝 Close the deal", description: "You're negotiating — agree terms and mark it Won.", priority: "high", action: "Mark won", completed: false });
     if (opp.stage === "WON") recs.push({ id: "onboard", title: "🎉 Onboard the client", description: "Deal won — set up the client, pool and service plan.", priority: "medium", action: "View prospect", completed: false });
+    if (opp.stage === "LOST") recs.push({ id: "loss-reason", title: "📝 Log the loss reason", description: "Record why this deal was lost — it sharpens future quotes and follow-ups.", priority: "low", action: "Add note", completed: false });
     if (opp.valueCents == null && opp.stage !== "LOST") recs.push({ id: "value", title: "🏷️ Add a deal value", description: "Set an estimated value so pipeline totals are accurate.", priority: "low", action: "Edit", completed: false });
     if (!opp.expectedCloseDate && opp.stage !== "LOST" && opp.stage !== "WON") recs.push({ id: "close-date", title: "📅 Set an expected close date", description: "A target close date keeps the deal on track.", priority: "low", action: "Edit", completed: false });
     return recs.slice(0, 3);

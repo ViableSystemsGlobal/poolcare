@@ -171,7 +171,12 @@ export default function LeadDetailsPage() {
     if (lead.status === "NEW") recs.push({ id: "contact", title: "📞 Make first contact", description: "This lead is new — reach out within 24 hours to maximise conversion.", priority: "high", action: "Log a call", completed: false });
     if (lead.status === "CONTACTED") recs.push({ id: "qualify", title: "✅ Qualify this lead", description: "Confirm budget, pool details and intent, then move to Qualified.", priority: "medium", action: "Add note", completed: false });
     if (lead.status === "QUALIFIED") recs.push({ id: "convert", title: "🚀 Convert to opportunity", description: "This lead is qualified — convert it to a prospect & opportunity.", priority: "high", action: "Convert", completed: false });
-    if (lead.followUpDate && new Date(lead.followUpDate) < new Date()) recs.push({ id: "overdue", title: "⏰ Follow-up overdue", description: "The scheduled follow-up date has passed. Re-engage now.", priority: "high", action: "Follow up", completed: false });
+    if (lead.status === "CONVERTED") {
+      recs.push({ id: "track-deal", title: "🚀 Track the deal", description: "This lead is converted — progress lives on its opportunity now.", priority: "medium", action: "View opportunity", href: lead.opportunities?.[0]?.id ? `/crm/opportunities/${lead.opportunities[0].id}` : "/crm/opportunities", completed: false });
+      recs.push({ id: "ask-referral", title: "🤝 Ask for a referral", description: "Converted customers are your best source of new leads — ask who else they know with a pool.", priority: "low", completed: false });
+    }
+    if (lead.status === "LOST") recs.push({ id: "revisit", title: "🔄 Revisit next quarter", description: "Lost for now — set a follow-up date a few months out and re-engage.", priority: "low", action: "Set follow-up", completed: false });
+    if (lead.followUpDate && new Date(lead.followUpDate) < new Date() && !["CONVERTED", "LOST"].includes(lead.status)) recs.push({ id: "overdue", title: "⏰ Follow-up overdue", description: "The scheduled follow-up date has passed. Re-engage now.", priority: "high", action: "Follow up", completed: false });
     if (!lead.email || !lead.phone) recs.push({ id: "enrich", title: "📇 Enrich contact details", description: "Missing email or phone — add it so you can reach this lead.", priority: "low", action: "Edit", completed: false });
     return recs.slice(0, 3);
   }, [lead]);
