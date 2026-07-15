@@ -52,6 +52,22 @@ export default function PaymentsPage() {
   const theme = getThemeClasses();
 
   const [payments, setPayments] = useState<Payment[]>([]);
+
+  // AI recommendations: API context first, local rules as fallback.
+  const [apiRecs, setApiRecs] = useState<any[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    const token = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
+    const base = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+    fetch(`${base}/ai/recommendations?context=payments`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      cache: "no-store",
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (!cancelled && Array.isArray(d) && d.length > 0) setApiRecs(d); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string | undefined>(undefined);
@@ -232,7 +248,7 @@ export default function PaymentsPage() {
           <DashboardAICard
             title="Payment Management AI"
             subtitle="Your intelligent assistant for payment tracking"
-            recommendations={[
+            recommendations={apiRecs.length > 0 ? apiRecs : [
               {
                 id: "review-pending",
                 title: "Review pending payments",

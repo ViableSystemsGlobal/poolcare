@@ -71,6 +71,22 @@ export default function PoolsPage() {
   const router = useRouter();
   const { toast } = useToast();
   const [pools, setPools] = useState<Pool[]>([]);
+
+  // AI recommendations: API context first, local rules as fallback.
+  const [apiRecs, setApiRecs] = useState<any[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    const token = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
+    const base = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+    fetch(`${base}/ai/recommendations?context=pools`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      cache: "no-store",
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (!cancelled && Array.isArray(d) && d.length > 0) setApiRecs(d); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
@@ -858,7 +874,7 @@ export default function PoolsPage() {
           <DashboardAICard
             title="Pool Management AI"
             subtitle="Your intelligent assistant for pool operations"
-            recommendations={generateAIRecommendations()}
+            recommendations={apiRecs.length > 0 ? apiRecs : generateAIRecommendations()}
             onRecommendationComplete={(id) => {
               console.log("Recommendation completed:", id);
             }}

@@ -50,6 +50,22 @@ export default function ReceiptsPage() {
   const theme = getThemeClasses();
 
   const [receipts, setReceipts] = useState<ReceiptData[]>([]);
+
+  // AI recommendations: API context first, local rules as fallback.
+  const [apiRecs, setApiRecs] = useState<any[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    const token = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
+    const base = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+    fetch(`${base}/ai/recommendations?context=receipts`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      cache: "no-store",
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (!cancelled && Array.isArray(d) && d.length > 0) setApiRecs(d); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [page, setPage] = useState(1);
@@ -274,7 +290,7 @@ export default function ReceiptsPage() {
           <DashboardAICard 
             title="Receipts AI"
             subtitle="Intelligent recommendations"
-            recommendations={aiRecommendations}
+            recommendations={apiRecs.length > 0 ? apiRecs : aiRecommendations}
             onRecommendationComplete={handleRecommendationComplete}
           />
         </div>

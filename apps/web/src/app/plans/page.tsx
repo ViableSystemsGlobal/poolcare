@@ -46,6 +46,22 @@ export default function PlansPage() {
   const theme = getThemeClasses();
 
   const [plans, setPlans] = useState([]);
+
+  // AI recommendations: API context first, local rules as fallback.
+  const [apiRecs, setApiRecs] = useState<any[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    const token = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
+    const base = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+    fetch(`${base}/ai/recommendations?context=plans`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      cache: "no-store",
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (!cancelled && Array.isArray(d) && d.length > 0) setApiRecs(d); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
   const [pools, setPools] = useState([]);
   const [carers, setCarers] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
@@ -671,7 +687,7 @@ export default function PlansPage() {
           <DashboardAICard
             title="Service Plans AI Insights"
             subtitle="Intelligent recommendations for your maintenance schedules"
-            recommendations={[]}
+            recommendations={apiRecs}
             onRecommendationComplete={() => {}}
             compact
             maxItems={5}
@@ -715,9 +731,9 @@ export default function PlansPage() {
                   <DollarSign className="h-3.5 w-3.5 text-green-400" />
                   <span className="text-[11px] font-medium text-gray-500 uppercase tracking-wide truncate">Total Revenue</span>
                 </div>
-                <p className="text-2xl font-bold tabular-nums leading-none text-green-600">
-                      {metrics.totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </p>
+                <p className="text-xl font-bold tabular-nums leading-none text-green-600">
+                  GH₵{metrics.totalRevenue.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </p>
               </div>
             </div>
           </div>

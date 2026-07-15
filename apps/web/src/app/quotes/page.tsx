@@ -94,6 +94,22 @@ export default function QuotesPage() {
   const theme = getThemeClasses();
 
   const [quotes, setQuotes] = useState<Quote[]>([]);
+
+  // AI recommendations: API context first, local rules as fallback.
+  const [apiRecs, setApiRecs] = useState<any[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    const token = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
+    const base = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+    fetch(`${base}/ai/recommendations?context=quotes`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      cache: "no-store",
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (!cancelled && Array.isArray(d) && d.length > 0) setApiRecs(d); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
   const [pools, setPools] = useState<Pool[]>([]);
   const [issues, setIssues] = useState<Issue[]>([]);
   const [loading, setLoading] = useState(true);
@@ -558,7 +574,7 @@ export default function QuotesPage() {
           <DashboardAICard
             title="Quotes AI Insights"
             subtitle="Intelligent recommendations for quote management"
-            recommendations={quoteAIRecommendations}
+            recommendations={apiRecs.length > 0 ? apiRecs : quoteAIRecommendations}
             onRecommendationComplete={handleRecommendationComplete}
             compact
             maxItems={5}

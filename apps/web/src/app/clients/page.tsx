@@ -57,6 +57,22 @@ export default function ClientsPage() {
   const router = useRouter();
   const { toast } = useToast();
   const [clients, setClients] = useState<Client[]>([]);
+
+  // AI recommendations: API context first, local rules as fallback.
+  const [apiRecs, setApiRecs] = useState<any[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    const token = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
+    const base = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+    fetch(`${base}/ai/recommendations?context=clients`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      cache: "no-store",
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (!cancelled && Array.isArray(d) && d.length > 0) setApiRecs(d); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [page, setPage] = useState(1);
@@ -572,7 +588,7 @@ export default function ClientsPage() {
           <DashboardAICard
             title="Client Management AI"
             subtitle="Your intelligent assistant for client relations"
-            recommendations={generateAIRecommendations()}
+            recommendations={apiRecs.length > 0 ? apiRecs : generateAIRecommendations()}
             onRecommendationComplete={(id) => {
               console.log("Recommendation completed:", id);
             }}

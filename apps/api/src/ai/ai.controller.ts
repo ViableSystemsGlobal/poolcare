@@ -50,11 +50,11 @@ export class AiController {
   @Get("recommendations")
   async getRecommendations(
     @CurrentUser() user: { org_id: string },
-    @Query("context") context?: "dashboard" | "jobs" | "invoices" | "visits" | "carers"
+    @Query("context") context?: string
   ) {
     return this.recommendationsService.getRecommendations(
       user.org_id,
-      context || "dashboard"
+      (context as any) || "dashboard"
     );
   }
 

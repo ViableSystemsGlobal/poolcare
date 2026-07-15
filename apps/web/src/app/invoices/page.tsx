@@ -113,6 +113,22 @@ export default function InvoicesPage() {
   const { toast } = useToast();
 
   const [invoices, setInvoices] = useState<Invoice[]>([]);
+
+  // AI recommendations: API context first, local rules as fallback.
+  const [apiRecs, setApiRecs] = useState<any[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    const token = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
+    const base = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+    fetch(`${base}/ai/recommendations?context=invoices`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      cache: "no-store",
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (!cancelled && Array.isArray(d) && d.length > 0) setApiRecs(d); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
   const [clients, setClients] = useState<Client[]>([]);
   const [quotes, setQuotes] = useState<Quote[]>([]);
   const [loading, setLoading] = useState(true);
@@ -659,7 +675,7 @@ export default function InvoicesPage() {
           <DashboardAICard
             title="Invoices AI Insights"
             subtitle="Intelligent recommendations for invoice management"
-            recommendations={invoiceAIRecommendations}
+            recommendations={apiRecs.length > 0 ? apiRecs : invoiceAIRecommendations}
             onRecommendationComplete={handleRecommendationComplete}
             compact
             maxItems={5}
