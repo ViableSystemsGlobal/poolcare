@@ -579,47 +579,39 @@ export default function ClientsPage() {
           />
         </div>
 
-        {/* Metrics Cards - Right Side (1/3, 2x2 Grid) */}
-        <div className="grid grid-cols-2 gap-4">
-          <Card className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">Total Clients</p>
-                <p className="text-2xl font-bold text-gray-900">{stats.totalClients}</p>
+        {/* Metrics — hairline KPI cells (1/3) */}
+        <div className="bg-white rounded-xl shadow-sm p-5">
+          <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wider mb-3">Overview</h3>
+          <div className="grid grid-cols-2 gap-px bg-gray-100 rounded-lg overflow-hidden">
+            <div className="bg-white px-4 py-4">
+              <div className="flex items-center gap-1.5 mb-1.5">
+                <Users className="h-3.5 w-3.5 text-gray-400" />
+                <span className="text-[11px] font-medium text-gray-500 uppercase tracking-wide truncate">Total Clients</span>
               </div>
-              <Users className="h-8 w-8 text-gray-400" />
+              <p className="text-2xl font-bold tabular-nums leading-none text-gray-900">{stats.totalClients}</p>
             </div>
-          </Card>
-
-          <Card className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">Total Pools</p>
-                <p className="text-2xl font-bold" style={{ color: 'var(--theme-color)' }}>{stats.totalPools}</p>
+            <div className="bg-white px-4 py-4">
+              <div className="flex items-center gap-1.5 mb-1.5">
+                <Droplet className="h-3.5 w-3.5" style={{ color: 'var(--theme-color)' }} />
+                <span className="text-[11px] font-medium text-gray-500 uppercase tracking-wide truncate">Total Pools</span>
               </div>
-              <Droplet className="h-8 w-8" style={{ color: 'var(--theme-color-light)' }} />
+              <p className="text-2xl font-bold tabular-nums leading-none" style={{ color: 'var(--theme-color)' }}>{stats.totalPools}</p>
             </div>
-          </Card>
-
-          <Card className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">With Pools</p>
-                <p className="text-2xl font-bold text-blue-600">{stats.clientsWithPools}</p>
+            <div className="bg-white px-4 py-4">
+              <div className="flex items-center gap-1.5 mb-1.5">
+                <FileText className="h-3.5 w-3.5 text-blue-400" />
+                <span className="text-[11px] font-medium text-gray-500 uppercase tracking-wide truncate">With Pools</span>
               </div>
-              <FileText className="h-8 w-8 text-blue-400" />
+              <p className="text-2xl font-bold tabular-nums leading-none text-blue-600">{stats.clientsWithPools}</p>
             </div>
-          </Card>
-
-          <Card className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">New This Month</p>
-                <p className="text-2xl font-bold text-green-600">{stats.activeThisMonth}</p>
+            <div className="bg-white px-4 py-4">
+              <div className="flex items-center gap-1.5 mb-1.5">
+                <Users className="h-3.5 w-3.5 text-green-400" />
+                <span className="text-[11px] font-medium text-gray-500 uppercase tracking-wide truncate">New This Month</span>
               </div>
-              <Users className="h-8 w-8 text-green-400" />
+              <p className="text-2xl font-bold tabular-nums leading-none text-green-600">{stats.activeThisMonth}</p>
             </div>
-          </Card>
+          </div>
         </div>
       </div>
 

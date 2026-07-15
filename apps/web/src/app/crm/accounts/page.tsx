@@ -171,11 +171,14 @@ export default function AccountsPage() {
             icon={<Sparkles className="h-5 w-5 text-white" />}
           />
         </div>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="bg-white rounded-xl shadow-sm p-5">
+          <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wider mb-3">Overview</h3>
+          <div className="grid grid-cols-2 gap-px bg-gray-100 rounded-lg overflow-hidden">
           <MetricCard label="Total Prospects" value={metrics.total} icon={<Building2 className="h-8 w-8 text-gray-400" />} />
           <MetricCard label="Individuals" value={metrics.individuals} valueClass="text-gray-700" icon={<User className="h-8 w-8 text-gray-400" />} />
           <MetricCard label="Companies" value={metrics.companies} valueClass="text-blue-600" icon={<Briefcase className="h-8 w-8 text-blue-400" />} />
           <MetricCard label="Clients" value={metrics.clients} valueClass="text-green-600" icon={<CheckCircle2 className="h-8 w-8 text-green-400" />} />
+          </div>
         </div>
       </div>
 
@@ -304,14 +307,12 @@ export default function AccountsPage() {
 
 function MetricCard({ label, value, icon, valueClass = "text-gray-900" }: { label: string; value: number | string; icon: React.ReactNode; valueClass?: string }) {
   return (
-    <Card className="p-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-sm font-medium text-gray-600">{label}</p>
-          <p className={`text-2xl font-bold ${valueClass}`}>{value}</p>
-        </div>
+    <div className="bg-white px-4 py-4">
+      <div className="flex items-center gap-1.5 mb-1.5 [&_svg]:h-3.5 [&_svg]:w-3.5">
         {icon}
+        <span className="text-[11px] font-medium text-gray-500 uppercase tracking-wide truncate">{label}</span>
       </div>
-    </Card>
+      <p className={`text-2xl font-bold tabular-nums leading-none ${valueClass}`}>{value}</p>
+    </div>
   );
 }

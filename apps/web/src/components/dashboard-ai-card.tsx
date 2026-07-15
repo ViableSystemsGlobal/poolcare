@@ -2,9 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Card } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Check, Sparkles, TrendingUp, AlertCircle, Target, Brain, ArrowRight } from "lucide-react";
+import { Check, Sparkles, ArrowRight } from "lucide-react";
 import { useTheme } from "@/contexts/theme-context";
 
 const AI_CARD_COMPLETED_KEY = "poolcare-ai-card-completed";
@@ -26,30 +24,35 @@ interface DashboardAICardProps {
   onRecommendationComplete: (id: string) => void;
   icon?: React.ReactNode;
   className?: string;
-  layout?: "vertical" | "horizontal"; // vertical for dashboard (1 per row), horizontal for list pages (3 per row)
+  layout?: "vertical" | "horizontal"; // vertical = stacked rows, horizontal = 3-up cells (list pages)
   /** Cap how many recommendation cards render (e.g. 3 keeps horizontal to one row) */
   maxItems?: number;
-  /** Single-line rows (no description/badges) — smallest possible footprint */
+  /** Single-line rows (no description) — smallest possible footprint */
   compact?: boolean;
-  /** When set (dashboard only), shows whether cards came from API or fallback */
+  /** Accepted for compatibility; not shown in the UI */
   recommendationsSource?: "api" | "fallback" | null;
 }
 
+const PRIORITY_DOT: Record<string, string> = {
+  high: "#dc2626",
+  medium: "#d97706",
+  low: "#9ca3af",
+};
+
+// AI-generated titles often lead with an emoji — keep enterprise UI clean.
+const cleanTitle = (s: string) => s.replace(/^[^\p{L}\p{N}]+\s*/u, "");
+
 export function DashboardAICard({
   title,
-  subtitle,
   recommendations,
   onRecommendationComplete,
-  icon,
   className = "",
-  layout = "horizontal", // Default to horizontal for list pages
+  layout = "horizontal",
   maxItems,
   compact = false,
-  recommendationsSource,
 }: DashboardAICardProps) {
-  const shownRecommendations = maxItems ? recommendations.slice(0, maxItems) : recommendations;
-  const { getThemeClasses, getThemeColor } = useTheme();
-  const theme = getThemeClasses();
+  const shown = maxItems ? recommendations.slice(0, maxItems) : recommendations;
+  const { getThemeColor } = useTheme();
   const themeColorHex = getThemeColor();
   const router = useRouter();
   const [completedItems, setCompletedItems] = useState<string[]>([]);
@@ -76,91 +79,30 @@ export function DashboardAICard({
     }
   };
 
-  const getGradientBackgroundClasses = () => {
-    switch (theme.primary) {
-      case "blue":
-        return "bg-gradient-to-br from-blue-500 to-blue-600";
-      case "green":
-        return "bg-gradient-to-br from-green-500 to-green-600";
-      case "purple":
-        return "bg-gradient-to-br from-purple-500 to-purple-600";
-      case "red":
-        return "bg-gradient-to-br from-red-500 to-red-600";
-      case "orange":
-        return "bg-gradient-to-br from-[#397d54] to-[#2d6443]";
-      case "pink":
-        return "bg-gradient-to-br from-pink-500 to-pink-600";
-      case "indigo":
-        return "bg-gradient-to-br from-indigo-500 to-indigo-600";
-      case "teal":
-        return "bg-gradient-to-br from-teal-500 to-teal-600";
-      default:
-        return "bg-gradient-to-br from-[#397d54] to-[#2d6443]";
-    }
-  };
-
-  const getSmallIconBackgroundClasses = () => {
-    switch (theme.primary) {
-      case "blue":
-        return "bg-blue-500";
-      case "green":
-        return "bg-green-500";
-      case "purple":
-        return "bg-purple-500";
-      case "red":
-        return "bg-red-500";
-      case "orange":
-        return "bg-[#397d54]";
-      case "pink":
-        return "bg-pink-500";
-      case "indigo":
-        return "bg-indigo-500";
-      case "teal":
-        return "bg-teal-500";
-      default:
-        return "bg-[#397d54]";
-    }
-  };
-
   const handleComplete = (id: string) => {
     const next = [...completedItems, id];
     persistCompleted(next);
     onRecommendationComplete(id);
   };
 
-  const getPriorityColor = (priority: string) => {
-    switch (priority) {
-      case "high":
-        return "text-red-600 bg-red-100";
-      case "medium":
-        return "text-yellow-600 bg-yellow-100";
-      case "low":
-        return "text-green-600 bg-green-100";
-      default:
-        return "text-gray-600 bg-gray-100";
-    }
+  const open = (rec: Recommendation) => {
+    if (rec.href) router.push(rec.href);
   };
 
-  const getPriorityIcon = (priority: string) => {
-    switch (priority) {
-      case "high":
-        return <AlertCircle className="w-3 h-3" />;
-      case "medium":
-        return <TrendingUp className="w-3 h-3" />;
-      case "low":
-        return <Target className="w-3 h-3" />;
-      default:
-        return <Target className="w-3 h-3" />;
-    }
-  };
+  const CheckButton = ({ rec, done }: { rec: Recommendation; done: boolean }) => (
+    <button
+      onClick={(e) => {
+        e.stopPropagation();
+        if (!done) handleComplete(rec.id);
+      }}
+      disabled={done}
+      title="Mark done"
+      className={`shrink-0 ${done ? "text-green-500" : "text-gray-200 hover:text-green-600"}`}
+    >
+      <Check className="w-3.5 h-3.5" />
+    </button>
+  );
 
-  const handleRecommendationClick = (rec: Recommendation) => {
-    if (rec.href) {
-      router.push(rec.href);
-    }
-  };
-
-  const actionLinkClass = "mt-1.5 inline-flex items-center gap-1 text-xs font-medium hover:underline focus:outline-none focus:ring-2 focus:ring-offset-1 rounded cursor-pointer";
   const ActionLink = ({ rec }: { rec: Recommendation }) => {
     if (!rec.action || !rec.href) return null;
     return (
@@ -170,7 +112,7 @@ export function DashboardAICard({
           e.stopPropagation();
           router.push(rec.href!);
         }}
-        className={actionLinkClass}
+        className="mt-1.5 inline-flex items-center gap-1 text-xs font-medium hover:underline"
         style={{ color: themeColorHex }}
       >
         {rec.action}
@@ -179,236 +121,108 @@ export function DashboardAICard({
     );
   };
 
-  // Compact mode drops the gradient chrome and matches the admin's plain
-  // white card language (borderless, rounded-xl, shadow-sm, eyebrow header).
-  if (compact) {
-    return (
-      <div className={`bg-white rounded-xl shadow-sm p-5 h-full flex flex-col ${className}`}>
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wider flex items-center gap-1.5">
-            <Sparkles className="h-3.5 w-3.5" style={{ color: themeColorHex }} />
-            {title}
-          </h3>
-          <span className="text-[11px] text-gray-400">
-            {completedItems.length}/{recommendations.length} done
-          </span>
-        </div>
-        {shownRecommendations.length === 0 ? (
-          <p className="text-sm text-gray-400 text-center py-6">No recommendations right now.</p>
-        ) : (
-          <div className="divide-y divide-gray-50 -mx-1 flex-1">
-            {shownRecommendations.map((rec) => {
-              const isCompleted = completedItems.includes(rec.id);
-              const dot = rec.priority === "high" ? "#dc2626" : rec.priority === "medium" ? "#d97706" : "#9ca3af";
-              // Titles from the AI often lead with an emoji — strip it here.
-              const cleanTitle = rec.title.replace(/^[^\p{L}\p{N}]+\s*/u, "");
-              return (
-                <div
-                  key={rec.id}
-                  onClick={() => handleRecommendationClick(rec)}
-                  className={`group flex items-center gap-2.5 px-1 py-2 transition-colors ${
-                    rec.href ? "cursor-pointer hover:bg-gray-50 rounded-lg" : ""
-                  }`}
-                >
-                  <span title={`${rec.priority} priority`} className="h-1.5 w-1.5 rounded-full shrink-0" style={{ backgroundColor: dot }} />
-                  <span className={`text-sm flex-1 truncate ${isCompleted ? "text-gray-300 line-through" : "text-gray-700"}`}>
-                    {cleanTitle}
-                  </span>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); if (!isCompleted) handleComplete(rec.id); }}
-                    disabled={isCompleted}
-                    title="Mark done"
-                    className={`shrink-0 ${isCompleted ? "text-green-500" : "text-gray-200 hover:text-green-600"}`}
-                  >
-                    <Check className="w-3.5 h-3.5" />
-                  </button>
-                  {rec.href && (
-                    <ArrowRight className="h-3.5 w-3.5 shrink-0 text-gray-300 group-hover:translate-x-0.5 transition-transform" style={undefined} />
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-    );
-  }
+  const EmptyState = () => (
+    <p className="text-sm text-gray-400 text-center py-6">No recommendations right now.</p>
+  );
 
   return (
-    <Card
-      className={`p-3 bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 border border-blue-200 shadow-lg h-full ${className}`}
-    >
-      <div className="flex items-center justify-between mb-1">
-        <div className="flex items-center space-x-1">
-          <div
-            className={`p-1 rounded-lg ${getGradientBackgroundClasses()} shadow-lg`}
-          >
-            {icon || <Sparkles className="w-3 h-3 text-white" />}
-          </div>
-          <div>
-            <h3 className="text-sm font-bold text-gray-900">{title}</h3>
-            <p className="text-xs text-gray-600">{subtitle}</p>
-          </div>
-        </div>
-        <div className="flex items-center space-x-1">
-          <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></div>
-          <span className="text-xs text-gray-500">AI</span>
-        </div>
+    <div className={`bg-white rounded-xl shadow-sm p-5 h-full flex flex-col ${className}`}>
+      {/* Eyebrow header */}
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wider flex items-center gap-1.5">
+          <Sparkles className="h-3.5 w-3.5" style={{ color: themeColorHex }} />
+          {title}
+        </h3>
+        <span className="text-[11px] text-gray-400">
+          {completedItems.length}/{recommendations.length} done
+        </span>
       </div>
 
-      <div className="space-y-1">
-        {!compact && (
-          <div className="flex items-center space-x-1 mb-1">
-            <div
-              className={`w-3 h-3 ${getSmallIconBackgroundClasses()} rounded-full flex items-center justify-center`}
-            >
-              <Sparkles className="w-2 h-2 text-white" />
-            </div>
-            <h4 className="text-xs font-semibold text-gray-800">
-              Recommendations
-            </h4>
-          </div>
-        )}
-
-        {layout === "vertical" ? (
-          // Vertical layout for dashboard (1 per row, max 5)
-          <div className="space-y-1.5">
-            {shownRecommendations.length === 0 ? (
-              <div className="text-center py-4 text-gray-500">
-                <Brain className="w-8 h-8 mx-auto mb-2 text-gray-300" />
-                <p className="text-xs">No recommendations</p>
+      {shown.length === 0 ? (
+        <EmptyState />
+      ) : compact ? (
+        /* --------------- compact: one line per recommendation --------------- */
+        <div className="divide-y divide-gray-50 -mx-1 flex-1">
+          {shown.map((rec) => {
+            const done = completedItems.includes(rec.id);
+            return (
+              <div
+                key={rec.id}
+                onClick={() => open(rec)}
+                className={`group flex items-center gap-2.5 px-1 py-2 transition-colors ${
+                  rec.href ? "cursor-pointer hover:bg-gray-50 rounded-lg" : ""
+                }`}
+              >
+                <span title={`${rec.priority} priority`} className="h-1.5 w-1.5 rounded-full shrink-0" style={{ backgroundColor: PRIORITY_DOT[rec.priority] }} />
+                <span className={`text-sm flex-1 truncate ${done ? "text-gray-300 line-through" : "text-gray-700"}`}>
+                  {cleanTitle(rec.title)}
+                </span>
+                <CheckButton rec={rec} done={done} />
+                {rec.href && (
+                  <ArrowRight className="h-3.5 w-3.5 shrink-0 text-gray-300 group-hover:translate-x-0.5 transition-transform" />
+                )}
               </div>
-            ) : (
-              shownRecommendations.map((rec) => {
-                const isCompleted = completedItems.includes(rec.id);
-                return (
-                  <div
-                    key={rec.id}
-                    className={`p-2 rounded-lg border transition-all duration-200 ${
-                      isCompleted
-                        ? "bg-green-50 border-green-200"
-                        : "bg-white border-gray-200 hover:border-gray-300"
-                    } ${rec.href ? "cursor-pointer" : ""}`}
-                    onClick={() => handleRecommendationClick(rec)}
-                  >
-                    <div className="flex items-center gap-2">
-                      <span
-                        className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium flex items-center space-x-0.5 ${getPriorityColor(
-                          rec.priority
-                        )}`}
-                      >
-                        {getPriorityIcon(rec.priority)}
-                        <span className="capitalize">{rec.priority}</span>
-                      </span>
-                      <h5 className="text-xs font-medium text-gray-900 flex-1 truncate">
-                        {rec.title}
-                      </h5>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (!isCompleted) {
-                            handleComplete(rec.id);
-                          }
-                        }}
-                        disabled={isCompleted}
-                        className={`h-5 w-5 flex-shrink-0 p-0 ${
-                          isCompleted
-                            ? "text-green-600 bg-green-100"
-                            : "text-gray-400 hover:text-green-600 hover:bg-green-50"
-                        }`}
-                      >
-                        <Check className="w-3 h-3" />
-                      </Button>
-                    </div>
-                    <p className="text-[11px] text-gray-500 leading-snug mt-0.5">
-                      {rec.description}
-                    </p>
-                    <ActionLink rec={rec} />
-                  </div>
-                );
-              })
-            )}
-          </div>
-        ) : (
-          // Horizontal layout for list pages (3 per row, max 3)
-          <div className="grid grid-cols-3 gap-1">
-            {shownRecommendations.length === 0 ? (
-              <div className="col-span-3 text-center py-4 text-gray-500">
-                <Brain className="w-8 h-8 mx-auto mb-2 text-gray-300" />
-                <p className="text-xs">No recommendations</p>
+            );
+          })}
+        </div>
+      ) : layout === "vertical" ? (
+        /* ------------------- vertical: stacked detail rows ------------------ */
+        <div className="divide-y divide-gray-50 flex-1">
+          {shown.map((rec) => {
+            const done = completedItems.includes(rec.id);
+            return (
+              <div
+                key={rec.id}
+                onClick={() => open(rec)}
+                className={`py-2.5 px-1 ${rec.href ? "cursor-pointer hover:bg-gray-50 rounded-lg" : ""}`}
+              >
+                <div className="flex items-center gap-2.5">
+                  <span title={`${rec.priority} priority`} className="h-1.5 w-1.5 rounded-full shrink-0" style={{ backgroundColor: PRIORITY_DOT[rec.priority] }} />
+                  <span className={`text-sm font-medium flex-1 truncate ${done ? "text-gray-300 line-through" : "text-gray-900"}`}>
+                    {cleanTitle(rec.title)}
+                  </span>
+                  <CheckButton rec={rec} done={done} />
+                </div>
+                <p className={`text-xs mt-0.5 pl-4 leading-snug ${done ? "text-gray-300" : "text-gray-500"}`}>{rec.description}</p>
+                <div className="pl-4">
+                  <ActionLink rec={rec} />
+                </div>
               </div>
-            ) : (
-              shownRecommendations.map((rec) => {
-                const isCompleted = completedItems.includes(rec.id);
-                return (
-                  <div
-                    key={rec.id}
-                    className={`p-1 rounded-lg border transition-all duration-200 ${
-                      isCompleted
-                        ? "bg-green-50 border-green-200"
-                        : "bg-white border-gray-200 hover:border-gray-300"
-                    } ${rec.href ? "cursor-pointer" : ""}`}
-                    onClick={() => handleRecommendationClick(rec)}
-                  >
-                    <div className="flex items-start justify-between mb-1">
-                      <span
-                        className={`px-1.5 py-0.5 rounded-full text-xs font-medium flex items-center space-x-0.5 ${getPriorityColor(
-                          rec.priority
-                        )}`}
-                      >
-                        {getPriorityIcon(rec.priority)}
-                        <span className="capitalize text-xs">{rec.priority}</span>
-                      </span>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (!isCompleted) {
-                            handleComplete(rec.id);
-                          }
-                        }}
-                        disabled={isCompleted}
-                        className={`p-0.5 h-5 w-5 flex-shrink-0 ${
-                          isCompleted
-                            ? "text-green-600 bg-green-100"
-                            : "text-gray-400 hover:text-green-600 hover:bg-green-50"
-                        }`}
-                      >
-                        <Check className="w-3 h-3" />
-                      </Button>
-                    </div>
-                    <h5 className="text-xs font-medium text-gray-900 mb-0.5 line-clamp-1">
-                      {rec.title}
-                    </h5>
-                    <p className="text-xs text-gray-600 leading-tight line-clamp-2">
-                      {rec.description}
-                    </p>
-                    <ActionLink rec={rec} />
-                  </div>
-                );
-              })
-            )}
-          </div>
-        )}
-      </div>
-
-      {recommendations.length > 0 && (
-        <div className="mt-1 pt-1 border-t border-gray-200">
-          <div className="flex items-center justify-between text-xs">
-            <span className="text-gray-500">
-              {completedItems.length} of {recommendations.length} completed
-            </span>
-            <div className="flex items-center space-x-1">
-              <div className="w-1 h-1 bg-blue-500 rounded-full"></div>
-              <span className="text-blue-600 font-medium">AI Powered</span>
-            </div>
-          </div>
+            );
+          })}
+        </div>
+      ) : (
+        /* ---------------- horizontal: hairline 3-up cell grid --------------- */
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-px bg-gray-100 rounded-lg overflow-hidden flex-1">
+          {shown.map((rec) => {
+            const done = completedItems.includes(rec.id);
+            return (
+              <div
+                key={rec.id}
+                onClick={() => open(rec)}
+                className={`bg-white p-3.5 ${rec.href ? "cursor-pointer hover:bg-gray-50" : ""}`}
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  <span title={`${rec.priority} priority`} className="h-1.5 w-1.5 rounded-full shrink-0" style={{ backgroundColor: PRIORITY_DOT[rec.priority] }} />
+                  <span className={`text-sm font-medium flex-1 truncate ${done ? "text-gray-300 line-through" : "text-gray-900"}`}>
+                    {cleanTitle(rec.title)}
+                  </span>
+                  <CheckButton rec={rec} done={done} />
+                </div>
+                <p className={`text-xs leading-snug line-clamp-2 ${done ? "text-gray-300" : "text-gray-500"}`}>
+                  {rec.description}
+                </p>
+                <ActionLink rec={rec} />
+              </div>
+            );
+          })}
+          {/* keep the hairline grid rectangular when items aren't a multiple of 3 */}
+          {shown.length % 3 !== 0 &&
+            Array.from({ length: 3 - (shown.length % 3) }).map((_, i) => (
+              <div key={`filler-${i}`} className="bg-white hidden sm:block" />
+            ))}
         </div>
       )}
-    </Card>
+    </div>
   );
 }
-

@@ -564,61 +564,49 @@ export default function QuotesPage() {
         </div>
 
         {/* Metrics Cards - Right Side (1/3, 2x2 Grid) */}
-        <div className="grid grid-cols-2 gap-4">
-          {loading ? (
-            <>
-              <SkeletonMetricCard />
-              <SkeletonMetricCard />
-              <SkeletonMetricCard />
-              <SkeletonMetricCard />
-            </>
-          ) : (
-            <>
-              <Card className="p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-gray-600">Total Quotes</p>
-                    <p className="text-2xl font-bold text-gray-900">{metrics.totalQuotes}</p>
-                  </div>
-                  <FileText className="h-8 w-8 text-gray-400" />
+        {loading ? (
+          <div className="bg-white rounded-xl shadow-sm p-5 animate-pulse h-full min-h-[180px]" />
+        ) : (
+          <div className="bg-white rounded-xl shadow-sm p-5">
+            <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wider mb-3">Overview</h3>
+            <div className="grid grid-cols-2 gap-px bg-gray-100 rounded-lg overflow-hidden">
+              <div className="bg-white px-4 py-4">
+                <div className="flex items-center gap-1.5 mb-1.5">
+                  <FileText className="h-3.5 w-3.5 text-gray-400" />
+                  <span className="text-[11px] font-medium text-gray-500 uppercase tracking-wide truncate">Total Quotes</span>
                 </div>
-              </Card>
+                <p className="text-2xl font-bold tabular-nums leading-none text-gray-900">{metrics.totalQuotes}</p>
+              </div>
 
-              <Card className="p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-gray-600">Pending</p>
-                    <p className={`text-2xl font-bold text-${theme.primary}`}>{metrics.pendingQuotes}</p>
-                  </div>
-                  <Clock className={`h-8 w-8 text-${theme.primary}`} />
+              <div className="bg-white px-4 py-4">
+                <div className="flex items-center gap-1.5 mb-1.5">
+                  <Clock className={`h-3.5 w-3.5 text-${theme.primary}`} />
+                  <span className="text-[11px] font-medium text-gray-500 uppercase tracking-wide truncate">Pending</span>
                 </div>
-              </Card>
+                <p className={`text-2xl font-bold tabular-nums leading-none text-${theme.primary}`}>{metrics.pendingQuotes}</p>
+              </div>
 
-              <Card className="p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-gray-600">Approved</p>
-                    <p className="text-2xl font-bold text-green-600">{metrics.approvedQuotes}</p>
-                  </div>
-                  <CheckCircle className="h-8 w-8 text-green-400" />
+              <div className="bg-white px-4 py-4">
+                <div className="flex items-center gap-1.5 mb-1.5">
+                  <CheckCircle className="h-3.5 w-3.5 text-green-400" />
+                  <span className="text-[11px] font-medium text-gray-500 uppercase tracking-wide truncate">Approved</span>
                 </div>
-              </Card>
+                <p className="text-2xl font-bold tabular-nums leading-none text-green-600">{metrics.approvedQuotes}</p>
+              </div>
 
-              <Card className="p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-gray-600">Total Value</p>
-                    <p className="text-2xl font-bold text-emerald-700">
+              <div className="bg-white px-4 py-4">
+                <div className="flex items-center gap-1.5 mb-1.5">
+                  <DollarSign className="h-3.5 w-3.5 text-emerald-400" />
+                  <span className="text-[11px] font-medium text-gray-500 uppercase tracking-wide truncate">Total Value</span>
+                </div>
+                <p className="text-2xl font-bold tabular-nums leading-none text-emerald-700">
                       {metrics.totalValue.toFixed(0)}
                     </p>
                     <p className="text-xs text-gray-500">{formatCurrencyForDisplay(formData.currency)}</p>
-                  </div>
-                  <DollarSign className="h-8 w-8 text-emerald-400" />
-                </div>
-              </Card>
-            </>
-          )}
-        </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Quotes Table */}

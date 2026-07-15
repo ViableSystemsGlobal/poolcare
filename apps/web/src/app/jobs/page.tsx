@@ -35,6 +35,7 @@ import {
 import { DashboardAICard } from "@/components/dashboard-ai-card";
 import { useTheme } from "@/contexts/theme-context";
 import { SkeletonMetricCard, SkeletonTable } from "@/components/ui/skeleton";
+import { StatCellsCard } from "@/components/ui/stat-cells";
 
 interface Job {
   id: string;
@@ -85,8 +86,9 @@ export default function JobsPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { toast } = useToast();
-  const { getThemeClasses } = useTheme();
+  const { getThemeClasses, getThemeColor } = useTheme();
   const theme = getThemeClasses();
+  const themeColorHex = getThemeColor();
 
   const [jobs, setJobs] = useState<Job[]>([]);
   const [pools, setPools] = useState<Pool[]>([]);
@@ -1192,59 +1194,20 @@ export default function JobsPage() {
           />
         </div>
 
-        {/* Metrics Cards - Right Side (1/3, 2x2 Grid) */}
-        <div className="grid grid-cols-2 gap-4">
-          {loading ? (
-            <>
-              <SkeletonMetricCard />
-              <SkeletonMetricCard />
-              <SkeletonMetricCard />
-              <SkeletonMetricCard />
-            </>
-          ) : (
-            <>
-              <Card className="p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-gray-600">Total Jobs</p>
-                    <p className="text-2xl font-bold text-gray-900">{metrics.totalJobs}</p>
-                  </div>
-                  <FileText className="h-8 w-8 text-gray-400" />
-                </div>
-              </Card>
-
-              <Card className="p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-gray-600">Scheduled</p>
-                    <p className={`text-2xl font-bold text-${theme.primary}`}>{metrics.scheduledJobs}</p>
-                  </div>
-                  <Calendar className={`h-8 w-8 text-${theme.primary}`} />
-                </div>
-              </Card>
-
-              <Card className="p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-gray-600">In Progress</p>
-                    <p className="text-2xl font-bold text-yellow-600">{metrics.inProgressJobs}</p>
-                  </div>
-                  <Clock className="h-8 w-8 text-yellow-400" />
-                </div>
-              </Card>
-
-              <Card className="p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-gray-600">Completed</p>
-                    <p className="text-2xl font-bold text-green-600">{metrics.completedJobs}</p>
-                  </div>
-                  <CheckCircle className="h-8 w-8 text-green-400" />
-                </div>
-              </Card>
-            </>
-          )}
-        </div>
+        {/* Metrics — hairline KPI cells (1/3) */}
+        {loading ? (
+          <div className="bg-white rounded-xl shadow-sm p-5 animate-pulse h-full min-h-[180px]" />
+        ) : (
+          <StatCellsCard
+            title="Overview"
+            items={[
+              { label: "Total Jobs", value: metrics.totalJobs, icon: FileText },
+              { label: "Scheduled", value: metrics.scheduledJobs, icon: Calendar, color: themeColorHex },
+              { label: "In Progress", value: metrics.inProgressJobs, icon: Clock, color: "#d97706" },
+              { label: "Completed", value: metrics.completedJobs, icon: CheckCircle, color: "#16a34a" },
+            ]}
+          />
+        )}
       </div>
 
       {/* Jobs Table */}

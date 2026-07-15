@@ -331,46 +331,41 @@ export default function FilesPage() {
           />
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
-          <Card className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">Total Files</p>
-                <p className="text-2xl font-bold text-gray-900">{metrics.total}</p>
+        <div className="bg-white rounded-xl shadow-sm p-5">
+          <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wider mb-3">Overview</h3>
+          <div className="grid grid-cols-2 gap-px bg-gray-100 rounded-lg overflow-hidden">
+          <div className="bg-white px-4 py-4">
+                <div className="flex items-center gap-1.5 mb-1.5">
+                  <File className="h-3.5 w-3.5 text-blue-400" />
+                  <span className="text-[11px] font-medium text-gray-500 uppercase tracking-wide truncate">Total Files</span>
+                </div>
+                <p className="text-2xl font-bold tabular-nums leading-none text-gray-900">{metrics.total}</p>
               </div>
-              <File className="h-8 w-8 text-blue-400" />
-            </div>
-          </Card>
 
-          <Card className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">Images</p>
-                <p className="text-2xl font-bold text-emerald-700">{metrics.images}</p>
+          <div className="bg-white px-4 py-4">
+                <div className="flex items-center gap-1.5 mb-1.5">
+                  <Image className="h-3.5 w-3.5 text-emerald-400" />
+                  <span className="text-[11px] font-medium text-gray-500 uppercase tracking-wide truncate">Images</span>
+                </div>
+                <p className="text-2xl font-bold tabular-nums leading-none text-emerald-700">{metrics.images}</p>
               </div>
-              <Image className="h-8 w-8 text-emerald-400" />
-            </div>
-          </Card>
 
-          <Card className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">Documents</p>
-                <p className="text-2xl font-bold text-green-600">{metrics.documents}</p>
+          <div className="bg-white px-4 py-4">
+                <div className="flex items-center gap-1.5 mb-1.5">
+                  <FileText className="h-3.5 w-3.5 text-green-400" />
+                  <span className="text-[11px] font-medium text-gray-500 uppercase tracking-wide truncate">Documents</span>
+                </div>
+                <p className="text-2xl font-bold tabular-nums leading-none text-green-600">{metrics.documents}</p>
               </div>
-              <FileText className="h-8 w-8 text-green-400" />
-            </div>
-          </Card>
 
-          <Card className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">Total Size</p>
-                <p className="text-2xl font-bold text-purple-600">{formatFileSize(metrics.totalSize)}</p>
+          <div className="bg-white px-4 py-4">
+                <div className="flex items-center gap-1.5 mb-1.5">
+                  <Download className="h-3.5 w-3.5 text-purple-400" />
+                  <span className="text-[11px] font-medium text-gray-500 uppercase tracking-wide truncate">Total Size</span>
+                </div>
+                <p className="text-2xl font-bold tabular-nums leading-none text-purple-600">{formatFileSize(metrics.totalSize)}</p>
               </div>
-              <Download className="h-8 w-8 text-purple-400" />
-            </div>
-          </Card>
+          </div>
         </div>
       </div>
 

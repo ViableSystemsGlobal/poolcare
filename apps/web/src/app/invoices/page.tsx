@@ -664,63 +664,48 @@ export default function InvoicesPage() {
           />
         </div>
 
-        {/* Metrics Cards - Right Side (1/3, 2x2 Grid) */}
-        <div className="grid grid-cols-2 gap-4">
-          {loading ? (
-            <>
-              <SkeletonMetricCard />
-              <SkeletonMetricCard />
-              <SkeletonMetricCard />
-              <SkeletonMetricCard />
-            </>
-          ) : (
-            <>
-              <Card className="p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-gray-600">Total Invoices</p>
-                    <p className="text-2xl font-bold text-gray-900">{metrics.totalInvoices}</p>
-                  </div>
-                  <FileText className="h-8 w-8 text-gray-400" />
+        {/* Metrics — hairline KPI cells (1/3) */}
+        {loading ? (
+          <div className="bg-white rounded-xl shadow-sm p-5 animate-pulse h-full min-h-[180px]" />
+        ) : (
+          <div className="bg-white rounded-xl shadow-sm p-5">
+            <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wider mb-3">Overview</h3>
+            <div className="grid grid-cols-2 gap-px bg-gray-100 rounded-lg overflow-hidden">
+              <div className="bg-white px-4 py-4">
+                <div className="flex items-center gap-1.5 mb-1.5">
+                  <FileText className="h-3.5 w-3.5 text-gray-400" />
+                  <span className="text-[11px] font-medium text-gray-500 uppercase tracking-wide truncate">Total Invoices</span>
                 </div>
-              </Card>
-
-              <Card className="p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-gray-600">Outstanding</p>
-                    <p className="text-2xl font-bold text-amber-600">
-                      {formatCurrency(metrics.outstandingAmount, formData.currency)}
-                    </p>
-                  </div>
-                  <DollarSign className="h-8 w-8 text-amber-400" />
+                <p className="text-2xl font-bold tabular-nums leading-none text-gray-900">{metrics.totalInvoices}</p>
+              </div>
+              <div className="bg-white px-4 py-4">
+                <div className="flex items-center gap-1.5 mb-1.5">
+                  <DollarSign className="h-3.5 w-3.5 text-amber-400" />
+                  <span className="text-[11px] font-medium text-gray-500 uppercase tracking-wide truncate">Outstanding</span>
                 </div>
-              </Card>
-
-              <Card className="p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-gray-600">Overdue</p>
-                    <p className="text-2xl font-bold text-red-600">{metrics.overdueInvoices}</p>
-                  </div>
-                  <AlertCircle className="h-8 w-8 text-red-400" />
+                <p className="text-xl font-bold tabular-nums leading-none text-amber-600">
+                  {formatCurrency(metrics.outstandingAmount, formData.currency)}
+                </p>
+              </div>
+              <div className="bg-white px-4 py-4">
+                <div className="flex items-center gap-1.5 mb-1.5">
+                  <AlertCircle className="h-3.5 w-3.5 text-red-400" />
+                  <span className="text-[11px] font-medium text-gray-500 uppercase tracking-wide truncate">Overdue</span>
                 </div>
-              </Card>
-
-              <Card className="p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-gray-600">Next Billing</p>
-                    <p className="text-lg font-bold" style={{ color: themeHex }}>
-                      {nextBillingDate ? formatDate(nextBillingDate) : "None"}
-                    </p>
-                  </div>
-                  <Calendar className="h-8 w-8" style={{ color: themeHex, opacity: 0.5 }} />
+                <p className="text-2xl font-bold tabular-nums leading-none text-red-600">{metrics.overdueInvoices}</p>
+              </div>
+              <div className="bg-white px-4 py-4">
+                <div className="flex items-center gap-1.5 mb-1.5">
+                  <Calendar className="h-3.5 w-3.5" style={{ color: themeHex }} />
+                  <span className="text-[11px] font-medium text-gray-500 uppercase tracking-wide truncate">Next Billing</span>
                 </div>
-              </Card>
-            </>
-          )}
-        </div>
+                <p className="text-lg font-bold tabular-nums leading-none" style={{ color: themeHex }}>
+                  {nextBillingDate ? formatDate(nextBillingDate) : "None"}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Upcoming Recurring Billings Banner */}
