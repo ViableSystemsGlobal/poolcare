@@ -27,6 +27,8 @@ interface DashboardAICardProps {
   icon?: React.ReactNode;
   className?: string;
   layout?: "vertical" | "horizontal"; // vertical for dashboard (1 per row), horizontal for list pages (3 per row)
+  /** Cap how many recommendation cards render (e.g. 3 keeps horizontal to one row) */
+  maxItems?: number;
   /** When set (dashboard only), shows whether cards came from API or fallback */
   recommendationsSource?: "api" | "fallback" | null;
 }
@@ -39,8 +41,10 @@ export function DashboardAICard({
   icon,
   className = "",
   layout = "horizontal", // Default to horizontal for list pages
+  maxItems,
   recommendationsSource,
 }: DashboardAICardProps) {
+  const shownRecommendations = maxItems ? recommendations.slice(0, maxItems) : recommendations;
   const { getThemeClasses, getThemeColor } = useTheme();
   const theme = getThemeClasses();
   const themeColorHex = getThemeColor();
@@ -209,13 +213,13 @@ export function DashboardAICard({
         {layout === "vertical" ? (
           // Vertical layout for dashboard (1 per row, max 5)
           <div className="space-y-1.5">
-            {recommendations.length === 0 ? (
+            {shownRecommendations.length === 0 ? (
               <div className="text-center py-4 text-gray-500">
                 <Brain className="w-8 h-8 mx-auto mb-2 text-gray-300" />
                 <p className="text-xs">No recommendations</p>
               </div>
             ) : (
-              recommendations.map((rec) => {
+              shownRecommendations.map((rec) => {
                 const isCompleted = completedItems.includes(rec.id);
                 return (
                   <div
@@ -270,13 +274,13 @@ export function DashboardAICard({
         ) : (
           // Horizontal layout for list pages (3 per row, max 3)
           <div className="grid grid-cols-3 gap-1">
-            {recommendations.length === 0 ? (
+            {shownRecommendations.length === 0 ? (
               <div className="col-span-3 text-center py-4 text-gray-500">
                 <Brain className="w-8 h-8 mx-auto mb-2 text-gray-300" />
                 <p className="text-xs">No recommendations</p>
               </div>
             ) : (
-              recommendations.map((rec) => {
+              shownRecommendations.map((rec) => {
                 const isCompleted = completedItems.includes(rec.id);
                 return (
                   <div

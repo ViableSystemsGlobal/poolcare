@@ -350,6 +350,7 @@ export default function Dashboard() {
             subtitle="Your intelligent assistant"
             recommendations={aiRecommendations}
             onRecommendationComplete={(id) => console.log("Recommendation completed:", id)}
+            maxItems={3}
             recommendationsSource={aiRecommendationsSource}
           />
         </div>
