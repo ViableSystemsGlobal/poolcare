@@ -385,54 +385,40 @@ export default function UsersPage() {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Total Users</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center gap-2">
-              <Users className="h-5 w-5 text-gray-500" />
-              <span className="text-2xl font-bold">{totalUsers}</span>
+      <div className="bg-white rounded-xl shadow-sm p-5">
+        <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wider mb-3">Overview</h3>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-px bg-gray-100 rounded-lg overflow-hidden">
+          <div className="bg-white px-4 py-4">
+            <div className="flex items-center gap-1.5 mb-1.5">
+              <Users className="h-3.5 w-3.5 text-gray-400" />
+              <span className="text-[11px] font-medium text-gray-500 uppercase tracking-wide truncate">Total Users</span>
             </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Clients</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center gap-2">
-              <Users className="h-5 w-5 text-blue-500" />
-              <span className="text-2xl font-bold">{totalClients}</span>
+            <p className="text-2xl font-bold tabular-nums leading-none text-gray-900">{totalUsers}</p>
+          </div>
+          <div className="bg-white px-4 py-4">
+            <div className="flex items-center gap-1.5 mb-1.5">
+              <Users className="h-3.5 w-3.5 text-blue-500" />
+              <span className="text-[11px] font-medium text-gray-500 uppercase tracking-wide truncate">Clients</span>
             </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Carers</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center gap-2">
-              <UserCheck className="h-5 w-5 text-green-500" />
-              <span className="text-2xl font-bold">{totalCarers}</span>
+            <p className="text-2xl font-bold tabular-nums leading-none text-gray-900">{totalClients}</p>
+          </div>
+          <div className="bg-white px-4 py-4">
+            <div className="flex items-center gap-1.5 mb-1.5">
+              <UserCheck className="h-3.5 w-3.5 text-green-500" />
+              <span className="text-[11px] font-medium text-gray-500 uppercase tracking-wide truncate">Carers</span>
             </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>With Push Token</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center gap-2">
-              <Smartphone className="h-5 w-5 text-purple-500" />
-              <span className="text-2xl font-bold">{withPushToken}</span>
-              <span className="text-sm text-gray-400">
-                / {totalUsers}
-              </span>
+            <p className="text-2xl font-bold tabular-nums leading-none text-gray-900">{totalCarers}</p>
+          </div>
+          <div className="bg-white px-4 py-4">
+            <div className="flex items-center gap-1.5 mb-1.5">
+              <Smartphone className="h-3.5 w-3.5 text-purple-500" />
+              <span className="text-[11px] font-medium text-gray-500 uppercase tracking-wide truncate">With Push Token</span>
             </div>
-          </CardContent>
-        </Card>
+            <p className="text-2xl font-bold tabular-nums leading-none text-gray-900">
+              {withPushToken} <span className="text-sm font-normal text-gray-400">/ {totalUsers}</span>
+            </p>
+          </div>
+        </div>
       </div>
 
       {/* Filters */}

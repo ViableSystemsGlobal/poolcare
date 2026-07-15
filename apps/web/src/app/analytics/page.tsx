@@ -233,7 +233,7 @@ export default function AnalyticsPage() {
       {/* ---------------------------------- Finance ---------------------------------- */}
       <section>
         <Eyebrow>Finance</Eyebrow>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-px bg-gray-100 rounded-xl overflow-hidden shadow-sm">
           <StatCard
             label="Revenue" value={financeMetrics ? currency(financeMetrics.revenue.totalCents) : "—"}
             sub={financeMetrics ? `${financeMetrics.revenue.count} payments` : ""}
@@ -325,7 +325,7 @@ export default function AnalyticsPage() {
       {/* --------------------------------- Operations -------------------------------- */}
       <section>
         <Eyebrow>Operations</Eyebrow>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-px bg-gray-100 rounded-xl overflow-hidden shadow-sm">
           <StatCard
             label="Total Jobs" value={operationsMetrics ? formatNumber(operationsMetrics.jobs.total) : "—"}
             icon={Calendar} color="#2563eb" loading={loading}
@@ -408,14 +408,12 @@ function StatCard({
     );
   }
   return (
-    <div className="bg-white rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow">
-      <div className="flex items-center justify-between mb-2">
-        <span className="text-xs font-medium text-gray-500">{label}</span>
-        <div className="h-7 w-7 rounded-lg flex items-center justify-center" style={{ backgroundColor: `${color}15` }}>
-          <Icon className="h-3.5 w-3.5" style={{ color }} />
-        </div>
+    <div className="bg-white px-4 py-4">
+      <div className="flex items-center gap-1.5 mb-1.5">
+        <Icon className="h-3.5 w-3.5" style={{ color }} />
+        <span className="text-[11px] font-medium text-gray-500 uppercase tracking-wide truncate">{label}</span>
       </div>
-      <div className="text-2xl font-bold text-gray-900 truncate">{value}</div>
+      <div className="text-2xl font-bold tabular-nums leading-none text-gray-900 truncate">{value}</div>
       <div className="flex items-end justify-between gap-2 mt-1 min-h-[20px]">
         <div>
           <DeltaBadge delta={delta} />

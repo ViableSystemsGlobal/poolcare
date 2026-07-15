@@ -144,100 +144,46 @@ export default function NewsletterPage() {
       </div>
 
       {/* Stats Row */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="pt-6 pb-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-500">
-                  Newsletters Sent
-                </p>
-                <p className="text-2xl font-bold text-gray-900 mt-1">
-                  {loading ? (
-                    <span className="text-gray-300">--</span>
-                  ) : (
-                    totalSent
-                  )}
-                </p>
-              </div>
-              <div
-                className="p-2.5 rounded-lg"
-                style={{ backgroundColor: `${themeColorHex}15` }}
-              >
-                <Send className="h-5 w-5" style={{ color: themeColorHex }} />
-              </div>
+      <div className="bg-white rounded-xl shadow-sm p-5">
+        <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wider mb-3">Overview</h3>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-px bg-gray-100 rounded-lg overflow-hidden">
+          <div className="bg-white px-4 py-4">
+            <div className="flex items-center gap-1.5 mb-1.5">
+              <Send className="h-3.5 w-3.5" style={{ color: themeColorHex }} />
+              <span className="text-[11px] font-medium text-gray-500 uppercase tracking-wide truncate">Newsletters Sent</span>
             </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="pt-6 pb-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-500">
-                  Recipients Reached
-                </p>
-                <p className="text-2xl font-bold text-gray-900 mt-1">
-                  {loading ? (
-                    <span className="text-gray-300">--</span>
-                  ) : (
-                    totalRecipients.toLocaleString()
-                  )}
-                </p>
-              </div>
-              <div
-                className="p-2.5 rounded-lg"
-                style={{ backgroundColor: `${themeColorHex}15` }}
-              >
-                <Users className="h-5 w-5" style={{ color: themeColorHex }} />
-              </div>
+            <p className="text-2xl font-bold tabular-nums leading-none text-gray-900">
+              {loading ? <span className="text-gray-300">--</span> : totalSent}
+            </p>
+          </div>
+          <div className="bg-white px-4 py-4">
+            <div className="flex items-center gap-1.5 mb-1.5">
+              <Users className="h-3.5 w-3.5" style={{ color: themeColorHex }} />
+              <span className="text-[11px] font-medium text-gray-500 uppercase tracking-wide truncate">Recipients Reached</span>
             </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="pt-6 pb-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-500">
-                  Pending Drafts
-                </p>
-                <p className="text-2xl font-bold text-gray-900 mt-1">
-                  {loading ? (
-                    <span className="text-gray-300">--</span>
-                  ) : (
-                    draftsCount
-                  )}
-                </p>
-              </div>
-              <div className="p-2.5 rounded-lg bg-amber-50">
-                <FileText className="h-5 w-5 text-amber-600" />
-              </div>
+            <p className="text-2xl font-bold tabular-nums leading-none text-gray-900">
+              {loading ? <span className="text-gray-300">--</span> : totalRecipients.toLocaleString()}
+            </p>
+          </div>
+          <div className="bg-white px-4 py-4">
+            <div className="flex items-center gap-1.5 mb-1.5">
+              <FileText className="h-3.5 w-3.5 text-amber-600" />
+              <span className="text-[11px] font-medium text-gray-500 uppercase tracking-wide truncate">Pending Drafts</span>
             </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="pt-6 pb-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-500">
-                  Weekly Tips
-                </p>
-                <p className="text-2xl font-bold text-gray-900 mt-1">
-                  {loading ? (
-                    <span className="text-gray-300">--</span>
-                  ) : (
-                    tipsCount
-                  )}
-                </p>
-              </div>
-              <div className="p-2.5 rounded-lg bg-emerald-50">
-                <Lightbulb className="h-5 w-5 text-emerald-600" />
-              </div>
+            <p className="text-2xl font-bold tabular-nums leading-none text-gray-900">
+              {loading ? <span className="text-gray-300">--</span> : draftsCount}
+            </p>
+          </div>
+          <div className="bg-white px-4 py-4">
+            <div className="flex items-center gap-1.5 mb-1.5">
+              <Lightbulb className="h-3.5 w-3.5 text-emerald-600" />
+              <span className="text-[11px] font-medium text-gray-500 uppercase tracking-wide truncate">Weekly Tips</span>
             </div>
-          </CardContent>
-        </Card>
+            <p className="text-2xl font-bold tabular-nums leading-none text-gray-900">
+              {loading ? <span className="text-gray-300">--</span> : tipsCount}
+            </p>
+          </div>
+        </div>
       </div>
 
       {/* Action Cards */}
