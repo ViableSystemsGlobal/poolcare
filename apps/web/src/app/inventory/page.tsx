@@ -148,65 +148,38 @@ export default function InventoryPage() {
       </div>
 
       {/* Quick Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">In Stock</p>
-                <p className="text-2xl font-bold text-green-600">
-                  {loading ? "-" : stats.inStockProducts}
-                </p>
-              </div>
-              <div className="p-2 rounded-full bg-green-100">
-                <CheckCircle className="h-5 w-5 text-green-600" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">Low Stock</p>
-                <p className="text-2xl font-bold text-yellow-600">
-                  {loading ? "-" : stats.lowStockProducts}
-                </p>
-              </div>
-              <div className="p-2 rounded-full bg-yellow-100">
-                <AlertTriangle className="h-5 w-5 text-yellow-600" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">Out of Stock</p>
-                <p className="text-2xl font-bold text-red-600">
-                  {loading ? "-" : stats.outOfStockProducts}
-                </p>
-              </div>
-              <div className="p-2 rounded-full bg-red-100">
-                <XCircle className="h-5 w-5 text-red-600" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">Total Products</p>
-                <p className="text-2xl font-bold">{loading ? "-" : stats.totalProducts}</p>
-              </div>
-              <div className="p-2 rounded-full bg-gray-100">
-                <Package className="h-5 w-5 text-gray-600" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+      <div className="bg-white rounded-xl shadow-sm p-5">
+        <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wider mb-3">Overview</h3>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-px bg-gray-100 rounded-lg overflow-hidden">
+        <div className="bg-white px-4 py-4">
+          <div className="flex items-center gap-1.5 mb-1.5">
+            <CheckCircle className="h-3.5 w-3.5 text-green-600" />
+            <span className="text-[11px] font-medium text-gray-500 uppercase tracking-wide truncate">In Stock</span>
+          </div>
+          <p className="text-2xl font-bold tabular-nums leading-none text-green-600">{loading ? "-" : stats.inStockProducts}</p>
+        </div>
+        <div className="bg-white px-4 py-4">
+          <div className="flex items-center gap-1.5 mb-1.5">
+            <AlertTriangle className="h-3.5 w-3.5 text-yellow-600" />
+            <span className="text-[11px] font-medium text-gray-500 uppercase tracking-wide truncate">Low Stock</span>
+          </div>
+          <p className="text-2xl font-bold tabular-nums leading-none text-yellow-600">{loading ? "-" : stats.lowStockProducts}</p>
+        </div>
+        <div className="bg-white px-4 py-4">
+          <div className="flex items-center gap-1.5 mb-1.5">
+            <XCircle className="h-3.5 w-3.5 text-red-600" />
+            <span className="text-[11px] font-medium text-gray-500 uppercase tracking-wide truncate">Out of Stock</span>
+          </div>
+          <p className="text-2xl font-bold tabular-nums leading-none text-red-600">{loading ? "-" : stats.outOfStockProducts}</p>
+        </div>
+        <div className="bg-white px-4 py-4">
+          <div className="flex items-center gap-1.5 mb-1.5">
+            <Package className="h-3.5 w-3.5 text-gray-600" />
+            <span className="text-[11px] font-medium text-gray-500 uppercase tracking-wide truncate">Total Products</span>
+          </div>
+          <p className="text-2xl font-bold tabular-nums leading-none text-gray-900">{loading ? "-" : stats.totalProducts}</p>
+        </div>
+        </div>
       </div>
 
       {/* Module Cards */}

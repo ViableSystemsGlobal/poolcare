@@ -327,61 +327,38 @@ export default function StockMovementsPage() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">Total Movements</p>
-                <p className="text-2xl font-bold">{movements.length}</p>
-              </div>
-              <div className="p-2 rounded-full bg-gray-100">
-                <Package className="h-5 w-5 text-gray-600" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">Stock Ins</p>
-                <p className="text-2xl font-bold text-green-600">{stockIns}</p>
-              </div>
-              <div className="p-2 rounded-full bg-green-100">
-                <TrendingUp className="h-5 w-5 text-green-600" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">Stock Outs</p>
-                <p className="text-2xl font-bold text-red-600">{stockOuts}</p>
-              </div>
-              <div className="p-2 rounded-full bg-red-100">
-                <TrendingDown className="h-5 w-5 text-red-600" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">Adjustments</p>
-                <p className="text-2xl font-bold text-blue-600">
-                  {movements.filter((m) => m.type === "ADJUSTMENT").length}
-                </p>
-              </div>
-              <div className="p-2 rounded-full bg-blue-100">
-                <RotateCcw className="h-5 w-5 text-blue-600" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+      <div className="bg-white rounded-xl shadow-sm p-5">
+        <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wider mb-3">Overview</h3>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-px bg-gray-100 rounded-lg overflow-hidden">
+        <div className="bg-white px-4 py-4">
+          <div className="flex items-center gap-1.5 mb-1.5">
+            <Package className="h-3.5 w-3.5 text-gray-600" />
+            <span className="text-[11px] font-medium text-gray-500 uppercase tracking-wide truncate">Total Movements</span>
+          </div>
+          <p className="text-2xl font-bold tabular-nums leading-none text-gray-900">{movements.length}</p>
+        </div>
+        <div className="bg-white px-4 py-4">
+          <div className="flex items-center gap-1.5 mb-1.5">
+            <TrendingUp className="h-3.5 w-3.5 text-green-600" />
+            <span className="text-[11px] font-medium text-gray-500 uppercase tracking-wide truncate">Stock Ins</span>
+          </div>
+          <p className="text-2xl font-bold tabular-nums leading-none text-green-600">{stockIns}</p>
+        </div>
+        <div className="bg-white px-4 py-4">
+          <div className="flex items-center gap-1.5 mb-1.5">
+            <TrendingDown className="h-3.5 w-3.5 text-red-600" />
+            <span className="text-[11px] font-medium text-gray-500 uppercase tracking-wide truncate">Stock Outs</span>
+          </div>
+          <p className="text-2xl font-bold tabular-nums leading-none text-red-600">{stockOuts}</p>
+        </div>
+        <div className="bg-white px-4 py-4">
+          <div className="flex items-center gap-1.5 mb-1.5">
+            <RotateCcw className="h-3.5 w-3.5 text-blue-600" />
+            <span className="text-[11px] font-medium text-gray-500 uppercase tracking-wide truncate">Adjustments</span>
+          </div>
+          <p className="text-2xl font-bold tabular-nums leading-none text-blue-600">{movements.filter((m) => m.type === "ADJUSTMENT").length}</p>
+        </div>
+        </div>
       </div>
 
       {/* Filters */}
