@@ -4,6 +4,7 @@ import { Nav } from "@/components/Nav";
 import { Footer } from "@/components/Footer";
 import { PageHero } from "@/components/PageHero";
 import { mdToHtml } from "@/lib/markdown";
+import { breadcrumbSchema } from "@/lib/seo";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://poolcare.africa";
@@ -68,7 +69,7 @@ export default async function CaseStudy({ params }: { params: { slug: string } }
               <div className="r-grid-2" style={{ gap: 16, marginBottom: 40 }}>
                 {[["Before", post.beforeImage], ["After", post.afterImage]].map(([label, src]) => (
                   <div key={label} style={{ position: "relative", borderRadius: 16, overflow: "hidden", aspectRatio: "4 / 3", background: "var(--surface-2)" }}>
-                    <img src={src as string} alt={label as string} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                    <img loading="lazy" decoding="async" src={src as string} alt={label as string} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                     <span style={{ position: "absolute", top: 12, left: 12, background: label === "Before" ? "rgba(10,31,58,0.85)" : "rgba(255,255,255,0.92)", color: label === "Before" ? "#fff" : "var(--ink)", fontFamily: "var(--font-mono)", fontSize: 10.5, letterSpacing: "0.12em", textTransform: "uppercase", padding: "5px 10px", borderRadius: 999 }}>{label}</span>
                   </div>
                 ))}
@@ -93,6 +94,11 @@ export default async function CaseStudy({ params }: { params: { slug: string } }
       </main>
       <Footer home="/" />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbSchema([
+        { name: "Home", path: "/" },
+        { name: "Case Studies", path: "/case-studies" },
+        { name: post.title, path: `/case-studies/${post.slug}` },
+      ])) }} />
     </>
   );
 }

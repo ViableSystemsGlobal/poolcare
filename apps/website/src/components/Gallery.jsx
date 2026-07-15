@@ -89,9 +89,9 @@ function Comparator({ pair, bind, idx }) {
       onMouseDown={(e) => { dragRef.current = true; move(e.clientX); }}
       onTouchStart={(e) => { dragRef.current = true; if (e.touches[0]) move(e.touches[0].clientX); }}
       style={{ position: 'relative', height: 'min(72vh, 720px)', minHeight: 460, borderRadius: 24, overflow: 'hidden', cursor: 'ew-resize', userSelect: 'none', background: pair.afterBg }}>
-      <img src={pair.after} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} onError={(e) => e.currentTarget.style.display = 'none'} />
+      <img loading="lazy" decoding="async" src={pair.after} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} onError={(e) => e.currentTarget.style.display = 'none'} />
       <div style={{ position: 'absolute', inset: 0, clipPath: `inset(0 ${100 - pct}% 0 0)`, background: pair.beforeBg }}>
-        <img src={pair.before} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(e) => e.currentTarget.style.display = 'none'} />
+        <img loading="lazy" decoding="async" src={pair.before} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(e) => e.currentTarget.style.display = 'none'} />
       </div>
       <span style={{ position: 'absolute', top: 20, left: 20, background: 'rgba(10,31,58,0.85)', color: '#fff', padding: '8px 12px', borderRadius: 999, fontFamily: 'var(--font-mono)', fontSize: 11, letterSpacing: '0.14em', textTransform: 'uppercase', backdropFilter: 'blur(6px)' }}>Before</span>
       <span style={{ position: 'absolute', top: 20, right: 20, background: 'rgba(255,255,255,0.92)', color: 'var(--ink)', padding: '8px 12px', borderRadius: 999, fontFamily: 'var(--font-mono)', fontSize: 11, letterSpacing: '0.14em', textTransform: 'uppercase', backdropFilter: 'blur(6px)' }}>After</span>

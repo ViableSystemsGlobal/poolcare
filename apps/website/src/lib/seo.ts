@@ -45,6 +45,9 @@ export async function pageMetadata(opts: {
 }
 
 // SEO for a plan detail page (derived from that plan in the "plans" doc).
+// Title is deliberately NOT the marketing headline (those run 80+ chars and
+// get truncated in SERPs) — it's a compact, keyworded pattern. A Studio
+// `seo.title` still overrides everything.
 export function planMetadata(planId: string): Promise<Metadata> {
   return pageMetadata({
     key: "plans",
@@ -52,7 +55,51 @@ export function planMetadata(planId: string): Promise<Metadata> {
     fallbackTitle: `${planId.replace(/-/g, " ")} plan — PoolCare`,
     pick: (c) => {
       const p = (c?.plans || []).find((x: any) => x.id === planId);
-      return p ? { title: p.detail?.title || `${p.name} Plan`, description: p.detail?.tagline || p.blurb, image: p.detail?.image } : {};
+      if (!p) return {};
+      const tagline = p.detail?.tagline || p.blurb || "";
+      const description = [tagline, "Professional pool maintenance in Accra by PoolCare — book a free assessment."]
+        .filter(Boolean).join(" ").slice(0, 155);
+      return {
+        title: `${p.name} Plan — Pool Maintenance in Accra`,
+        description,
+        image: p.detail?.image,
+      };
     },
   });
+}
+
+// Service + Offer structured data for a plan page.
+export async function planServiceSchema(planId: string) {
+  const content = await getContent("plans");
+  const p = (content?.plans || []).find((x: any) => x.id === planId);
+  if (!p) return null;
+  const price = typeof p.price === "string" || typeof p.price === "number"
+    ? String(p.price).replace(/[^\d.]/g, "")
+    : "";
+  return {
+    "@context": "https://schema.org",
+    "@type": "Service",
+    "@id": `${SITE_URL}/${planId}#service`,
+    name: `${p.name} Plan — Pool Maintenance`,
+    serviceType: "Swimming pool maintenance",
+    description: p.detail?.tagline || p.blurb || undefined,
+    provider: { "@id": `${SITE_URL}/#organization` },
+    areaServed: { "@type": "City", name: "Accra" },
+    url: `${SITE_URL}/${planId}`,
+    ...(price ? { offers: { "@type": "Offer", price, priceCurrency: "GHS" } } : {}),
+  };
+}
+
+// BreadcrumbList — helps SERP display for deep pages.
+export function breadcrumbSchema(items: { name: string; path: string }[]) {
+  return {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    itemListElement: items.map((it, i) => ({
+      "@type": "ListItem",
+      position: i + 1,
+      name: it.name,
+      item: `${SITE_URL}${it.path}`,
+    })),
+  };
 }

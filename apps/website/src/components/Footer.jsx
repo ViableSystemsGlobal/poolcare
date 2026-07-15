@@ -86,7 +86,7 @@ function Footer({ home = '' }) {
         }}>
           <div>
             <div style={{ marginBottom: 24 }}>
-              <img src={f.logo || '/images/logo.png'} alt="PoolCare" style={{ height: 46, width: 'auto', display: 'block' }} {...bind('footer.logo')} />
+              <img loading="lazy" decoding="async" src={f.logo || '/images/logo.png'} alt="PoolCare" style={{ height: 46, width: 'auto', display: 'block' }} {...bind('footer.logo')} />
             </div>
             <p style={{ margin: 0, fontSize: 14.5, color: 'var(--ink-3)', maxWidth: '34ch', lineHeight: 1.55 }} {...bind('footer.description')}>
               {f.description || 'Professional pool maintenance, repair, and installation services for homes, apartments, and commercial properties.'}

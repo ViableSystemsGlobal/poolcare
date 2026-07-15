@@ -109,7 +109,7 @@ function PhoneShot({ shot, alt }) {
     <div className="phone-frame" style={{ width: 280, height: 560, background: '#0d2419', borderRadius: '44px 44px 0 0', padding: 10, boxShadow: '0 30px 80px rgba(0,0,0,0.5)', position: 'relative', border: '6px solid #0d2419', borderBottom: 'none' }}>
       <div style={{ position: 'absolute', top: 6, left: '50%', transform: 'translateX(-50%)', width: 104, height: 24, background: '#0d2419', borderRadius: '0 0 16px 16px', zIndex: 2 }}/>
       <div style={{ borderRadius: '34px 34px 0 0', height: '100%', overflow: 'hidden', background: '#fff' }}>
-        <img src={shot} alt={alt} style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center top', display: 'block' }} onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+        <img loading="lazy" decoding="async" src={shot} alt={alt} style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center top', display: 'block' }} onError={(e) => { e.currentTarget.style.display = 'none'; }} />
       </div>
     </div>
   );

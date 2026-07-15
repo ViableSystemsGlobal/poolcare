@@ -4,6 +4,7 @@ import { Nav } from "@/components/Nav";
 import { Footer } from "@/components/Footer";
 import { PageHero } from "@/components/PageHero";
 import { mdToHtml } from "@/lib/markdown";
+import { breadcrumbSchema } from "@/lib/seo";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://poolcare.africa";
@@ -90,6 +91,11 @@ export default async function BlogPost({ params }: { params: { slug: string } })
       </main>
       <Footer home="/" />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbSchema([
+        { name: "Home", path: "/" },
+        { name: "Blog", path: "/blog" },
+        { name: post.title, path: `/blog/${post.slug}` },
+      ])) }} />
     </>
   );
 }

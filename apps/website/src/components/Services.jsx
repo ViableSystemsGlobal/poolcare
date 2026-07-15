@@ -79,7 +79,7 @@ function ServiceCard({ n, label, title, blurb, bullets, bg, image, index, total,
           </ul>
         </div>
         <div className="app-stack__media" style={{ position: 'relative', overflow: 'hidden', background: bg, minHeight: 540 }}>
-          <img src={image} alt={label} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+          <img loading="lazy" decoding="async" src={image} alt={label} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} onError={(e) => { e.currentTarget.style.display = 'none'; }} />
         </div>
       </div>
     </article>

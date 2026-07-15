@@ -35,9 +35,9 @@
   --water:     #cfe5d6;
 
   /* type — defaults; tweaks override --font-display */
-  --font-sans:   "Geist", ui-sans-serif, -apple-system, system-ui, sans-serif;
-  --font-serif:  "Instrument Serif", "Times New Roman", Times, serif;
-  --font-mono:   "Geist Mono", ui-monospace, "SFMono-Regular", monospace;
+  --font-sans:   var(--font-geist-sans), "Geist", ui-sans-serif, -apple-system, system-ui, sans-serif;
+  --font-serif:  var(--font-instrument-serif), "Instrument Serif", "Times New Roman", Times, serif;
+  --font-mono:   var(--font-geist-mono), "Geist Mono", ui-monospace, "SFMono-Regular", monospace;
   --font-display: var(--font-sans);
 
   /* radius */

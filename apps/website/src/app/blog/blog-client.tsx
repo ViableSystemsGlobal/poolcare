@@ -55,7 +55,7 @@ export default function BlogClient() {
                 {posts.map((p) => (
                   <a key={p.slug} href={`/blog/${p.slug}`} className="card" style={{ overflow: 'hidden', display: 'flex', flexDirection: 'column', cursor: 'default' }}>
                     <div style={{ aspectRatio: '16 / 9', background: 'var(--surface-2)', overflow: 'hidden' }}>
-                      {p.coverImage && <img src={p.coverImage} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
+                      {p.coverImage && <img loading="lazy" decoding="async" src={p.coverImage} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
                     </div>
                     <div style={{ padding: 24, display: 'flex', flexDirection: 'column', flex: 1 }}>
                       {p.tags && p.tags[0] && (

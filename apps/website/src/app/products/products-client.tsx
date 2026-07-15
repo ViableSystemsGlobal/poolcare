@@ -71,7 +71,7 @@ export default function ProductsClient() {
                       onMouseOut={(e) => { e.currentTarget.style.boxShadow = 'none'; e.currentTarget.style.transform = 'none'; }}
                     >
                       <div style={{ aspectRatio: '4 / 3', background: '#fff', overflow: 'hidden' }}>
-                        {p.image ? <img src={p.image} alt={p.name} style={{ width: '100%', height: '100%', objectFit: 'contain', padding: 12, boxSizing: 'border-box' }} {...bind(`products.${p._i}.image`)} /> : null}
+                        {p.image ? <img loading="lazy" decoding="async" src={p.image} alt={p.name} style={{ width: '100%', height: '100%', objectFit: 'contain', padding: 12, boxSizing: 'border-box' }} {...bind(`products.${p._i}.image`)} /> : null}
                       </div>
                       <div style={{ padding: 16 }}>
                         <div style={{ fontFamily: 'var(--font-display)', fontSize: 19, letterSpacing: '-0.01em', fontWeight: 500, color: 'var(--ink)' }} {...bind(`products.${p._i}.name`)}>{p.name}</div>
@@ -126,7 +126,7 @@ function ProductModal({ product: p, onClose }: { product: any; onClose: () => vo
       >
         {p.image && (
           <div style={{ aspectRatio: '16 / 10', background: '#fff', overflow: 'hidden', position: 'relative', borderBottom: '1px solid var(--line)' }}>
-            <img src={p.image} alt={p.name} style={{ width: '100%', height: '100%', objectFit: 'contain', padding: 16, boxSizing: 'border-box' }} />
+            <img loading="lazy" decoding="async" src={p.image} alt={p.name} style={{ width: '100%', height: '100%', objectFit: 'contain', padding: 16, boxSizing: 'border-box' }} />
             <button onClick={onClose} aria-label="Close" style={{ position: 'absolute', top: 14, right: 14, width: 36, height: 36, borderRadius: 999, border: 0, background: 'rgba(255,255,255,0.92)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--ink)' }}>
               <svg width="16" height="16" viewBox="0 0 16 16"><path d="M3 3l10 10M13 3L3 13" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>
             </button>

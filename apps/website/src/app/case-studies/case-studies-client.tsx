@@ -54,16 +54,16 @@ export default function CaseStudiesClient() {
                       {p.beforeImage && p.afterImage ? (
                         <>
                           <div style={{ position: 'relative', overflow: 'hidden' }}>
-                            <img src={p.beforeImage} alt="Before" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                            <img loading="lazy" decoding="async" src={p.beforeImage} alt="Before" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                             <span style={{ position: 'absolute', top: 8, left: 8, background: 'rgba(10,31,58,0.8)', color: '#fff', fontSize: 9, letterSpacing: '0.1em', textTransform: 'uppercase', padding: '3px 7px', borderRadius: 999 }}>Before</span>
                           </div>
                           <div style={{ position: 'relative', overflow: 'hidden' }}>
-                            <img src={p.afterImage} alt="After" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                            <img loading="lazy" decoding="async" src={p.afterImage} alt="After" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                             <span style={{ position: 'absolute', top: 8, right: 8, background: 'rgba(255,255,255,0.92)', color: 'var(--ink)', fontSize: 9, letterSpacing: '0.1em', textTransform: 'uppercase', padding: '3px 7px', borderRadius: 999 }}>After</span>
                           </div>
                         </>
                       ) : p.coverImage ? (
-                        <img src={p.coverImage} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        <img loading="lazy" decoding="async" src={p.coverImage} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                       ) : null}
                     </div>
                     <div style={{ padding: 24, display: 'flex', flexDirection: 'column', flex: 1 }}>

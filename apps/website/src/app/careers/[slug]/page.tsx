@@ -4,7 +4,7 @@ import { Nav } from "@/components/Nav";
 import { Footer } from "@/components/Footer";
 import { PageHero } from "@/components/PageHero";
 import { mdToHtml } from "@/lib/markdown";
-import { SITE_URL, DEFAULT_OG_IMAGE } from "@/lib/seo";
+import { SITE_URL, DEFAULT_OG_IMAGE, breadcrumbSchema } from "@/lib/seo";
 import ApplyForm from "./apply-form";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
@@ -114,6 +114,11 @@ export default async function RolePage({ params }: { params: { slug: string } })
       </main>
       <Footer home="/" />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbSchema([
+        { name: "Home", path: "/" },
+        { name: "Careers", path: "/careers" },
+        { name: role.title, path: `/careers/${role.slug}` },
+      ])) }} />
     </>
   );
 }

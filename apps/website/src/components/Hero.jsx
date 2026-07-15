@@ -37,7 +37,7 @@ function Hero({ imageKey = "technician" }) {
   return (
     <section style={{ position: 'sticky', top: 0, zIndex: 0, width: '100%', padding: '88px 16px 16px', background: '#fff' }}>
       <div style={{ position: 'relative', width: '100%', height: 'min(92vh, 980px)', minHeight: 640, borderRadius: 14, overflow: 'hidden', background: '#0d2419', isolation: 'isolate' }}>
-        <img src={src} alt="A PoolCare technician at work"
+        <img src={src} alt="A PoolCare technician at work" fetchpriority="high" decoding="async"
           style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', filter: 'saturate(0.92) contrast(1.02)' }}
           onError={(e) => { e.currentTarget.style.display = 'none'; }} />
 
