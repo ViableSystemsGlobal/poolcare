@@ -40,12 +40,19 @@ import {
   Handshake,
   Globe,
   BriefcaseBusiness,
+  Sun,
 } from "lucide-react";
 
 const navigationGroups = [
   {
     label: "Operations",
     items: [
+      {
+        name: "Today",
+        href: "/today",
+        icon: Sun,
+        module: "today",
+      },
       {
         name: "Dashboard",
         href: "/dashboard",

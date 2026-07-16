@@ -37,6 +37,7 @@ import { CrmModule } from "./crm/crm.module";
 import { WebsiteModule } from "./website/website.module";
 import { BlogModule } from "./blog/blog.module";
 import { CareersModule } from "./careers/careers.module";
+import { TodayModule } from "./today/today.module";
 import { RlsInterceptor } from "./core/rls.interceptor";
 
 @Module({
@@ -83,6 +84,7 @@ import { RlsInterceptor } from "./core/rls.interceptor";
     WebsiteModule,
     BlogModule,
     CareersModule,
+    TodayModule,
   ],
   controllers: [AppController],
   providers: [

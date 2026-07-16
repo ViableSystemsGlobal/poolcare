@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { api } from "@/lib/api-client";
+import { dedupeMembers } from "@/lib/members";
 import { useToast } from "@/hooks/use-toast";
 import { useTheme } from "@/contexts/theme-context";
 import { Card } from "@/components/ui/card";
@@ -50,7 +51,8 @@ export function CrmEngagementCards({ entityType, entityId, activities, recipient
     api.sendContactMessage;
 
   const [taskOpen, setTaskOpen] = useState(false);
-  const [taskForm, setTaskForm] = useState({ body: "", dueDate: "" });
+  const [taskForm, setTaskForm] = useState({ body: "", dueDate: "", assignedToId: "" });
+  const [members, setMembers] = useState<any[]>([]);
   const [savingTask, setSavingTask] = useState(false);
 
   const [meetingOpen, setMeetingOpen] = useState(false);
@@ -65,8 +67,8 @@ export function CrmEngagementCards({ entityType, entityId, activities, recipient
     if (!taskForm.body.trim()) return;
     setSavingTask(true);
     try {
-      await api.createActivity({ [fkey]: entityId, type: "TASK", body: taskForm.body, dueDate: taskForm.dueDate || undefined });
-      setTaskForm({ body: "", dueDate: "" });
+      await api.createActivity({ [fkey]: entityId, type: "TASK", body: taskForm.body, dueDate: taskForm.dueDate || undefined, assignedToId: taskForm.assignedToId || undefined });
+      setTaskForm({ body: "", dueDate: "", assignedToId: "" });
       setTaskOpen(false);
       onChanged();
       toast({ title: "Task created successfully!", variant: "success" });
@@ -112,7 +114,7 @@ export function CrmEngagementCards({ entityType, entityId, activities, recipient
   return (
     <>
       {/* Tasks */}
-      <SectionCard title="Tasks" onAdd={() => { setTaskForm({ body: "", dueDate: "" }); setTaskOpen(true); }}>
+      <SectionCard title="Tasks" onAdd={() => { setTaskForm({ body: "", dueDate: "", assignedToId: "" }); setTaskOpen(true); if (members.length === 0) { api.getMembers().then((d: any) => setMembers(dedupeMembers(d?.items))).catch(() => {}); } }}>
         {tasks.length > 0 ? (
           <div className="max-h-64 overflow-y-auto space-y-2">
             {tasks.map((t: any) => {
@@ -198,6 +200,19 @@ export function CrmEngagementCards({ entityType, entityId, activities, recipient
             <div>
               <label className="text-xs font-medium text-muted-foreground">Due date</label>
               <Input type="datetime-local" value={taskForm.dueDate} onChange={(e) => setTaskForm({ ...taskForm, dueDate: e.target.value })} />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground">Assign to</label>
+              <select
+                value={taskForm.assignedToId}
+                onChange={(e) => setTaskForm({ ...taskForm, assignedToId: e.target.value })}
+                className="w-full h-9 rounded-md border border-gray-200 px-3 text-sm bg-white"
+              >
+                <option value="">Me (creator)</option>
+                {members.map((m: any) => (
+                  <option key={m.userId} value={m.userId}>{m.user?.name || m.user?.email || m.userId}</option>
+                ))}
+              </select>
             </div>
           </div>
           <DialogFooter>

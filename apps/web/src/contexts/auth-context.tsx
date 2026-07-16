@@ -150,7 +150,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setToken(newToken);
     setUser(newUser);
     setOrg(newOrg);
-    router.push("/dashboard");
+    // Admins/managers land on the dashboard; everyone else on their Today page.
+    const isAdmin = ["ADMIN", "MANAGER"].includes(newUser.role);
+    router.push(isAdmin ? "/dashboard" : "/today");
   };
 
   const logout = () => {

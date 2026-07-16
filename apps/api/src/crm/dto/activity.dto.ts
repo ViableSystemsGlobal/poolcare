@@ -9,6 +9,8 @@ export class CreateActivityDto {
   @IsOptional() @IsUUID() accountId?: string;
   @IsOptional() @IsUUID() opportunityId?: string;
   @IsOptional() @IsUUID() contactId?: string;
+  /** TASK owner — org member user id; defaults to the creator when omitted. */
+  @IsOptional() @IsUUID() assignedToId?: string;
 }
 
 // Send a real Email / SMS / Push to a CRM entity and log it on the timeline.

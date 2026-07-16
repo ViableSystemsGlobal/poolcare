@@ -92,10 +92,6 @@ export default function LeadDetailsPage() {
   const [assessOpen, setAssessOpen] = useState(false);
   const [assessForm, setAssessForm] = useState({ assessmentDate: "", assessmentNotes: "", accountType: "INDIVIDUAL", opportunityName: "", assigneeId: "" });
   const [members, setMembers] = useState<any[]>([]);
-  useEffect(() => {
-    if (!assessOpen) return;
-    api.getMembers().then((r: any) => setMembers(dedupeMembers(r?.items))).catch(() => setMembers([]));
-  }, [assessOpen]);
   const [booking, setBooking] = useState(false);
 
   const [commentOpen, setCommentOpen] = useState(false);
@@ -103,8 +99,16 @@ export default function LeadDetailsPage() {
   const [addingNote, setAddingNote] = useState(false);
 
   const [taskOpen, setTaskOpen] = useState(false);
-  const [taskForm, setTaskForm] = useState({ body: "", dueDate: "" });
+  const [taskForm, setTaskForm] = useState({ body: "", dueDate: "", assignedToId: "" });
   const [savingTask, setSavingTask] = useState(false);
+
+  // Members feed the assessment assignee and task assign-to pickers.
+  useEffect(() => {
+    if (!assessOpen && !taskOpen) return;
+    if (members.length > 0) return;
+    api.getMembers().then((r: any) => setMembers(dedupeMembers(r?.items))).catch(() => setMembers([]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [assessOpen, taskOpen]);
 
   const [meetingOpen, setMeetingOpen] = useState(false);
   const [meetingForm, setMeetingForm] = useState({ body: "", dueDate: "" });
@@ -278,8 +282,8 @@ export default function LeadDetailsPage() {
     if (!taskForm.body.trim()) return;
     setSavingTask(true);
     try {
-      await api.createActivity({ leadId: id, type: "TASK", body: taskForm.body, dueDate: taskForm.dueDate || undefined });
-      setTaskForm({ body: "", dueDate: "" });
+      await api.createActivity({ leadId: id, type: "TASK", body: taskForm.body, dueDate: taskForm.dueDate || undefined, assignedToId: taskForm.assignedToId || undefined });
+      setTaskForm({ body: "", dueDate: "", assignedToId: "" });
       setTaskOpen(false);
       load();
       toast({ title: "Task created successfully!", variant: "success" });
@@ -513,7 +517,7 @@ export default function LeadDetailsPage() {
         </SectionCard>
 
         {/* Tasks */}
-        <SectionCard title="Tasks" onAdd={() => { setTaskForm({ body: "", dueDate: "" }); setTaskOpen(true); }}>
+        <SectionCard title="Tasks" onAdd={() => { setTaskForm({ body: "", dueDate: "", assignedToId: "" }); setTaskOpen(true); }}>
           {tasks.length > 0 ? (
             <div className="max-h-64 overflow-y-auto space-y-2">
               {tasks.map((t: any) => {
@@ -664,6 +668,19 @@ export default function LeadDetailsPage() {
             <div>
               <label className="text-xs font-medium text-muted-foreground">Due date</label>
               <Input type="datetime-local" value={taskForm.dueDate} onChange={(e) => setTaskForm({ ...taskForm, dueDate: e.target.value })} />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground">Assign to</label>
+              <select
+                value={taskForm.assignedToId}
+                onChange={(e) => setTaskForm({ ...taskForm, assignedToId: e.target.value })}
+                className="w-full h-9 rounded-md border border-gray-200 px-3 text-sm bg-white"
+              >
+                <option value="">Me (creator)</option>
+                {members.map((m: any) => (
+                  <option key={m.userId} value={m.userId}>{m.user?.name || m.user?.email || m.userId}</option>
+                ))}
+              </select>
             </div>
           </div>
           <DialogFooter>

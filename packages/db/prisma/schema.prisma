@@ -52,6 +52,7 @@ model User {
   ownedLeads         Lead[]
   ownedOpportunities Opportunity[]
   createdActivities  Activity[]
+  assignedActivities Activity[]           @relation("AssignedActivities")
   assessments        AssessmentReport[]
   jobAppNotes        JobApplicationNote[]
   jobAppReviews      JobApplicationReview[]
@@ -1621,6 +1622,7 @@ model Activity {
   opportunityId String?         @db.Uuid
   contactId     String?         @db.Uuid
   createdById   String?         @db.Uuid
+  assignedToId  String?         @db.Uuid // TASK owner; falls back to createdBy when null
   createdAt     DateTime        @default(now()) @db.Timestamptz(6)
 
   org         Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
@@ -1629,12 +1631,14 @@ model Activity {
   opportunity Opportunity? @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
   contact     Contact?     @relation(fields: [contactId], references: [id], onDelete: Cascade)
   createdBy   User?        @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  assignedTo  User?        @relation("AssignedActivities", fields: [assignedToId], references: [id], onDelete: SetNull)
 
   @@index([orgId, leadId])
   @@index([orgId, accountId])
   @@index([orgId, opportunityId])
   @@index([orgId, contactId])
   @@index([orgId, type, completedAt])
+  @@index([orgId, assignedToId, type])
 }
 
 model LeadSource {
