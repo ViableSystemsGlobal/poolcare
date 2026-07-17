@@ -59,6 +59,18 @@ export default function JobDetailScreen() {
   const [checklist, setChecklist] = useState<ChecklistItem[]>([]);
   const [readings, setReadings] = useState<Reading>({});
   const [showReadingsModal, setShowReadingsModal] = useState(false);
+  const [readingsConfig, setReadingsConfig] = useState<Record<string, "required" | "optional" | "hidden"> | undefined>(undefined);
+  const [allowGalleryPhotos, setAllowGalleryPhotos] = useState(true);
+
+  // Org-configured reading fields + photo policy (Settings → Visits in the admin console)
+  useEffect(() => {
+    api.getVisitReadingSettings()
+      .then((d) => {
+        setReadingsConfig(d.fields);
+        if (d.photos?.allowGallery !== undefined) setAllowGalleryPhotos(d.photos.allowGallery);
+      })
+      .catch(() => {}); // fall back to wizard defaults
+  }, []);
   const [showChemicalsModal, setShowChemicalsModal] = useState(false);
   const [chemicals, setChemicals] = useState<Array<{ name: string; qty: string; unit: string }>>([]);
   const [photos, setPhotos] = useState<Array<{ uri: string; type: "before" | "after" | "issue"; uploaded?: boolean; key?: string }>>([]);
@@ -1289,7 +1301,7 @@ export default function JobDetailScreen() {
     scheduled:  { label: "Scheduled",  color: "#2563eb", bgColor: "#eff6ff", dotColor: "#2563eb" },
     en_route:   { label: "En Route",   color: "#d97706", bgColor: "#fffbeb", dotColor: "#f59e0b" },
     on_site:    { label: "On Site",    color: "#16a34a", bgColor: "#f0fdf4", dotColor: "#22c55e" },
-    completed:  { label: "Completed",  color: "#0d9488", bgColor: "#f0fdfa", dotColor: "#14b8a6" },
+    completed:  { label: "Completed",  color: "#2f6a47", bgColor: "#f2f7f4", dotColor: "#397d54" },
     failed:     { label: "Failed",     color: "#dc2626", bgColor: "#fef2f2", dotColor: "#ef4444" },
     cancelled:  { label: "Cancelled",  color: "#6b7280", bgColor: "#f9fafb", dotColor: "#9ca3af" },
   };
@@ -1298,7 +1310,7 @@ export default function JobDetailScreen() {
     return (
       <View style={styles.container}>
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#14b8a6" />
+          <ActivityIndicator size="large" color="#397d54" />
           <Text style={styles.loadingText}>Loading job details...</Text>
         </View>
       </View>
@@ -1375,10 +1387,10 @@ export default function JobDetailScreen() {
             disabled={loadingReport}
           >
             {loadingReport ? (
-              <ActivityIndicator size="small" color={"#14b8a6"} />
+              <ActivityIndicator size="small" color={"#397d54"} />
             ) : (
               <>
-                <Ionicons name="document-text-outline" size={20} color={"#14b8a6"} />
+                <Ionicons name="document-text-outline" size={20} color={"#397d54"} />
                 <Text style={styles.completionReportButtonText}>View Report</Text>
               </>
             )}
@@ -1462,9 +1474,9 @@ export default function JobDetailScreen() {
     return (
       <View style={styles.container}>
         {/* Simplified header for wizard mode */}
-        <View style={styles.wizardHeader}>
+        <View style={[styles.wizardHeader, { paddingTop: insets.top + 10 }]}>
           <View style={styles.wizardHeaderLeft}>
-            <Ionicons name="water" size={20} color={"#14b8a6"} />
+            <Ionicons name="water" size={20} color={"#397d54"} />
             <Text style={styles.wizardPoolName}>{job?.poolName}</Text>
           </View>
           <View style={styles.wizardStatusBadge}>
@@ -1481,6 +1493,8 @@ export default function JobDetailScreen() {
           disabled={job?.status === "completed"}
           initialBeforeReadings={beforeReadings}
           initialAfterReadings={afterReadings}
+          readingsConfig={readingsConfig}
+          allowGalleryPhotos={allowGalleryPhotos}
         />
       </View>
     );
@@ -1704,7 +1718,7 @@ export default function JobDetailScreen() {
                   }}
                   title="Pool Location"
                   description={job?.address || "Pool"}
-                  pinColor="#14b8a6"
+                  pinColor="#397d54"
                 />
                 
                 {/* Carer Location Marker */}
@@ -1800,7 +1814,7 @@ export default function JobDetailScreen() {
                                   icon: {
                                     path: google.maps.SymbolPath.CIRCLE,
                                     scale: 10,
-                                    fillColor: '#14b8a6',
+                                    fillColor: '#397d54',
                                     fillOpacity: 1,
                                     strokeColor: '#ffffff',
                                     strokeWeight: 2
@@ -1935,7 +1949,7 @@ export default function JobDetailScreen() {
                 )
               ) : (
                 <View style={styles.geofenceIndicator}>
-                  <ActivityIndicator size="small" color="#14b8a6" />
+                  <ActivityIndicator size="small" color="#397d54" />
                   <Text style={styles.geofenceText}>Getting location...</Text>
                 </View>
               )}
@@ -1959,7 +1973,7 @@ export default function JobDetailScreen() {
           {/* Wait for location to be determined before showing actions */}
           {!carerLocation ? (
             <View style={styles.locationLoadingContainer}>
-              <ActivityIndicator size="small" color={"#14b8a6"} />
+              <ActivityIndicator size="small" color={"#397d54"} />
               <Text style={styles.locationLoadingText}>Getting your location...</Text>
             </View>
           ) : isWithinGeofence ? (
@@ -2329,7 +2343,7 @@ const styles = StyleSheet.create({
   completionPoolName: {
     fontSize: 18,
     fontWeight: "600",
-    color: "#14b8a6",
+    color: "#397d54",
     marginBottom: 16,
   },
   completionSubtitle: {
@@ -2343,9 +2357,9 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#f0fdfa",
+    backgroundColor: "#f2f7f4",
     borderWidth: 1,
-    borderColor: "#14b8a6",
+    borderColor: "#397d54",
     paddingVertical: 14,
     paddingHorizontal: 24,
     borderRadius: 12,
@@ -2356,10 +2370,10 @@ const styles = StyleSheet.create({
   completionReportButtonText: {
     fontSize: 16,
     fontWeight: "600",
-    color: "#14b8a6",
+    color: "#397d54",
   },
   completionDoneButton: {
-    backgroundColor: "#14b8a6",
+    backgroundColor: "#397d54",
     paddingVertical: 16,
     paddingHorizontal: 24,
     borderRadius: 12,
@@ -2394,7 +2408,7 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   reportCloseButton: {
-    backgroundColor: "#14b8a6",
+    backgroundColor: "#397d54",
     padding: 16,
     margin: 16,
     borderRadius: 12,
@@ -2416,7 +2430,7 @@ const styles = StyleSheet.create({
   },
   transitionContainer: {
     flex: 1,
-    backgroundColor: "#14b8a6", // Theme primary color
+    backgroundColor: "#397d54", // Theme primary color
     justifyContent: "center",
     alignItems: "center",
   },
@@ -2515,11 +2529,11 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#14b8a6",
+    backgroundColor: "#397d54",
     padding: 18,
     borderRadius: 16,
     marginBottom: 20,
-    shadowColor: "#14b8a6",
+    shadowColor: "#397d54",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
@@ -2571,7 +2585,7 @@ const styles = StyleSheet.create({
   },
   progressWarning: {
     fontSize: 13,
-    color: "#14b8a6",
+    color: "#397d54",
     fontWeight: "600",
     marginTop: 4,
   },
@@ -2638,14 +2652,14 @@ const styles = StyleSheet.create({
     color: "#9ca3af",
   },
   requiredBadge: {
-    backgroundColor: "#14b8a615",
+    backgroundColor: "#397d5415",
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 8,
   },
   requiredBadgeText: {
     fontSize: 11,
-    color: "#14b8a6",
+    color: "#397d54",
     fontWeight: "600",
   },
   completedBadge: {
@@ -2715,7 +2729,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff7ed",
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: "#14b8a6",
+    borderColor: "#397d54",
   },
   photoButtonDisabled: {
     opacity: 0.5,
@@ -2729,7 +2743,7 @@ const styles = StyleSheet.create({
   photoButtonText: {
     fontSize: 14,
     fontWeight: "600",
-    color: "#14b8a6",
+    color: "#397d54",
     marginLeft: 8,
   },
   photoButtonTextCompleted: {
@@ -2867,16 +2881,16 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     padding: 12,
-    backgroundColor: "#f0fdfa",
+    backgroundColor: "#f2f7f4",
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: "#14b8a6",
+    borderColor: "#397d54",
     gap: 8,
   },
   openMapsText: {
     fontSize: 14,
     fontWeight: "600",
-    color: "#14b8a6",
+    color: "#397d54",
   },
   primaryActionButtonSuccess: {
     backgroundColor: "#10b981",
@@ -2919,13 +2933,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     padding: 20,
-    backgroundColor: "#f0fdfa",
+    backgroundColor: "#f2f7f4",
     borderRadius: 12,
     gap: 12,
   },
   locationLoadingText: {
     fontSize: 14,
-    color: "#14b8a6",
+    color: "#397d54",
     fontWeight: "500",
   },
   swipeHintContainer: {
@@ -3022,18 +3036,18 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     padding: 12,
     borderWidth: 1,
-    borderColor: "#14b8a6",
+    borderColor: "#397d54",
     borderRadius: 8,
     marginTop: 8,
   },
   addButtonText: {
     fontSize: 14,
     fontWeight: "600",
-    color: "#14b8a6",
+    color: "#397d54",
     marginLeft: 8,
   },
   modalButton: {
-    backgroundColor: "#14b8a6",
+    backgroundColor: "#397d54",
     padding: 16,
     borderRadius: 12,
     alignItems: "center",
@@ -3057,7 +3071,7 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   retryButton: {
-    backgroundColor: "#14b8a6",
+    backgroundColor: "#397d54",
     paddingHorizontal: 24,
     paddingVertical: 12,
     borderRadius: 8,
@@ -3076,12 +3090,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     borderRadius: 12,
     borderWidth: 2,
-    borderColor: "#14b8a6",
+    borderColor: "#397d54",
     marginTop: 12,
     gap: 8,
   },
   reportButtonText: {
-    color: "#14b8a6",
+    color: "#397d54",
     fontSize: 16,
     fontWeight: "600",
   },
@@ -3206,19 +3220,19 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#f0fdfa",
+    backgroundColor: "#f2f7f4",
     padding: 16,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: "#14b8a6",
+    borderColor: "#397d54",
   },
   reportDownloadButtonText: {
     fontSize: 16,
     fontWeight: "600",
-    color: "#14b8a6",
+    color: "#397d54",
   },
   reportDoneButton: {
-    backgroundColor: "#14b8a6",
+    backgroundColor: "#397d54",
     padding: 16,
     borderRadius: 12,
     alignItems: "center",
@@ -3241,7 +3255,7 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   reportRetryButton: {
-    backgroundColor: "#14b8a6",
+    backgroundColor: "#397d54",
     paddingHorizontal: 24,
     paddingVertical: 12,
     borderRadius: 8,

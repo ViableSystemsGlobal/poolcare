@@ -36,7 +36,11 @@ export default function SwipeButton({
   const translateX = useRef(new Animated.Value(0)).current;
   const [isLoading, setIsLoading] = useState(false);
   const [completed, setCompleted] = useState(false);
-  
+
+  // The PanResponder is created once, so it reads live state through a ref
+  const stateRef = useRef({ disabled, isLoading, completed });
+  stateRef.current = { disabled, isLoading, completed };
+
   // Calculate max swipe distance
   const maxX = BUTTON_WIDTH - THUMB_SIZE - (THUMB_PADDING * 2);
 
@@ -57,9 +61,9 @@ export default function SwipeButton({
       default:
         // Primary variant uses theme teal color
         return {
-          bg: backgroundColor || "#14b8a6",
-          thumb: "#0d9488",
-          track: "#ccfbf1",
+          bg: backgroundColor || "#397d54",
+          thumb: "#2f6a47",
+          track: "#dcebe2",
         };
     }
   };
@@ -68,14 +72,21 @@ export default function SwipeButton({
 
   const panResponder = useRef(
     PanResponder.create({
-      onStartShouldSetPanResponder: (evt, gestureState) => {
-        // Only start if we're touching the thumb area or starting a horizontal swipe
-        return !disabled && !isLoading && !completed && Math.abs(gestureState.dx) > Math.abs(gestureState.dy);
+      // These handlers live on the thumb itself, so claim the gesture the
+      // moment the thumb is touched — otherwise the surrounding ScrollView
+      // wins the race and the swipe feels slippery.
+      onStartShouldSetPanResponder: () => {
+        const s = stateRef.current;
+        return !s.disabled && !s.isLoading && !s.completed;
       },
       onMoveShouldSetPanResponder: (evt, gestureState) => {
-        // Only respond to horizontal movements
-        return !disabled && !isLoading && !completed && Math.abs(gestureState.dx) > 5;
+        const s = stateRef.current;
+        return !s.disabled && !s.isLoading && !s.completed && Math.abs(gestureState.dx) > 2;
       },
+      // Never surrender the gesture to the ScrollView mid-drag
+      onPanResponderTerminationRequest: () => false,
+      // On Android, keep native scroll views from stealing the responder
+      onShouldBlockNativeResponder: () => true,
       onPanResponderGrant: () => {
         // Stop any ongoing animations when starting a new gesture
         translateX.stopAnimation();

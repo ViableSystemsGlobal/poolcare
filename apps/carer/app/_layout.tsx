@@ -18,10 +18,21 @@ import { getCachedLogoUrl, setCachedLogoUrl } from "../src/lib/logo-cache";
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
+    shouldShowBanner: true,
+    shouldShowList: true,
     shouldPlaySound: true,
     shouldSetBadge: true,
   }),
 });
+
+// Android needs an explicit high-importance channel for heads-up banners
+if (Platform.OS === "android") {
+  Notifications.setNotificationChannelAsync("default", {
+    name: "Default",
+    importance: Notifications.AndroidImportance.MAX,
+    vibrationPattern: [0, 250, 250, 250],
+  });
+}
 
 // Keep the splash screen visible while we load resources
 SplashScreen.preventAutoHideAsync();
@@ -106,7 +117,7 @@ export default function RootLayout() {
 function LayoutInner() {
   const pathname = usePathname();
   const showNav = TAB_ROUTES.includes(pathname);
-  const notificationResponseListener = useRef<Notifications.EventSubscription>();
+  const notificationResponseListener = useRef<Notifications.EventSubscription | undefined>(undefined);
 
   // Register push token when authenticated
   useEffect(() => {

@@ -213,8 +213,7 @@ const styles = StyleSheet.create({
     elevation: 1,
   },
   notificationCardUnread: {
-    borderLeftWidth: 3,
-    borderLeftColor: "#14b8a6",
+    backgroundColor: "#fbfefe",
   },
   notifIconWrap: {
     width: 40,

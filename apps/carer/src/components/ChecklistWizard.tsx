@@ -40,6 +40,8 @@ export interface ChecklistItem {
   notApplicable?: boolean;
   comment?: string;
   photoUri?: string;
+  /** All photos captured for this step — photoUri stays as the first for back-compat */
+  photoUris?: string[];
 }
 
 interface ReadingsState {
@@ -60,6 +62,8 @@ interface Chemical {
   unit: string;
 }
 
+export type ReadingMode = "required" | "optional" | "hidden";
+
 interface ChecklistWizardProps {
   items: ChecklistItem[];
   onComplete: (items: ChecklistItem[], beforeReadings: ReadingsState, afterReadings: ReadingsState, chemicals: Chemical[]) => void;
@@ -68,7 +72,40 @@ interface ChecklistWizardProps {
   disabled?: boolean;
   initialBeforeReadings?: ReadingsState;
   initialAfterReadings?: ReadingsState;
+  /** Org-configured reading modes (Settings → Visits in the admin console). */
+  readingsConfig?: Record<string, ReadingMode>;
+  /** Whether carers may pick visit photos from the gallery (Settings → Visits). */
+  allowGalleryPhotos?: boolean;
 }
+
+// Catalog of all supported readings; the org config decides which are shown/required
+const READING_FIELDS: Array<{
+  key: keyof ReadingsState;
+  label: string;
+  placeholder: string;
+  unit?: string;
+  range?: { min: number; max: number };
+}> = [
+  { key: "ph", label: "pH Level", placeholder: "7.2 - 7.6", range: { min: 7.0, max: 8.0 } },
+  { key: "chlorineFree", label: "Free Chlorine", placeholder: "1.0 - 3.0 ppm", unit: "ppm", range: { min: 1.0, max: 3.0 } },
+  { key: "alkalinity", label: "Total Alkalinity", placeholder: "80 - 120 ppm", unit: "ppm", range: { min: 80, max: 120 } },
+  { key: "tempC", label: "Temperature", placeholder: "°C", unit: "°C" },
+  { key: "calciumHardness", label: "Calcium Hardness", placeholder: "200 - 400 ppm", unit: "ppm" },
+  { key: "cyanuricAcid", label: "Cyanuric Acid", placeholder: "30 - 50 ppm", unit: "ppm" },
+  { key: "tds", label: "TDS", placeholder: "Total Dissolved Solids", unit: "ppm" },
+  { key: "salinity", label: "Salinity", placeholder: "Saltwater pools", unit: "ppm" },
+];
+
+const DEFAULT_READINGS_CONFIG: Record<string, ReadingMode> = {
+  ph: "required",
+  chlorineFree: "optional",
+  alkalinity: "optional",
+  tempC: "optional",
+  calciumHardness: "optional",
+  cyanuricAcid: "optional",
+  tds: "optional",
+  salinity: "optional",
+};
 
 const CATEGORY_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
   cleaning: "water",
@@ -96,7 +133,14 @@ export const ChecklistWizard: React.FC<ChecklistWizardProps> = ({
   disabled = false,
   initialBeforeReadings = {},
   initialAfterReadings = {},
+  readingsConfig,
+  allowGalleryPhotos = true,
 }) => {
+  const readingModes = { ...DEFAULT_READINGS_CONFIG, ...(readingsConfig || {}) };
+  const visibleReadingFields = READING_FIELDS.filter((f) => readingModes[f.key] !== "hidden");
+  const requiredReadingKeys = visibleReadingFields
+    .filter((f) => readingModes[f.key] === "required")
+    .map((f) => f.key);
   const [currentStep, setCurrentStep] = useState(0);
   const [checklistItems, setChecklistItems] = useState<ChecklistItem[]>(items);
   const [beforeReadings, setBeforeReadings] = useState<ReadingsState>(initialBeforeReadings);
@@ -179,7 +223,7 @@ export const ChecklistWizard: React.FC<ChecklistWizardProps> = ({
         { text: "Cancel", style: "cancel" },
         {
           text: "Confirm",
-          onPress: (comment) => {
+          onPress: (comment?: string) => {
             const updatedItems = [...checklistItems];
             updatedItems[currentStep] = {
               ...currentItem,
@@ -205,11 +249,28 @@ export const ChecklistWizard: React.FC<ChecklistWizardProps> = ({
     setChecklistItems(updatedItems);
   };
 
+  // When gallery photos are disabled by the org, a broken/blocked camera would
+  // dead-end the checklist — so offer gallery as an explicit fallback.
+  const offerGalleryFallback = (reason: string) => {
+    if (allowGalleryPhotos) {
+      Alert.alert("Camera Problem", reason);
+      return;
+    }
+    Alert.alert(
+      "Camera Problem",
+      `${reason}\n\nYour organization requires photos taken with the camera, but you can use the gallery as a fallback when the camera isn't working.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Use Gallery", onPress: () => handleSelectFromGallery() },
+      ],
+    );
+  };
+
   const handleTakePhoto = async () => {
     try {
       const { status } = await ImagePicker.requestCameraPermissionsAsync();
       if (status !== "granted") {
-        Alert.alert("Permission Required", "Camera permission is needed to take photos.");
+        offerGalleryFallback("Camera permission is needed to take photos.");
         return;
       }
 
@@ -221,10 +282,14 @@ export const ChecklistWizard: React.FC<ChecklistWizardProps> = ({
       if (!result.canceled && result.assets[0]) {
         setUploadingPhoto(true);
         const uri = result.assets[0].uri;
-        
+
         // Update local state
         const updatedItems = [...checklistItems];
-        updatedItems[currentStep] = { ...currentItem, photoUri: uri };
+        updatedItems[currentStep] = {
+          ...currentItem,
+          photoUri: currentItem.photoUri || uri,
+          photoUris: [...(currentItem.photoUris || []), uri],
+        };
         setChecklistItems(updatedItems);
 
         // Upload if handler provided
@@ -235,7 +300,7 @@ export const ChecklistWizard: React.FC<ChecklistWizardProps> = ({
       }
     } catch (error) {
       setUploadingPhoto(false);
-      Alert.alert("Error", "Failed to take photo. Please try again.");
+      offerGalleryFallback("Failed to take photo. Please try again.");
     }
   };
 
@@ -257,7 +322,11 @@ export const ChecklistWizard: React.FC<ChecklistWizardProps> = ({
         const uri = result.assets[0].uri;
         
         const updatedItems = [...checklistItems];
-        updatedItems[currentStep] = { ...currentItem, photoUri: uri };
+        updatedItems[currentStep] = {
+          ...currentItem,
+          photoUri: currentItem.photoUri || uri,
+          photoUris: [...(currentItem.photoUris || []), uri],
+        };
         setChecklistItems(updatedItems);
 
         if (onPhotoUpload) {
@@ -299,7 +368,7 @@ export const ChecklistWizard: React.FC<ChecklistWizardProps> = ({
   const isCurrentItemValid = () => {
     if (currentItem.notApplicable) return true;
     if (currentItem.requiresNumericInput && !currentItem.value) return false;
-    if (currentItem.requiresPhoto && !currentItem.photoUri) return false;
+    if (currentItem.requiresPhoto && !currentItem.photoUri && !(currentItem.photoUris?.length)) return false;
     return true;
   };
 
@@ -308,7 +377,7 @@ export const ChecklistWizard: React.FC<ChecklistWizardProps> = ({
       if (item.notApplicable) return true;
       if (!item.required && !item.completed) return true;
       if (item.requiresNumericInput && !item.value) return false;
-      if (item.requiresPhoto && !item.photoUri) return false;
+      if (item.requiresPhoto && !item.photoUri && !(item.photoUris?.length)) return false;
       return item.completed;
     });
   };
@@ -443,6 +512,7 @@ export const ChecklistWizard: React.FC<ChecklistWizardProps> = ({
     const isAfter = showReadingsPhase === "after";
     const readings = isAfter ? afterReadings : beforeReadings;
     const setReadings = isAfter ? setAfterReadings : setBeforeReadings;
+    const missingRequired = requiredReadingKeys.some((k) => !(readings as any)[k]);
 
     return (
       <KeyboardAvoidingView
@@ -473,68 +543,18 @@ export const ChecklistWizard: React.FC<ChecklistWizardProps> = ({
 
         <ScrollView style={styles.readingsScroll} showsVerticalScrollIndicator={false}>
           <View style={styles.readingsGrid}>
-            <ReadingInput
-              label="pH Level"
-              value={readings.ph}
-              onChange={(v) => setReadings({ ...readings, ph: v })}
-              placeholder="7.2 - 7.6"
-              range={{ min: 7.0, max: 8.0 }}
-            />
-            <ReadingInput
-              label="Free Chlorine"
-              value={readings.chlorineFree}
-              onChange={(v) => setReadings({ ...readings, chlorineFree: v })}
-              placeholder="1.0 - 3.0 ppm"
-              unit="ppm"
-              range={{ min: 1.0, max: 3.0 }}
-            />
-            <ReadingInput
-              label="Total Alkalinity"
-              value={readings.alkalinity}
-              onChange={(v) => setReadings({ ...readings, alkalinity: v })}
-              placeholder="80 - 120 ppm"
-              unit="ppm"
-              range={{ min: 80, max: 120 }}
-            />
-            <ReadingInput
-              label="Temperature"
-              value={readings.tempC}
-              onChange={(v) => setReadings({ ...readings, tempC: v })}
-              placeholder="°C"
-              unit="°C"
-            />
-            <ReadingInput
-              label="Calcium Hardness"
-              value={readings.calciumHardness}
-              onChange={(v) => setReadings({ ...readings, calciumHardness: v })}
-              placeholder="200 - 400 ppm"
-              unit="ppm"
-              optional
-            />
-            <ReadingInput
-              label="Cyanuric Acid"
-              value={readings.cyanuricAcid}
-              onChange={(v) => setReadings({ ...readings, cyanuricAcid: v })}
-              placeholder="30 - 50 ppm"
-              unit="ppm"
-              optional
-            />
-            <ReadingInput
-              label="TDS"
-              value={readings.tds}
-              onChange={(v) => setReadings({ ...readings, tds: v })}
-              placeholder="Total Dissolved Solids"
-              unit="ppm"
-              optional
-            />
-            <ReadingInput
-              label="Salinity"
-              value={readings.salinity}
-              onChange={(v) => setReadings({ ...readings, salinity: v })}
-              placeholder="Saltwater pools"
-              unit="ppm"
-              optional
-            />
+            {visibleReadingFields.map((field) => (
+              <ReadingInput
+                key={field.key}
+                label={field.label}
+                value={(readings as any)[field.key]}
+                onChange={(v) => setReadings({ ...readings, [field.key]: v })}
+                placeholder={field.placeholder}
+                unit={field.unit}
+                range={field.range}
+                optional={readingModes[field.key] === "optional"}
+              />
+            ))}
           </View>
         </ScrollView>
 
@@ -556,9 +576,9 @@ export const ChecklistWizard: React.FC<ChecklistWizardProps> = ({
             </TouchableOpacity>
           )}
           <TouchableOpacity
-            style={[styles.primaryButton, !readings.ph && styles.primaryButtonDisabled]}
+            style={[styles.primaryButton, missingRequired && styles.primaryButtonDisabled]}
             onPress={handleFinishReadings}
-            disabled={!readings.ph}
+            disabled={missingRequired}
           >
             <Text style={styles.primaryButtonText}>
               {isAfter ? "Continue to Chemicals" : "Start Checklist"}
@@ -659,37 +679,44 @@ export const ChecklistWizard: React.FC<ChecklistWizardProps> = ({
             {currentItem.allowsPhoto && !currentItem.requiresPhoto && (
               <Text style={styles.optionalPhotoLabel}>📷 Add photo (optional)</Text>
             )}
-            {currentItem.photoUri ? (
-              <View style={styles.photoPreviewContainer}>
-                <Image source={{ uri: currentItem.photoUri }} style={styles.photoPreview} />
-                <TouchableOpacity
-                  style={styles.retakeButton}
-                  onPress={handleTakePhoto}
-                  disabled={disabled}
+            {(currentItem.photoUris?.length ?? 0) > 0 && (
+              <>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  style={styles.photoThumbRow}
+                  contentContainerStyle={{ gap: 8 }}
                 >
-                  <Ionicons name="camera" size={16} color={COLORS.text.inverse} />
-                  <Text style={styles.retakeButtonText}>Retake</Text>
-                </TouchableOpacity>
-              </View>
-            ) : (
-              <View style={styles.photoActions}>
-                <TouchableOpacity
-                  style={[
-                    styles.photoButton,
-                    currentItem.allowsPhoto && !currentItem.requiresPhoto && styles.photoButtonOptional
-                  ]}
-                  onPress={handleTakePhoto}
-                  disabled={disabled || uploadingPhoto}
-                >
-                  {uploadingPhoto ? (
-                    <ActivityIndicator size="small" color={COLORS.primary[500]} />
-                  ) : (
-                    <>
-                      <Ionicons name="camera" size={28} color={COLORS.primary[500]} />
-                      <Text style={styles.photoButtonText}>Take Photo</Text>
-                    </>
-                  )}
-                </TouchableOpacity>
+                  {currentItem.photoUris!.map((uri, i) => (
+                    <Image key={`${uri}-${i}`} source={{ uri }} style={styles.photoThumb} />
+                  ))}
+                </ScrollView>
+                <Text style={styles.photoCountText}>
+                  {currentItem.photoUris!.length} photo{currentItem.photoUris!.length !== 1 ? "s" : ""} added
+                </Text>
+              </>
+            )}
+            <View style={styles.photoActions}>
+              <TouchableOpacity
+                style={[
+                  styles.photoButton,
+                  currentItem.allowsPhoto && !currentItem.requiresPhoto && styles.photoButtonOptional
+                ]}
+                onPress={handleTakePhoto}
+                disabled={disabled || uploadingPhoto}
+              >
+                {uploadingPhoto ? (
+                  <ActivityIndicator size="small" color={COLORS.primary[500]} />
+                ) : (
+                  <>
+                    <Ionicons name="camera" size={28} color={COLORS.primary[500]} />
+                    <Text style={styles.photoButtonText}>
+                      {(currentItem.photoUris?.length ?? 0) > 0 ? "Add Photo" : "Take Photo"}
+                    </Text>
+                  </>
+                )}
+              </TouchableOpacity>
+              {allowGalleryPhotos && (
                 <TouchableOpacity
                   style={[
                     styles.photoButton,
@@ -701,8 +728,8 @@ export const ChecklistWizard: React.FC<ChecklistWizardProps> = ({
                   <Ionicons name="images" size={28} color={COLORS.primary[500]} />
                   <Text style={styles.photoButtonText}>Gallery</Text>
                 </TouchableOpacity>
-              </View>
-            )}
+              )}
+            </View>
           </View>
         )}
       </Animated.View>
@@ -793,6 +820,25 @@ const ReadingInput: React.FC<ReadingInputProps> = ({
   optional,
   range,
 }) => {
+  // Keep the raw text locally: parsing on every keystroke ("7." → 7 → "7")
+  // used to erase the decimal point the moment it was typed.
+  const [text, setText] = useState(value !== undefined ? String(value) : "");
+
+  useEffect(() => {
+    // Sync external resets (e.g. moving between before/after phases)
+    if (value === undefined && text !== "") setText("");
+    if (value !== undefined && text === "") setText(String(value));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value]);
+
+  const handleChangeText = (t: string) => {
+    // Some Android keyboards emit a comma for the decimal separator
+    const cleaned = t.replace(",", ".").replace(/[^0-9.]/g, "");
+    setText(cleaned);
+    const parsed = parseFloat(cleaned);
+    onChange(cleaned === "" || isNaN(parsed) ? undefined : parsed);
+  };
+
   const isOutOfRange =
     range && value !== undefined && (value < range.min || value > range.max);
 
@@ -813,16 +859,14 @@ const ReadingInput: React.FC<ReadingInputProps> = ({
           placeholder={placeholder}
           placeholderTextColor={COLORS.neutral[400]}
           keyboardType="decimal-pad"
-          value={value?.toString() || ""}
-          onChangeText={(text) =>
-            onChange(text ? parseFloat(text) || undefined : undefined)
-          }
+          value={text}
+          onChangeText={handleChangeText}
         />
         {unit && <Text style={styles.readingUnit}>{unit}</Text>}
       </View>
       {isOutOfRange && (
         <Text style={styles.warningText}>
-          ⚠️ Outside normal range ({range.min} - {range.max})
+          Outside normal range ({range.min} - {range.max})
         </Text>
       )}
     </View>
@@ -962,6 +1006,20 @@ const styles = StyleSheet.create({
     color: COLORS.text.secondary,
     marginBottom: SPACING.sm,
     textAlign: "center",
+  },
+  photoThumbRow: {
+    marginBottom: SPACING.xs,
+  },
+  photoThumb: {
+    width: 72,
+    height: 72,
+    borderRadius: BORDER_RADIUS.md,
+    backgroundColor: COLORS.neutral[100],
+  },
+  photoCountText: {
+    fontSize: FONT_SIZES.xs,
+    color: COLORS.text.secondary,
+    marginBottom: SPACING.sm,
   },
   photoPreviewContainer: {
     position: "relative",

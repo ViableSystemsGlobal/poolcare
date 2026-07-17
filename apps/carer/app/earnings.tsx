@@ -40,6 +40,7 @@ export default function EarningsScreen() {
   const { themeColor } = useTheme();
 
   const now = new Date();
+  const [viewMode, setViewMode] = useState<"month" | "year">("month");
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [year, setYear] = useState(now.getFullYear());
   const [summary, setSummary] = useState<any>(null);
@@ -104,10 +105,14 @@ export default function EarningsScreen() {
   };
 
   const isCurrentMonth = month === now.getMonth() + 1 && year === now.getFullYear();
+  const isCurrentYear = year === now.getFullYear();
   const currency = summary?.currency || "GHS";
   const avgPerVisit = summary?.monthlyApprovedVisits > 0
     ? (summary.monthlyEarningsCents / summary.monthlyApprovedVisits)
     : 0;
+
+  const prevYear = () => setYear((y) => y - 1);
+  const nextYear = () => { if (!isCurrentYear) setYear((y) => y + 1); };
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
@@ -125,26 +130,123 @@ export default function EarningsScreen() {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={themeColor} />
         }
       >
-        {/* Month selector */}
-        <View style={styles.monthRow}>
-          <TouchableOpacity style={styles.monthArrow} onPress={prevMonth}>
-            <Ionicons name="chevron-back" size={20} color="#374151" />
-          </TouchableOpacity>
-          <Text style={styles.monthLabel}>{MONTHS[month - 1]} {year}</Text>
-          <TouchableOpacity
-            style={[styles.monthArrow, isCurrentMonth && styles.monthArrowDisabled]}
-            onPress={nextMonth}
-            disabled={isCurrentMonth}
-          >
-            <Ionicons name="chevron-forward" size={20} color={isCurrentMonth ? "#d1d5db" : "#374151"} />
-          </TouchableOpacity>
+        {/* Month / Year view toggle */}
+        <View style={styles.viewToggle}>
+          {(["month", "year"] as const).map((mode) => (
+            <TouchableOpacity
+              key={mode}
+              style={[styles.viewToggleBtn, viewMode === mode && styles.viewToggleBtnActive]}
+              onPress={() => setViewMode(mode)}
+            >
+              <Text
+                style={[
+                  styles.viewToggleText,
+                  viewMode === mode && { color: themeColor, fontWeight: "700" },
+                ]}
+              >
+                {mode === "month" ? "Month" : "Year"}
+              </Text>
+            </TouchableOpacity>
+          ))}
         </View>
+
+        {/* Period selector */}
+        {viewMode === "month" ? (
+          <View style={styles.monthRow}>
+            <TouchableOpacity style={styles.monthArrow} onPress={prevMonth}>
+              <Ionicons name="chevron-back" size={20} color="#374151" />
+            </TouchableOpacity>
+            <Text style={styles.monthLabel}>{MONTHS[month - 1]} {year}</Text>
+            <TouchableOpacity
+              style={[styles.monthArrow, isCurrentMonth && styles.monthArrowDisabled]}
+              onPress={nextMonth}
+              disabled={isCurrentMonth}
+            >
+              <Ionicons name="chevron-forward" size={20} color={isCurrentMonth ? "#d1d5db" : "#374151"} />
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <View style={styles.monthRow}>
+            <TouchableOpacity style={styles.monthArrow} onPress={prevYear}>
+              <Ionicons name="chevron-back" size={20} color="#374151" />
+            </TouchableOpacity>
+            <Text style={styles.monthLabel}>{year}</Text>
+            <TouchableOpacity
+              style={[styles.monthArrow, isCurrentYear && styles.monthArrowDisabled]}
+              onPress={nextYear}
+              disabled={isCurrentYear}
+            >
+              <Ionicons name="chevron-forward" size={20} color={isCurrentYear ? "#d1d5db" : "#374151"} />
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* Summary card */}
         {loading ? (
           <View style={styles.loadingCard}>
             <ActivityIndicator color={themeColor} />
           </View>
+        ) : viewMode === "year" ? (
+          <>
+            <View style={[styles.summaryCard, { borderTopColor: themeColor }]}>
+              <View style={styles.summaryTop}>
+                <Text style={styles.summaryLabel}>Earned in {year}</Text>
+                <Text style={[styles.summaryAmount, { color: themeColor }]}>
+                  {formatCurrency(summary?.yearly?.earnedCents ?? 0, currency)}
+                </Text>
+                <Text style={styles.summaryMeta}>
+                  {summary?.yearly?.visits ?? 0} approved visit{summary?.yearly?.visits !== 1 ? "s" : ""}
+                </Text>
+              </View>
+              <View style={styles.summaryDivider} />
+              <View style={styles.summaryStats}>
+                <View style={styles.summaryStat}>
+                  <Text style={styles.summaryStatLabel}>Paid in {year}</Text>
+                  <Text style={[styles.summaryStatValue, { color: "#1e40af" }]}>
+                    {formatCurrency(summary?.yearly?.paidCents ?? 0, currency)}
+                  </Text>
+                </View>
+                <View style={styles.summaryStatSep} />
+                <View style={styles.summaryStat}>
+                  <Text style={styles.summaryStatLabel}>Awaiting payment</Text>
+                  <Text style={[styles.summaryStatValue, { color: "#b45309" }]}>
+                    {formatCurrency(summary?.outstandingCents ?? 0, currency)}
+                  </Text>
+                </View>
+              </View>
+            </View>
+
+            <Text style={styles.sectionTitle}>Monthly breakdown</Text>
+            <View style={styles.yearList}>
+              {(summary?.yearly?.months ?? []).map((m: any) => {
+                const isNow = isCurrentYear && m.month === now.getMonth() + 1;
+                const isEmpty = m.earnedCents === 0 && m.paidCents === 0;
+                return (
+                  <View
+                    key={m.month}
+                    style={[styles.yearRow, isNow && { backgroundColor: themeColor + "0d" }]}
+                  >
+                    <Text style={[styles.yearMonth, isEmpty && { color: "#c4c9d1" }]}>
+                      {MONTHS[m.month - 1].slice(0, 3)}
+                    </Text>
+                    <Text style={[styles.yearVisits, isEmpty && { color: "#d1d5db" }]}>
+                      {m.visits > 0 ? `${m.visits} visit${m.visits !== 1 ? "s" : ""}` : "—"}
+                    </Text>
+                    <View style={styles.yearAmounts}>
+                      <Text style={[styles.yearEarned, isEmpty ? { color: "#c4c9d1" } : { color: "#111827" }]}>
+                        {formatCurrency(m.earnedCents, currency)}
+                      </Text>
+                      {m.paidCents > 0 && (
+                        <Text style={styles.yearPaid}>
+                          {formatCurrency(m.paidCents, currency)} paid
+                        </Text>
+                      )}
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          </>
         ) : (
           <View style={[styles.summaryCard, { borderTopColor: themeColor }]}>
             <View style={styles.summaryTop}>
@@ -182,8 +284,33 @@ export default function EarningsScreen() {
           </View>
         )}
 
+        {/* Paid this month / awaiting payment */}
+        {!loading && viewMode === "month" && (
+          <View style={styles.paidRow}>
+            <View style={styles.paidCell}>
+              <Text style={styles.paidLabel}>Paid this month</Text>
+              <Text style={[styles.paidValue, { color: "#1e40af" }]}>
+                {formatCurrency(summary?.monthlyPaidCents ?? 0, currency)}
+              </Text>
+              <Text style={styles.paidMeta}>
+                {summary?.monthlyPaidVisits ?? 0} visit{summary?.monthlyPaidVisits !== 1 ? "s" : ""}
+              </Text>
+            </View>
+            <View style={styles.paidCellSep} />
+            <View style={styles.paidCell}>
+              <Text style={styles.paidLabel}>Awaiting payment</Text>
+              <Text style={[styles.paidValue, { color: "#b45309" }]}>
+                {formatCurrency(summary?.outstandingCents ?? 0, currency)}
+              </Text>
+              <Text style={styles.paidMeta}>
+                {summary?.outstandingVisits ?? 0} approved visit{summary?.outstandingVisits !== 1 ? "s" : ""}
+              </Text>
+            </View>
+          </View>
+        )}
+
         {/* Per-visit list */}
-        {!loading && (
+        {!loading && viewMode === "month" && (
           <>
             <Text style={styles.sectionTitle}>
               {visits.length > 0
@@ -264,6 +391,114 @@ const styles = StyleSheet.create({
 
   scroll: { flex: 1 },
   content: { padding: 16, gap: 12 },
+
+  // View toggle
+  viewToggle: {
+    flexDirection: "row",
+    backgroundColor: "#eef1f4",
+    borderRadius: 12,
+    padding: 3,
+  },
+  viewToggleBtn: {
+    flex: 1,
+    paddingVertical: 8,
+    borderRadius: 9,
+    alignItems: "center",
+  },
+  viewToggleBtnActive: {
+    backgroundColor: "#ffffff",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  viewToggleText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#6b7280",
+  },
+
+  // Paid / awaiting row
+  paidRow: {
+    flexDirection: "row",
+    backgroundColor: "#ffffff",
+    borderRadius: 16,
+    paddingVertical: 16,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  paidCell: {
+    flex: 1,
+    alignItems: "center",
+    gap: 3,
+  },
+  paidCellSep: {
+    width: 1,
+    backgroundColor: "#f3f4f6",
+  },
+  paidLabel: {
+    fontSize: 10,
+    color: "#9ca3af",
+    fontWeight: "600",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  paidValue: {
+    fontSize: 20,
+    fontWeight: "800",
+  },
+  paidMeta: {
+    fontSize: 11,
+    color: "#9ca3af",
+  },
+
+  // Year view
+  yearList: {
+    backgroundColor: "#ffffff",
+    borderRadius: 16,
+    overflow: "hidden",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  yearRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "#f6f7f9",
+  },
+  yearMonth: {
+    width: 44,
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#111827",
+  },
+  yearVisits: {
+    flex: 1,
+    fontSize: 12,
+    color: "#9ca3af",
+  },
+  yearAmounts: {
+    alignItems: "flex-end",
+    gap: 1,
+  },
+  yearEarned: {
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  yearPaid: {
+    fontSize: 11,
+    color: "#1e40af",
+    fontWeight: "600",
+  },
 
   // Month selector
   monthRow: {

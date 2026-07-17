@@ -23,7 +23,7 @@ export default function BottomNav() {
   };
 
   return (
-    <View style={[styles.bottomNav, { paddingBottom: Math.max(insets.bottom, 8) }]}>
+    <View style={[styles.bottomNav, { bottom: Math.max(insets.bottom, 16) }]}>
       {TABS.map((tab) => {
         const active = isActive(tab.route);
         return (
@@ -55,12 +55,11 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     backgroundColor: "#ffffff",
     borderRadius: 24,
-    paddingTop: 10,
+    paddingVertical: 8,
     paddingHorizontal: 8,
     justifyContent: "space-between",
     alignItems: "center",
     position: "absolute",
-    bottom: 16,
     left: 16,
     right: 16,
     shadowColor: "#000",
@@ -72,11 +71,10 @@ const styles = StyleSheet.create({
   navItem: {
     flex: 1,
     alignItems: "center",
-    paddingBottom: 6,
   },
   iconWrap: {
     width: 44,
-    height: 36,
+    height: 30,
     borderRadius: 12,
     justifyContent: "center",
     alignItems: "center",
@@ -84,7 +82,10 @@ const styles = StyleSheet.create({
   },
   navLabel: {
     fontSize: 11,
+    lineHeight: 13,
     color: "#9ca3af",
     fontWeight: "400",
+    includeFontPadding: false,
+    textAlignVertical: "center",
   },
 });

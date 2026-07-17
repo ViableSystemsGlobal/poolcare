@@ -22,7 +22,7 @@ const localHomeCard = require("../assets/poolcare.png");
 
 interface Job {
   id: string;
-  pool?: { name?: string; address?: string };
+  pool?: { name?: string; address?: string; imageUrl?: string };
   client?: { name?: string };
   windowStart: string;
   windowEnd: string;
@@ -51,9 +51,10 @@ function formatCurrency(cents: number) {
 
 function getStatusColor(status: string, themeColor: string) {
   switch (status) {
-    case "completed": return "#16a34a";
-    case "on_site":   return "#22c55e";
-    case "en_route":  return themeColor;
+    case "completed": return themeColor;      // brand green — matches job detail
+    case "on_site":   return "#16a34a";
+    case "en_route":  return "#d97706";       // amber — in transit
+    case "scheduled": return "#2563eb";
     default:          return "#6b7280";
   }
 }
@@ -118,10 +119,11 @@ export default function TodayScreen() {
 
       // Carer name + avatar
       if (carerResponse) {
-        const name: string = carerResponse.name || carerResponse.user?.name || "";
+        const carer = carerResponse as any;
+        const name: string = carer.name || carer.user?.name || "";
         setCarerName(name.split(" ")[0]);
-        if (carerResponse.imageUrl) {
-          const raw: string = carerResponse.imageUrl;
+        if (carer.imageUrl) {
+          const raw: string = carer.imageUrl;
           const origin = getApiUrl().replace(/\/api\/?$/, "");
           const full = raw.startsWith("http") ? raw : origin + (raw.startsWith("/") ? raw : "/" + raw);
           setCarerImageUrl(fixUrlForMobile(full));
@@ -162,7 +164,13 @@ export default function TodayScreen() {
 
         return {
           id: job.id,
-          pool: job.pool ? { name: job.pool.name, address: job.pool.address } : undefined,
+          pool: job.pool
+            ? {
+                name: job.pool.name,
+                address: job.pool.address,
+                imageUrl: job.pool.imageUrls?.[0] ? fixUrlForMobile(job.pool.imageUrls[0]) : undefined,
+              }
+            : undefined,
           client: job.pool?.client ? { name: job.pool.client.name } : undefined,
           windowStart: start.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }),
           windowEnd:   end.toLocaleTimeString("en-US",   { hour: "2-digit", minute: "2-digit" }),
@@ -355,53 +363,65 @@ function JobCard({ job, themeColor }: { job: Job; themeColor: string }) {
 
   return (
     <TouchableOpacity
-      style={[styles.jobCard, isActive && { borderLeftColor: statusColor, borderLeftWidth: 3 }]}
+      style={styles.jobCard}
       onPress={() => router.push(`/jobs/${job.id}`)}
       activeOpacity={0.7}
     >
-      <View style={styles.jobCardTop}>
-        <View style={styles.jobCardLeft}>
-          <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
-          <View style={styles.jobInfo}>
-            <Text style={styles.poolName} numberOfLines={1}>
-              {job.pool?.name || "Unnamed Pool"}
-            </Text>
-            {job.client?.name && (
-              <Text style={styles.clientName}>{job.client.name}</Text>
-            )}
+      <View style={styles.jobCardRow}>
+        {job.pool?.imageUrl ? (
+          <Image source={{ uri: job.pool.imageUrl }} style={styles.poolThumb} />
+        ) : (
+          <View style={[styles.poolThumb, styles.poolThumbPlaceholder]}>
+            <Ionicons name="water" size={22} color="#9ca3af" />
           </View>
-        </View>
-        <View style={styles.jobCardRight}>
-          {job.date && (
-            <Text style={[styles.jobDate, isActive && { color: statusColor }]}>{job.date}</Text>
+        )}
+
+        <View style={styles.jobCardBody}>
+          <View style={styles.jobCardTop}>
+            <View style={styles.jobCardLeft}>
+              <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
+              <View style={styles.jobInfo}>
+                <Text style={styles.poolName} numberOfLines={1}>
+                  {job.pool?.name || "Unnamed Pool"}
+                </Text>
+                {job.client?.name && (
+                  <Text style={styles.clientName}>{job.client.name}</Text>
+                )}
+              </View>
+            </View>
+            <View style={styles.jobCardRight}>
+              {job.date && (
+                <Text style={[styles.jobDate, isActive && { color: statusColor }]}>{job.date}</Text>
+              )}
+              <Ionicons name="chevron-forward" size={18} color="#d1d5db" style={{ marginTop: 2 }} />
+            </View>
+          </View>
+
+          <View style={styles.jobMeta}>
+            <View style={styles.metaItem}>
+              <Ionicons name="location-outline" size={14} color="#9ca3af" />
+              <Text style={styles.metaText} numberOfLines={1}>
+                {job.pool?.address || "No address"}
+              </Text>
+            </View>
+            <View style={styles.metaItem}>
+              <Ionicons name="time-outline" size={14} color="#9ca3af" />
+              <Text style={styles.metaText}>
+                {job.windowStart} – {job.windowEnd}
+              </Text>
+            </View>
+          </View>
+
+          {isActive && (
+            <View style={[styles.statusBadge, { backgroundColor: statusColor + "15", borderColor: statusColor + "30" }]}>
+              <View style={[styles.statusBadgeDot, { backgroundColor: statusColor }]} />
+              <Text style={[styles.statusBadgeText, { color: statusColor }]}>
+                {getStatusLabel(job.status)}
+              </Text>
+            </View>
           )}
-          <Ionicons name="chevron-forward" size={18} color="#d1d5db" style={{ marginTop: 2 }} />
         </View>
       </View>
-
-      <View style={styles.jobMeta}>
-        <View style={styles.metaItem}>
-          <Ionicons name="location-outline" size={14} color="#9ca3af" />
-          <Text style={styles.metaText} numberOfLines={1}>
-            {job.pool?.address || "No address"}
-          </Text>
-        </View>
-        <View style={styles.metaItem}>
-          <Ionicons name="time-outline" size={14} color="#9ca3af" />
-          <Text style={styles.metaText}>
-            {job.windowStart} – {job.windowEnd}
-          </Text>
-        </View>
-      </View>
-
-      {isActive && (
-        <View style={[styles.statusBadge, { backgroundColor: statusColor + "15", borderColor: statusColor + "30" }]}>
-          <View style={[styles.statusBadgeDot, { backgroundColor: statusColor }]} />
-          <Text style={[styles.statusBadgeText, { color: statusColor }]}>
-            {getStatusLabel(job.status)}
-          </Text>
-        </View>
-      )}
     </TouchableOpacity>
   );
 }
@@ -623,6 +643,25 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 6,
     elevation: 2,
+  },
+  jobCardRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+  },
+  jobCardBody: {
+    flex: 1,
+    minWidth: 0,
+  },
+  poolThumb: {
+    width: 56,
+    height: 56,
+    borderRadius: 12,
+    marginRight: 12,
+    backgroundColor: "#f3f4f6",
+  },
+  poolThumbPlaceholder: {
+    justifyContent: "center",
+    alignItems: "center",
   },
   jobCardTop: {
     flexDirection: "row",

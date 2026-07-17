@@ -234,6 +234,13 @@ class ApiClient {
     });
   }
 
+  async getVisitReadingSettings() {
+    return this.request<{
+      fields: Record<string, "required" | "optional" | "hidden">;
+      photos?: { allowGallery: boolean };
+    }>("/settings/visit-readings");
+  }
+
   // Jobs
   async getJobs(params?: { status?: string; date?: string; carerId?: string }) {
     const query = new URLSearchParams(params as any).toString();
@@ -531,6 +538,8 @@ class ApiClient {
     clientId: string;
     name?: string;
     address?: string;
+    lat?: number;
+    lng?: number;
     volumeL?: number;
     surfaceType?: string;
     poolType?: string;

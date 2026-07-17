@@ -25,9 +25,10 @@ interface Job {
 
 function getStatusColor(status: string, themeColor: string) {
   switch (status) {
-    case "completed": return "#16a34a";
-    case "on_site":   return "#22c55e";
-    case "en_route":  return themeColor;
+    case "completed": return themeColor;      // brand green — matches job detail
+    case "on_site":   return "#16a34a";
+    case "en_route":  return "#d97706";       // amber — in transit
+    case "scheduled": return "#2563eb";
     case "failed":    return "#dc2626";
     default:          return "#6b7280";
   }
