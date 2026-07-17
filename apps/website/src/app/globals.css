@@ -368,6 +368,91 @@ button { font: inherit; color: inherit; }
   .stick-cover::before { inset: -16px -12px -20px -12px; }
 }
 
+/* Ghana coverage map — motion */
+.gmap-arc {
+  stroke-dasharray: 1.6 2.2;
+  animation: gmapDash 2.8s linear infinite;
+}
+@keyframes gmapDash { to { stroke-dashoffset: -3.8; } }
+.gmap-pulse {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: gmapPulse 3s ease-out infinite;
+}
+.gmap-pulse--late { animation-delay: 1.5s; }
+@keyframes gmapPulse {
+  0%   { transform: scale(0.35); opacity: 0.55; }
+  75%  { transform: scale(1.1);  opacity: 0; }
+  100% { transform: scale(1.1);  opacity: 0; }
+}
+.gmap-wave { animation: gmapWave 5s ease-in-out infinite alternate; }
+.gmap-wave--late { animation-delay: 2.2s; }
+@keyframes gmapWave { from { transform: translateX(0); } to { transform: translateX(4px); } }
+@media (prefers-reduced-motion: reduce) {
+  .gmap-arc, .gmap-pulse, .gmap-wave { animation: none; }
+}
+
+/* Team standards row (about) — hairline-divided columns */
+.team-standards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+}
+.team-standards__cell {
+  padding: 8px 40px;
+  border-left: 1px solid var(--line);
+}
+.team-standards__cell:first-child { border-left: none; padding-left: 0; }
+@media (max-width: 880px) {
+  .team-standards { grid-template-columns: 1fr; gap: 28px; }
+  .team-standards__cell { border-left: none; padding: 0; }
+}
+
+/* Plan detail rows (services-plans) */
+.plan-row {
+  display: grid;
+  grid-template-columns: 1.05fr 0.95fr;
+  gap: 56px;
+}
+.plan-row__features {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px 24px;
+}
+@media (max-width: 960px) {
+  .plan-row { grid-template-columns: 1fr; gap: 28px; }
+  .plan-row__features { grid-template-columns: 1fr; }
+}
+
+/* Before & after project tabs */
+.ba-tab {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 18px 10px 10px;
+  border: 1px solid var(--line);
+  background: #fff;
+  border-radius: 16px;
+  flex: 1 1 260px;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  transition: border-color .15s, box-shadow .15s;
+}
+.ba-tab:hover { border-color: var(--ink-3); }
+.ba-tab--active {
+  border-color: var(--ink);
+  box-shadow: 0 6px 20px rgba(13, 36, 25, 0.1);
+}
+.ba-tab__thumb {
+  display: flex;
+  width: 56px;
+  height: 56px;
+  border-radius: 12px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
 /* Stacking app cards */
 .app-stack__rail {
   position: relative;
@@ -385,19 +470,21 @@ button { font: inherit; color: inherit; }
 }
 @media (max-width: 960px) {
   .app-stack__card-inner { border-radius: 24px; min-height: auto; }
-  .app-stack__card { margin-bottom: 16px; }
-  /* Keep the sticky stacking effect on phones — but scale the visual panel
-     down so the whole card fits the viewport instead of its lower half
-     (the app image) being hidden behind the next card. */
+  /* No sticky stacking on phones: cards taller than the viewport just get
+     buried behind the next card, so the phone shots were never seen. */
+  .app-stack__card { margin-bottom: 16px; position: static; }
+  /* Phone mock shows full-size and full-height, flush with the card's
+     bottom edge (the frame has no bottom border by design) — the whole
+     screen stays readable instead of shrinking the device to fit. */
   .app-stack__media {
-    height: 300px !important;
+    height: 592px !important;
     min-height: 0 !important;
-    padding: 0 !important;
-    align-items: center !important;
+    padding: 32px 0 0 !important;
+    align-items: flex-end !important;
+    justify-content: center !important;
   }
   .app-stack__media .phone-frame {
-    transform: scale(0.48);
-    transform-origin: center;
+    transform: none;
   }
 }
 
@@ -454,7 +541,8 @@ main > section:not(:first-child) {
 
 .how-progress {
   position: absolute;
-  top: 18px;            /* aligns with center of node circle (h=36/2) */
+  /* Node centers sit at .how-steps padding-top (32px) + half the node (18px) */
+  top: 50px;
   left: 18px; right: 18px;
   height: 2px;
   pointer-events: none;

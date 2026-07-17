@@ -10,8 +10,10 @@ import { useCmsContent, cmsBind } from '../lib/cms';
 // with a `menu` array renders as a dropdown (used for "Resources").
 
 const NAV_PRIMARY = [
-  { label: 'Services & Plans', href: '/services-plans' },
-  { label: 'Products', href: '/products' },
+  { label: 'Services & Products', href: '#', menu: [
+    { label: 'Services & Plans',  desc: 'Maintenance plans & pricing',        href: '/services-plans' },
+    { label: 'PoolCare Products', desc: 'Chemicals & accessories, delivered', href: '/products' },
+  ] },
   { label: 'PoolCare App', href: '/#app' },
   { label: 'Resources', href: '#', menu: [
     { label: 'Blog',         desc: 'Pool care tips & guides', href: '/blog' },
@@ -260,12 +262,14 @@ function NavMenu({ items }) {
 
 function MobileSheet({ onClose, primary = NAV_PRIMARY, plans = NAV_PLANS, ctaLabel = 'Book a pool assessment' }) {
   // Derive the sheet from the same CMS-driven nav data: top-level links (minus
-  // the dropdown entry) become "Menu", and the dropdown's items become "Resources".
-  const resources = (primary.find((i) => i.menu && i.menu.length)?.menu) || [];
+  // dropdown entries) become "Menu", and each dropdown becomes its own group.
+  const menuGroups = primary
+    .filter((i) => i.menu && i.menu.length)
+    .map((i) => ({ label: i.label, items: i.menu }));
   const groups = [
     { label: 'Menu', items: primary.filter((i) => !(i.menu && i.menu.length)) },
+    ...menuGroups,
     { label: 'Plans', items: plans },
-    { label: 'Resources', items: resources },
   ].filter((g) => g.items.length);
   return (
     <div style={{

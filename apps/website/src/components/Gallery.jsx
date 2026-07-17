@@ -39,12 +39,19 @@ function Gallery() {
 
         <div style={{ marginTop: 28, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
           {pairs.map((p, i) => (
-            <button key={i} onClick={() => setActiveIdx(i)}
-              style={{ all: 'unset', cursor: 'default', display: 'flex', alignItems: 'center', gap: 14, padding: '12px 16px 12px 12px', border: '1px solid ' + (idx === i ? 'var(--ink)' : 'var(--line)'), background: '#fff', borderRadius: 16, flex: '1 1 280px', transition: 'border-color .15s' }}>
-              <span style={{ width: 48, height: 48, borderRadius: 10, background: p.afterBg }} />
-              <span>
-                <div style={{ fontSize: 14.5, fontWeight: 500, letterSpacing: '-0.01em' }} {...bind(`pairs.${i}.title`)}>{p.title}</div>
-                <div style={{ fontSize: 12.5, color: 'var(--ink-3)', marginTop: 2 }} {...bind(`pairs.${i}.sub`)}>{p.sub}</div>
+            <button key={i} type="button" onClick={() => setActiveIdx(i)} className={`ba-tab${idx === i ? ' ba-tab--active' : ''}`} aria-pressed={idx === i}>
+              {/* Split thumbnail: left half = before, right half = after */}
+              <span className="ba-tab__thumb">
+                <span style={{ width: '50%', height: '100%', overflow: 'hidden', background: p.beforeBg }}>
+                  <img loading="lazy" decoding="async" src={p.before} alt="" style={{ width: '200%', height: '100%', objectFit: 'cover', maxWidth: 'none' }} onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+                </span>
+                <span style={{ width: '50%', height: '100%', overflow: 'hidden', background: p.afterBg, borderLeft: '1.5px solid #fff' }}>
+                  <img loading="lazy" decoding="async" src={p.after} alt="" style={{ width: '200%', height: '100%', objectFit: 'cover', maxWidth: 'none', marginLeft: '-100%' }} onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+                </span>
+              </span>
+              <span style={{ minWidth: 0 }}>
+                <span style={{ display: 'block', fontFamily: 'var(--font-mono)', fontSize: 10.5, letterSpacing: '0.16em', color: 'var(--ink-3)', textTransform: 'uppercase' }}>{String(i + 1).padStart(2, '0')} — Before / After</span>
+                <span style={{ display: 'block', fontSize: 14.5, fontWeight: 500, letterSpacing: '-0.01em', marginTop: 3, color: 'var(--ink)' }} {...bind(`pairs.${i}.title`)}>{p.title}</span>
               </span>
             </button>
           ))}

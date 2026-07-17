@@ -22,9 +22,6 @@ const FALLBACK = {
     { n: '03', t: 'Structured technician workflows', d: 'Trained technicians operate to a defined process, not guesswork.' },
     { n: '04', t: 'Equipment monitoring & reporting', d: 'Condition is inspected and reported so issues surface early.' },
   ],
-  ctaTitle: 'Ready for professional pool management?',
-  ctaText: 'Book a pool assessment and let our team evaluate your system, water condition and service requirements.',
-  ctaLabel: 'Book a pool assessment',
 };
 
 function About() {
@@ -79,13 +76,6 @@ function About() {
           </div>
         </div>
 
-        <div style={{ marginTop: 72, padding: '40px 36px', background: 'var(--ink)', color: '#fff', borderRadius: 24, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 24, flexWrap: 'wrap' }}>
-          <div>
-            <h3 className="display-3" style={{ margin: 0, color: '#fff', fontSize: 'clamp(24px, 2.4vw, 34px)' }} {...bind('ctaTitle')}>{b.ctaTitle}</h3>
-            <p style={{ margin: '10px 0 0', color: 'rgba(255,255,255,0.7)', maxWidth: '48ch' }} {...bind('ctaText')}>{b.ctaText}</p>
-          </div>
-          <a className="btn btn-light btn-lg" href="/assessment" {...bind('ctaLabel')}>{b.ctaLabel}</a>
-        </div>
       </div>
     </section>
   );

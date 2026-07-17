@@ -11,11 +11,31 @@ const FEATURES = [
   { n: '04', label: 'Account & family', title: 'Bring everyone\nwho needs access.', blurb: 'Manage billing, plans and payment in one place — and share household access with family. Service reminders keep everyone in the loop.', bullets: ['Billing, plans & invoices', 'Family & household sharing', 'Service reminders'], bg: 'linear-gradient(160deg, #1a3d2a 0%, #4a7359 70%, #c4d4b8 100%)', surface: '#fff', shot: '/images/app-account.webp' },
 ];
 
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api';
+
 function AppDownload() {
   const { content, editMode } = useCmsContent('page.home', {});
   const s = content?.appDownload || {};
   const items = s.items || FEATURES;
   const bind = (p) => cmsBind(editMode, 'page.home', `appDownload.${p}`);
+  // Store links are managed in the admin console (Settings → Branding → App Download Links)
+  const [storeUrls, setStoreUrls] = React.useState({ appStoreUrl: null, googlePlayUrl: null });
+
+  React.useEffect(() => {
+    let alive = true;
+    fetch(`${API_BASE}/settings/branding`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!alive || !d) return;
+        // Same rule as newsletter footers: store link first, general link as fallback
+        setStoreUrls({
+          appStoreUrl: d.appStoreUrl || d.appDownloadUrl || null,
+          googlePlayUrl: d.googlePlayUrl || d.appDownloadUrl || null,
+        });
+      })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, []);
 
   return (
     <section className="section app-stack" id="app">
@@ -45,8 +65,8 @@ function AppDownload() {
             <div style={{ fontSize: 13, color: 'var(--ink-3)', marginTop: 4 }} {...bind('ctaSub')}>{s.ctaSub || 'Free for every customer. iOS & Android.'}</div>
           </div>
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-            <StoreBadge store="App Store" />
-            <StoreBadge store="Google Play" />
+            <StoreBadge store="App Store" href={storeUrls.appStoreUrl} />
+            <StoreBadge store="Google Play" href={storeUrls.googlePlayUrl} />
           </div>
         </div>
       </div>
@@ -87,10 +107,15 @@ function FeatureCard({ n, label, title, blurb, bullets, bg, surface, shot, index
   );
 }
 
-function StoreBadge({ store }) {
+function StoreBadge({ store, href }) {
   const isApple = store === 'App Store';
+  const Tag = href ? 'a' : 'span';
   return (
-    <button style={{ all: 'unset', display: 'inline-flex', alignItems: 'center', gap: 12, padding: '12px 18px', borderRadius: 12, background: 'var(--ink)', color: '#fff', cursor: 'default' }}>
+    <Tag
+      {...(href ? { href, target: '_blank', rel: 'noopener noreferrer' } : {})}
+      style={{ display: 'inline-flex', alignItems: 'center', gap: 12, padding: '12px 18px', borderRadius: 12, background: 'var(--ink)', color: '#fff', cursor: href ? 'pointer' : 'default', textDecoration: 'none', opacity: href ? 1 : 0.55 }}
+      title={href ? undefined : 'Coming soon'}
+    >
       {isApple ? (
         <svg width="22" height="26" viewBox="0 0 22 26" fill="#fff"><path d="M16.4 13.6c0-2.4 2-3.6 2-3.6-1.1-1.6-2.8-1.8-3.4-1.8-1.4-.1-2.8.9-3.5.9-.7 0-1.8-.8-3-.8-1.5 0-3 .9-3.8 2.3-1.6 2.8-.4 6.9 1.1 9.2.8 1.1 1.7 2.3 2.9 2.3 1.2-.1 1.6-.7 3-.7 1.4 0 1.8.7 3 .7 1.2 0 2-1.1 2.8-2.3.9-1.3 1.2-2.5 1.3-2.6-.1 0-2.4-.9-2.4-3.6zm-2.3-6.5c.6-.8 1.1-1.9 1-3-.9 0-2 .6-2.7 1.4-.6.7-1.1 1.8-1 2.9 1.1.1 2.1-.5 2.7-1.3z"/></svg>
       ) : (
@@ -100,7 +125,7 @@ function StoreBadge({ store }) {
         <div style={{ fontSize: 10, opacity: 0.7, letterSpacing: '0.02em' }}>{isApple ? 'Download on the' : 'Get it on'}</div>
         <div style={{ fontSize: 16, fontWeight: 500, letterSpacing: '-0.01em' }}>{store}</div>
       </span>
-    </button>
+    </Tag>
   );
 }
 

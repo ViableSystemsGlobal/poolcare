@@ -29,8 +29,8 @@ export default async function HomePage() {
         <Trust />
         <Services showSpecialized={false} />
         <HowItWorks />
-        <Quote />
         <Gallery />
+        <Quote />
         <Reviews />
         <FAQ />
         <AppDownload />

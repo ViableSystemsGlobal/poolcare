@@ -16,7 +16,7 @@ const PLAN_DATA = {
     tagline: 'Service-only maintenance. You supply the chemicals; we run the system.',
     image: 'https://images.unsplash.com/photo-1572331165267-854da2b10ccc?w=2400&q=80&auto=format&fit=crop',
     idealFor: 'For clients who prefer to supply their own chemicals while receiving structured cleaning, system checks and water management guidance.',
-    idealChips: [], priceFrom: 900, priceTo: 1400,
+    idealChips: [],
     response: '48-hour response for technical issues. Emergencies assessed separately.',
     groups: [
       { title: 'Pool cleaning', items: ['Surface skimming', 'Manual vacuuming', 'Wall brushing', 'Waterline cleaning'] },
@@ -33,7 +33,7 @@ const PLAN_DATA = {
     tagline: 'Stable water management for residential pools that need consistent care.',
     image: 'https://images.unsplash.com/photo-1576013551627-0cc20b96c2a7?w=2400&q=80&auto=format&fit=crop',
     idealFor: 'Designed for residential pools that require consistent servicing, balanced water chemistry and routine system care.',
-    idealChips: ['Small to mid-size pools (up to 60 m³)', 'Basic circulation systems', 'Low to moderate usage homes'], priceFrom: 1600, priceTo: 2400,
+    idealChips: ['Small to mid-size pools (up to 60 m³)', 'Basic circulation systems', 'Low to moderate usage homes'],
     response: '48-hour non-emergency response.',
     groups: [
       { title: 'Cleaning services', items: ['Surface skimming', 'Manual vacuuming', 'Wall brushing', 'Skimmer & pump basket cleaning', 'Filter backwashing', 'Pump inspection'] },
@@ -48,7 +48,7 @@ const PLAN_DATA = {
     tagline: 'Performance and equipment care for active mid-to-large pools.',
     image: 'https://images.unsplash.com/photo-1582719471384-894fbb16e074?w=2400&q=80&auto=format&fit=crop',
     idealFor: 'For pools requiring enhanced monitoring, proactive system care and improved water performance.',
-    idealChips: ['Mid to large pools (60–120 m³)', 'Salt chlorination systems', 'Automated dosing systems', 'Moderate to high usage'], priceFrom: 2500, priceTo: 3400,
+    idealChips: ['Mid to large pools (60–120 m³)', 'Salt chlorination systems', 'Automated dosing systems', 'Moderate to high usage'],
     response: '24–36 hour priority response. Priority scheduling for technical issues.',
     groups: [
       { title: 'Everything in Premium', items: ['Surface skimming, manual vacuuming, wall brushing', 'Basket cleaning, filter backwashing, pump inspection', 'Full water testing', 'Digital service reports', 'App tracking'] },
@@ -63,7 +63,7 @@ const PLAN_DATA = {
     tagline: 'Complete water governance for high-end villas, estates and water features.',
     image: 'https://images.unsplash.com/photo-1519315901367-f34ff9154487?w=2400&q=80&auto=format&fit=crop',
     idealFor: 'A structured management program for high-end properties where water clarity and system integrity must remain uncompromised.',
-    idealChips: ['Large villas & estates (60 m³+)', 'Infinity & overflow pools', 'Properties with spas or water features', 'Diplomatic, executive & premium residences'], priceFrom: 3500, priceTo: 4500, priceReal: true,
+    idealChips: ['Large villas & estates (60 m³+)', 'Infinity & overflow pools', 'Properties with spas or water features', 'Diplomatic, executive & premium residences'],
     response: 'VIP priority — target response within 12 working hours.',
     groups: [
       { title: 'Everything in Premium Plus', items: ['All Premium Plus services', 'Full chemical management', 'Water balance profiling', 'Bi-weekly algaecide', 'Quarterly tile descaling', 'Equipment lubrication'] },
@@ -76,8 +76,8 @@ const PLAN_DATA = {
 };
 
 const FALLBACK_PLANS = Object.entries(PLAN_DATA).map(([id, d]) => ({
-  id, name: d.name, href: d.href, priceFrom: d.priceFrom, priceTo: d.priceTo, idealFor: d.idealFor,
-  detail: { index: d.index, title: d.title, tagline: d.tagline, image: d.image, idealChips: d.idealChips, response: d.response, groups: d.groups, chemicals: d.chemicals, priceReal: d.priceReal },
+  id, name: d.name, href: d.href, idealFor: d.idealFor,
+  detail: { index: d.index, title: d.title, tagline: d.tagline, image: d.image, idealChips: d.idealChips, response: d.response, groups: d.groups, chemicals: d.chemicals },
 }));
 
 function PlanPage({ planKey, home = '/' }) {
@@ -97,9 +97,6 @@ function PlanPage({ planKey, home = '/' }) {
     image: d.image || fb.image,
     idealFor: cms?.idealFor || fb.idealFor,
     idealChips: d.idealChips || fb.idealChips || [],
-    priceFrom: cms?.priceFrom ?? fb.priceFrom,
-    priceTo: cms?.priceTo ?? fb.priceTo,
-    priceReal: d.priceReal ?? fb.priceReal,
     response: d.response || fb.response,
     groups: d.groups || fb.groups || [],
     chemicals: d.chemicals || fb.chemicals || { label: '', note: '', items: [] },
@@ -138,22 +135,18 @@ function PlanPage({ planKey, home = '/' }) {
               </div>
 
               <div style={{ background: 'var(--ink)', color: '#fff', borderRadius: 24, padding: 36 }}>
-                <div className="h-eyebrow" style={{ color: 'rgba(255,255,255,0.6)' }}>
-                  {p.priceReal ? 'Indicative pricing' : 'Indicative monthly'}
+                <div className="h-eyebrow" style={{ color: 'rgba(255,255,255,0.6)' }}>Pricing</div>
+                <div style={{ marginTop: 16, fontFamily: 'var(--font-display)', fontSize: 'clamp(26px, 2.6vw, 34px)', letterSpacing: '-0.02em', lineHeight: 1.15 }}>
+                  Tailored to your pool.
                 </div>
-                <div style={{ marginTop: 18, display: 'flex', alignItems: 'baseline', gap: 6, flexWrap: 'wrap' }} {...bind('priceFrom')}>
-                  <span style={{ fontSize: 16, color: 'rgba(255,255,255,0.6)' }}>GH&#8373;</span>
-                  <span className="tabnum" style={{ fontFamily: 'var(--font-display)', fontSize: 'clamp(40px, 5vw, 60px)', letterSpacing: '-0.04em', lineHeight: 1, fontWeight: 400 }}>{Number(p.priceFrom).toLocaleString()}&ndash;{Number(p.priceTo).toLocaleString()}</span>
-                  <span style={{ color: 'rgba(255,255,255,0.6)', fontSize: 16 }}>/mo</span>
-                </div>
-                <div style={{ marginTop: 10, fontSize: 13, color: 'rgba(255,255,255,0.55)' }}>
-                  {p.priceReal ? 'System dependent. Final pricing confirmed after assessment.' : 'Indicative range. Final pricing confirmed after a free on-site assessment.'}
+                <div style={{ marginTop: 12, fontSize: 13.5, lineHeight: 1.55, color: 'rgba(255,255,255,0.6)' }}>
+                  Your monthly price is confirmed after a free on-site assessment &mdash; based on your pool&rsquo;s size, system and usage.
                 </div>
                 <div style={{ marginTop: 20, paddingTop: 18, borderTop: '1px solid rgba(255,255,255,0.12)', fontSize: 13.5, color: 'rgba(255,255,255,0.78)' }}>
                   <strong style={{ fontWeight: 500, color: '#fff' }}>Response:</strong> <span {...bind('detail.response')}>{p.response}</span>
                 </div>
-                <a className="btn btn-light" href="/assessment" style={{ width: '100%', justifyContent: 'center', marginTop: 24 }}>Book a pool assessment</a>
-                <a href={home + '#quote'} style={{ display: 'block', textAlign: 'center', marginTop: 14, fontSize: 13, color: 'rgba(255,255,255,0.7)' }}>Estimate your monthly range &rarr;</a>
+                <a className="btn btn-light" href="/assessment" style={{ width: '100%', justifyContent: 'center', marginTop: 24 }}>Book a free assessment</a>
+                <a href={home + '#quote'} style={{ display: 'block', textAlign: 'center', marginTop: 14, fontSize: 13, color: 'rgba(255,255,255,0.7)' }}>Get a quote by email &rarr;</a>
               </div>
             </div>
 

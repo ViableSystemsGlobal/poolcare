@@ -25,7 +25,7 @@ function PageHero({ eyebrow, title, subtitle, image }) {
           <img
             src={image}
             alt=""
-            fetchpriority="high"
+            fetchPriority="high"
             decoding="async"
             style={{
               position: 'absolute', inset: 0,

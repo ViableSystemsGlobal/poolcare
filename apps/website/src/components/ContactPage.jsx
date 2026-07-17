@@ -16,7 +16,7 @@ const POOL_TYPES = [
   'Skimmer pool',
   'Skimmerless',
 ];
-const SERVICE_AREAS = ['Accra', 'East Legon', 'Cantonments', 'Trasacco', 'Spintex'];
+const SERVICE_AREAS = ['Accra', 'Tema', 'Kumasi', 'Takoradi', 'Cape Coast', 'Koforidua', 'Ho', 'Sunyani', 'Techiman', 'Tamale', 'Wa', 'Bolgatanga'];
 const HELP_WITH = [
   'Pool Equipment Repair',
   'Pool Restoration & Deep Cleaning',
@@ -29,7 +29,7 @@ function ContactPage({ home = '/' }) {
   const { content, editMode } = useCmsContent('page.contact', {});
   const hero = content?.hero || { eyebrow: 'Contact', title: 'Get in touch.', subtitle: 'From cloudy water to equipment issues, our team is ready to help solve your pool maintenance needs.', image: 'https://images.unsplash.com/photo-1576013551627-0cc20b96c2a7?w=2400&q=80&auto=format&fit=crop' };
   const cd = content?.contactDetails || { phone: '(+233) 50 622 6222', phoneHref: 'tel:+233506226222', email: 'info@poolcare.africa', emailHref: 'mailto:info@poolcare.africa', office: '44 Nii Obodaifio Street, Mempeasem, Accra' };
-  const areas = content?.serviceAreas || { heading: 'Service areas', items: SERVICE_AREAS, note: 'Professional pool services across Accra — and Kumasi & Takoradi.' };
+  const areas = content?.serviceAreas || { heading: 'Service areas', items: SERVICE_AREAS, note: 'HQ in Accra — professional pool services in cities across Ghana.' };
   const help = content?.help || { heading: 'What we help with', items: HELP_WITH };
   const form = content?.form || { heading: 'Send us a message' };
   const bind = (p) => cmsBind(editMode, 'page.contact', p);
