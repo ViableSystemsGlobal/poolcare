@@ -165,7 +165,12 @@ export default function NewsletterPage() {
               {loading ? <span className="text-gray-300">--</span> : totalRecipients.toLocaleString()}
             </p>
           </div>
-          <div className="bg-white px-4 py-4">
+          <button
+            type="button"
+            onClick={() => router.push("/newsletter/compose")}
+            className="bg-white px-4 py-4 text-left hover:bg-gray-50 transition-colors"
+            title="Review pending drafts"
+          >
             <div className="flex items-center gap-1.5 mb-1.5">
               <FileText className="h-3.5 w-3.5 text-amber-600" />
               <span className="text-[11px] font-medium text-gray-500 uppercase tracking-wide truncate">Pending Drafts</span>
@@ -173,7 +178,7 @@ export default function NewsletterPage() {
             <p className="text-2xl font-bold tabular-nums leading-none text-gray-900">
               {loading ? <span className="text-gray-300">--</span> : draftsCount}
             </p>
-          </div>
+          </button>
           <div className="bg-white px-4 py-4">
             <div className="flex items-center gap-1.5 mb-1.5">
               <Lightbulb className="h-3.5 w-3.5 text-emerald-600" />

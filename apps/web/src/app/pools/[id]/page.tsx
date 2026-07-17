@@ -1,5 +1,7 @@
 "use client";
 
+import { formatCurrencyForDisplay } from "@/lib/utils";
+
 import { useState, useEffect, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -282,7 +284,7 @@ export default function PoolDetailPage() {
   };
 
   const formatCurrency = (cents: number, currency: string) => {
-    return `${(cents / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currency}`;
+    return `${formatCurrencyForDisplay(currency)}${(cents / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
 
   if (loading) {

@@ -24,6 +24,7 @@ import {
   Clock,
   CheckCircle2,
   XCircle,
+  Banknote,
   DollarSign,
 } from "lucide-react";
 import {
@@ -98,6 +99,10 @@ export default function CarerDetailPage() {
     monthlyEarningsCents: number;
     totalApprovedVisits: number;
     monthlyApprovedVisits: number;
+    totalPaidCents?: number;
+    paidVisits?: number;
+    outstandingCents?: number;
+    outstandingVisits?: number;
     pendingVisits: Array<{ id: string; completedAt: string; pool: string }>;
   } | null>(null);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
@@ -402,7 +407,13 @@ export default function CarerDetailPage() {
               </div>
             )}
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">{carer.name || "Unnamed Carer"}</h1>
+              <div className="flex items-center gap-2.5">
+                <h1 className="text-2xl font-bold text-gray-900">{carer.name || "Unnamed Carer"}</h1>
+                <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${carer.active ? "text-green-600" : "text-gray-400"}`}>
+                  <span className={`h-1.5 w-1.5 rounded-full ${carer.active ? "bg-green-500" : "bg-gray-300"}`} />
+                  {carer.active ? "Active" : "Inactive"}
+                </span>
+              </div>
               <p className="text-gray-600 mt-1">Carer profile and job assignments</p>
             </div>
           </div>
@@ -497,20 +508,22 @@ export default function CarerDetailPage() {
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-600">Status</p>
+                <p className="text-sm font-medium text-gray-600">Amount Paid</p>
                 <p className="text-2xl font-bold text-gray-900">
-                  {carer.active ? (
-                    <span className="text-green-600">Active</span>
-                  ) : (
-                    <span className="text-gray-600">Inactive</span>
-                  )}
+                  {`${formatCurrencyForDisplay("GHS")}${((earnings?.totalPaidCents ?? 0) / 100).toFixed(2)}`}
                 </p>
+                {earnings && (earnings.outstandingCents ?? 0) > 0 ? (
+                  <p className="text-xs text-amber-600 mt-1">
+                    {formatCurrencyForDisplay("GHS")}
+                    {((earnings.outstandingCents ?? 0) / 100).toFixed(2)} awaiting payment
+                  </p>
+                ) : (
+                  <p className="text-xs text-gray-500 mt-1">
+                    {earnings?.paidVisits ?? 0} paid visit{(earnings?.paidVisits ?? 0) !== 1 ? "s" : ""}
+                  </p>
+                )}
               </div>
-              {carer.active ? (
-                <CheckCircle2 className="h-8 w-8 text-green-400" />
-              ) : (
-                <XCircle className="h-8 w-8 text-gray-400" />
-              )}
+              <Banknote className="h-8 w-8 text-blue-400" />
             </div>
           </CardContent>
         </Card>

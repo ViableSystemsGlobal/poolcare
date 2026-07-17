@@ -19,8 +19,11 @@
         "name": "next"
       }
     ],
+    "typeRoots": ["./node_modules/@types"],
     "paths": {
       "@/*": ["./src/*"],
+      "react": ["./node_modules/@types/react"],
+      "react-dom": ["./node_modules/@types/react-dom"],
       "@poolcare/db": ["../../packages/db/src"],
       "@poolcare/utils": ["../../packages/utils/src"],
       "@poolcare/ui": ["../../packages/ui/src"]

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import {
   Card,
   CardContent,
@@ -100,6 +101,7 @@ const PAGE_SIZE = 25;
 
 export default function UsersPage() {
   const { toast } = useToast();
+  const router = useRouter();
 
   // data
   const [users, setUsers] = useState<AppUser[]>([]);
@@ -528,8 +530,12 @@ export default function UsersPage() {
                 </TableHeader>
                 <TableBody>
                   {paginated.map((user) => (
-                    <TableRow key={user.id}>
-                      <TableCell>
+                    <TableRow
+                      key={user.id}
+                      className="cursor-pointer hover:bg-gray-50"
+                      onClick={() => router.push(`/users/${user.id}`)}
+                    >
+                      <TableCell onClick={(e) => e.stopPropagation()}>
                         <Checkbox
                           checked={selectedIds.has(user.id)}
                           onCheckedChange={() => toggleSelect(user.id)}

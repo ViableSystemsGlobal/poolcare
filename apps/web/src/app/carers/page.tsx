@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -42,6 +42,8 @@ interface Carer {
   imageUrl?: string;
   homeBaseLat?: number;
   homeBaseLng?: number;
+  homeBaseAddress?: string;
+  ghanaPostAddress?: string;
   ratePerVisitCents?: number;
   currency?: string;
   active: boolean;
@@ -100,6 +102,8 @@ export default function CarersPage() {
     imageUrl: "",
     homeBaseLat: "",
     homeBaseLng: "",
+    homeBaseAddress: "",
+    ghanaPostAddress: "",
     ratePerVisitCents: "",
     currency: "GHS",
     active: true,
@@ -107,6 +111,56 @@ export default function CarersPage() {
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [uploadingImage, setUploadingImage] = useState(false);
+
+  // Landmark search (Google Places via API proxy)
+  const [placeQuery, setPlaceQuery] = useState("");
+  const [placeResults, setPlaceResults] = useState<Array<{ name: string; address: string; lat: number; lng: number; placeId?: string }>>([]);
+  const [searchingPlaces, setSearchingPlaces] = useState(false);
+  const placeSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handlePlaceQuery = (q: string) => {
+    setPlaceQuery(q);
+    if (placeSearchTimer.current) clearTimeout(placeSearchTimer.current);
+    if (q.trim().length < 3) {
+      setPlaceResults([]);
+      return;
+    }
+    placeSearchTimer.current = setTimeout(async () => {
+      setSearchingPlaces(true);
+      try {
+        const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+        const res = await fetch(`${API_URL}/maps/search-places`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
+          },
+          body: JSON.stringify({ query: q }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setPlaceResults(data.items || []);
+        } else {
+          setPlaceResults([]);
+        }
+      } catch {
+        setPlaceResults([]);
+      } finally {
+        setSearchingPlaces(false);
+      }
+    }, 400);
+  };
+
+  const selectPlace = (p: { name: string; address: string; lat: number; lng: number }) => {
+    setFormData((prev) => ({
+      ...prev,
+      homeBaseAddress: p.address.startsWith(p.name) ? p.address : `${p.name}, ${p.address}`,
+      homeBaseLat: String(p.lat),
+      homeBaseLng: String(p.lng),
+    }));
+    setPlaceQuery(p.name);
+    setPlaceResults([]);
+  };
 
   useEffect(() => {
     fetchCarers();
@@ -316,12 +370,16 @@ export default function CarersPage() {
       imageUrl: "",
       homeBaseLat: "",
       homeBaseLng: "",
+      homeBaseAddress: "",
+      ghanaPostAddress: "",
       ratePerVisitCents: "",
-      currency: "USD",
+      currency: "GHS",
       active: true,
     });
     setImageFile(null);
     setImagePreview(null);
+    setPlaceQuery("");
+    setPlaceResults([]);
   };
 
   const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -429,6 +487,8 @@ export default function CarersPage() {
         if (formData.homeBaseLat) payload.homeBase.lat = parseFloat(formData.homeBaseLat);
         if (formData.homeBaseLng) payload.homeBase.lng = parseFloat(formData.homeBaseLng);
       }
+      if (formData.homeBaseAddress.trim()) payload.homeBaseAddress = formData.homeBaseAddress.trim();
+      if (formData.ghanaPostAddress.trim()) payload.ghanaPostAddress = formData.ghanaPostAddress.trim().toUpperCase();
       // Note: ratePerVisitCents and currency are not in the CreateCarerDto, so we'll skip them
 
       const response = await fetch(`${API_URL}/carers`, {
@@ -478,12 +538,16 @@ export default function CarersPage() {
       imageUrl: carer.imageUrl || "",
       homeBaseLat: carer.homeBaseLat?.toString() || "",
       homeBaseLng: carer.homeBaseLng?.toString() || "",
+      homeBaseAddress: carer.homeBaseAddress || "",
+      ghanaPostAddress: carer.ghanaPostAddress || "",
       ratePerVisitCents: carer.ratePerVisitCents ? (carer.ratePerVisitCents / 100).toString() : "",
-      currency: carer.currency || "USD",
+      currency: carer.currency || "GHS",
       active: carer.active,
     });
     setImageFile(null);
     setImagePreview(carer.imageUrl || null);
+    setPlaceQuery(carer.homeBaseAddress || "");
+    setPlaceResults([]);
   };
 
   const handleUpdate = async () => {
@@ -497,8 +561,14 @@ export default function CarersPage() {
         active: formData.active,
       };
 
-      if (formData.homeBaseLat) payload.homeBaseLat = parseFloat(formData.homeBaseLat);
-      if (formData.homeBaseLng) payload.homeBaseLng = parseFloat(formData.homeBaseLng);
+      // API expects home base nested under homeBase
+      if (formData.homeBaseLat || formData.homeBaseLng) {
+        payload.homeBase = {};
+        if (formData.homeBaseLat) payload.homeBase.lat = parseFloat(formData.homeBaseLat);
+        if (formData.homeBaseLng) payload.homeBase.lng = parseFloat(formData.homeBaseLng);
+      }
+      if (formData.homeBaseAddress.trim()) payload.homeBaseAddress = formData.homeBaseAddress.trim();
+      if (formData.ghanaPostAddress.trim()) payload.ghanaPostAddress = formData.ghanaPostAddress.trim().toUpperCase();
       if (formData.ratePerVisitCents) {
         payload.ratePerVisitCents = parseFloat(formData.ratePerVisitCents) * 100; // Convert to cents
       } else {
@@ -809,10 +879,16 @@ export default function CarersPage() {
                         <span className="text-sm">{carer._count?.assignedJobs || 0}</span>
                       </TableCell>
                       <TableCell>
-                        {carer.homeBaseLat && carer.homeBaseLng ? (
-                          <div className="flex items-center gap-1 text-sm text-gray-600">
+                        {carer.homeBaseAddress || (carer.homeBaseLat && carer.homeBaseLng) ? (
+                          <div className="flex items-center gap-1 text-sm text-gray-600 max-w-[220px]">
                             <MapPin className="h-3 w-3 flex-shrink-0" />
-                            <span>{carer.homeBaseLat.toFixed(4)}, {carer.homeBaseLng.toFixed(4)}</span>
+                            <span className="truncate" title={carer.homeBaseAddress || undefined}>
+                              {carer.homeBaseAddress ||
+                                `${carer.homeBaseLat!.toFixed(4)}, ${carer.homeBaseLng!.toFixed(4)}`}
+                            </span>
+                            {carer.ghanaPostAddress && (
+                              <span className="text-xs text-gray-400 shrink-0">· {carer.ghanaPostAddress}</span>
+                            )}
                           </div>
                         ) : (
                           <span className="text-sm text-gray-400">Not set</span>
@@ -887,22 +963,6 @@ export default function CarersPage() {
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="grid gap-2">
-              <Label htmlFor="userId">User ID (Optional)</Label>
-              <Input
-                id="userId"
-                placeholder="UUID of existing user (leave empty to create new user)"
-                value={formData.userId}
-                onChange={(e) => setFormData({ ...formData, userId: e.target.value })}
-                disabled={!!editingCarer}
-              />
-              <p className="text-xs text-gray-500">
-                {formData.userId 
-                  ? "Will link to existing user with this ID" 
-                  : "Leave empty to automatically create a new user from phone/email below"}
-              </p>
-            </div>
-
-            <div className="grid gap-2">
               <Label htmlFor="name">Name</Label>
               <Input
                 id="name"
@@ -963,35 +1023,56 @@ export default function CarersPage() {
                 <p className="text-xs text-blue-600">Uploading image...</p>
               )}
             </div>
-            {!formData.userId && (
+            {!editingCarer && (
               <p className="text-xs text-gray-500">
-                Provide at least phone or email to automatically create a user account for this carer.
+                Provide at least phone or email — a user account is created (or linked) automatically for this carer.
               </p>
             )}
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="grid gap-2">
-                <Label htmlFor="homeBaseLat">Home Base Latitude</Label>
+            <div className="grid gap-2">
+              <Label htmlFor="homeBaseSearch">Home Base Location</Label>
+              <div className="relative">
                 <Input
-                  id="homeBaseLat"
-                  type="number"
-                  step="any"
-                  placeholder="5.6037"
-                  value={formData.homeBaseLat}
-                  onChange={(e) => setFormData({ ...formData, homeBaseLat: e.target.value })}
+                  id="homeBaseSearch"
+                  placeholder="Search nearest landmark or address (e.g. Accra Mall, East Legon)"
+                  value={placeQuery}
+                  onChange={(e) => handlePlaceQuery(e.target.value)}
+                  autoComplete="off"
                 />
+                {placeResults.length > 0 && (
+                  <div className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-56 overflow-y-auto">
+                    {placeResults.map((p) => (
+                      <button
+                        key={p.placeId || `${p.lat},${p.lng}`}
+                        type="button"
+                        onClick={() => selectPlace(p)}
+                        className="w-full text-left px-3 py-2 hover:bg-gray-50 border-b border-gray-50 last:border-0"
+                      >
+                        <p className="text-sm font-medium text-gray-900">{p.name}</p>
+                        <p className="text-xs text-gray-500 truncate">{p.address}</p>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
-              <div className="grid gap-2">
-                <Label htmlFor="homeBaseLng">Home Base Longitude</Label>
-                <Input
-                  id="homeBaseLng"
-                  type="number"
-                  step="any"
-                  placeholder="-0.1870"
-                  value={formData.homeBaseLng}
-                  onChange={(e) => setFormData({ ...formData, homeBaseLng: e.target.value })}
-                />
-              </div>
+              <p className="text-xs text-gray-500">
+                {searchingPlaces
+                  ? "Searching..."
+                  : formData.homeBaseAddress
+                    ? `Selected: ${formData.homeBaseAddress}`
+                    : "Powered by Google — picking a place fills in the coordinates automatically"}
+              </p>
+            </div>
+
+            <div className="grid gap-2">
+              <Label htmlFor="ghanaPostAddress">Ghana Post Address</Label>
+              <Input
+                id="ghanaPostAddress"
+                placeholder="GA-183-8164"
+                value={formData.ghanaPostAddress}
+                onChange={(e) => setFormData({ ...formData, ghanaPostAddress: e.target.value })}
+              />
+              <p className="text-xs text-gray-500">GhanaPost GPS digital address</p>
             </div>
 
             <div className="grid grid-cols-2 gap-4">

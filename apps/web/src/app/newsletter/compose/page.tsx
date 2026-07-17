@@ -2,18 +2,10 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
@@ -31,14 +23,15 @@ import {
 import { useTheme } from "@/contexts/theme-context";
 import {
   ArrowLeft,
+  ArrowRight,
   Loader2,
   Send,
   RefreshCw,
   Eye,
   Code,
+  Check,
   CheckCircle,
   AlertCircle,
-  Clock,
   ThumbsUp,
   Mail,
   Sparkles,
@@ -47,20 +40,31 @@ import { api } from "@/lib/api-client";
 
 type Tone = "professional" | "friendly" | "casual";
 type RecipientType = "all" | "active" | "custom";
+type Step = 1 | 2 | 3;
 
 interface DraftItem {
   id: string;
   subject: string | null;
-  body: string;
+  textBody: string;
+  htmlBody: string;
   status: string;
   createdAt: string;
-  metadata?: { includedTips?: string[] };
+  weekRange?: string | null;
 }
+
+const STEPS: { n: Step; label: string }[] = [
+  { n: 1, label: "Generate" },
+  { n: 2, label: "Review" },
+  { n: 3, label: "Send" },
+];
 
 export default function ComposeNewsletterPage() {
   const router = useRouter();
   const { getThemeColor } = useTheme();
   const themeColorHex = getThemeColor();
+
+  // Wizard state
+  const [step, setStep] = useState<Step>(1);
 
   // Generate state
   const [topic, setTopic] = useState("");
@@ -105,6 +109,8 @@ export default function ComposeNewsletterPage() {
     fetchDrafts();
   }, [fetchDrafts]);
 
+  const canVisit = (n: Step) => n === 1 || (hasGenerated && !sendSuccess);
+
   const handleGenerate = async () => {
     setGenerating(true);
     setGenerateError(null);
@@ -118,6 +124,7 @@ export default function ComposeNewsletterPage() {
       setHtmlBody(data.htmlBody || data.body || "");
       setHasGenerated(true);
       setShowPreview(true);
+      setStep(2);
     } catch (e: any) {
       setGenerateError(
         e.message || "Failed to generate newsletter. Check AI settings."
@@ -127,11 +134,20 @@ export default function ComposeNewsletterPage() {
     }
   };
 
+  const handleOpenDraft = (draft: DraftItem) => {
+    setSubject(draft.subject || "");
+    setHtmlBody(draft.htmlBody || draft.textBody || "");
+    setHasGenerated(true);
+    setShowPreview(true);
+    setSendSuccess(false);
+    setGenerateError(null);
+    setStep(2);
+  };
+
   const handleSend = async () => {
     setConfirmOpen(false);
     setSending(true);
     setSendError(null);
-    setSendSuccess(false);
     try {
       await api.sendNewsletter(
         subject,
@@ -151,9 +167,6 @@ export default function ComposeNewsletterPage() {
     setSendingTest(true);
     try {
       if (!subject.trim() || !htmlBody.trim()) {
-        setGenerateError(
-          "Generate a newsletter first before sending a test email."
-        );
         setSendingTest(false);
         return;
       }
@@ -189,6 +202,20 @@ export default function ComposeNewsletterPage() {
     }
   };
 
+  const resetWizard = () => {
+    setStep(1);
+    setTopic("");
+    setSubject("");
+    setHtmlBody("");
+    setHasGenerated(false);
+    setSendSuccess(false);
+    setSendError(null);
+    setGenerateError(null);
+    setRecipientType("all");
+    setCustomEmails("");
+    fetchDrafts();
+  };
+
   const recipientLabel = (type: string) => {
     switch (type) {
       case "all":
@@ -204,7 +231,9 @@ export default function ComposeNewsletterPage() {
 
   return (
     <div className="p-6 max-w-4xl mx-auto space-y-6">
-      {/* Header */}
+      {/* ------------------------------------------------------------------ */}
+      {/* Header                                                              */}
+      {/* ------------------------------------------------------------------ */}
       <div className="flex items-center gap-4">
         <Button
           variant="ghost"
@@ -219,205 +248,294 @@ export default function ComposeNewsletterPage() {
             Compose Newsletter
           </h1>
           <p className="text-sm text-gray-500">
-            Generate, preview, and send an AI-powered newsletter
+            Generate, review, and send an AI-powered newsletter
           </p>
         </div>
       </div>
 
-      {/* Pending Drafts Banner */}
-      {!loadingDrafts && drafts.length > 0 && (
-        <Card className="border-amber-200 bg-amber-50/50">
-          <CardHeader className="pb-3">
-            <div className="flex items-center gap-2">
-              <Clock className="h-5 w-5 text-amber-600" />
-              <CardTitle className="text-base">
-                You have {drafts.length} draft{drafts.length > 1 ? "s" : ""}{" "}
-                ready
-              </CardTitle>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-3 pt-0">
-            {drafts.map((draft) => {
-              const isApproved = draft.status === "approved";
+      {/* ------------------------------------------------------------------ */}
+      {/* Stepper                                                             */}
+      {/* ------------------------------------------------------------------ */}
+      {!sendSuccess && (
+        <div className="bg-white rounded-xl shadow-sm px-6 py-4">
+          <div className="flex items-center">
+            {STEPS.map((s, i) => {
+              const isActive = step === s.n;
+              const isDone = step > s.n;
+              const clickable = canVisit(s.n) && s.n < step;
               return (
-                <div
-                  key={draft.id}
-                  className="flex items-center justify-between p-3 rounded-lg border bg-white"
-                >
-                  <div className="min-w-0 flex-1">
-                    <p className="font-medium text-sm text-gray-900 truncate">
-                      {draft.subject || "Untitled Draft"}
-                    </p>
-                    <p className="text-xs text-gray-500 mt-0.5">
-                      Generated{" "}
-                      {new Date(draft.createdAt).toLocaleDateString([], {
-                        month: "short",
-                        day: "numeric",
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
-                      {isApproved && (
-                        <span className="ml-2 text-green-600 font-medium">
-                          Approved
-                        </span>
-                      )}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2 ml-3">
-                    {!isApproved && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => handleApproveDraft(draft.id)}
-                        disabled={approvingId === draft.id}
-                        className="h-8"
-                      >
-                        {approvingId === draft.id ? (
-                          <Loader2 className="h-3 w-3 animate-spin mr-1" />
-                        ) : (
-                          <ThumbsUp className="h-3 w-3 mr-1" />
-                        )}
-                        Approve
-                      </Button>
-                    )}
-                    <Button
-                      size="sm"
-                      onClick={() => handleSendDraft(draft.id)}
-                      disabled={
-                        sendingDraftId === draft.id ||
-                        (!isApproved && approvingId !== draft.id)
-                      }
+                <div key={s.n} className="flex items-center flex-1 last:flex-none">
+                  <button
+                    type="button"
+                    disabled={!clickable && !isActive}
+                    onClick={() => clickable && setStep(s.n)}
+                    className={`flex items-center gap-2.5 ${clickable ? "cursor-pointer" : "cursor-default"}`}
+                  >
+                    <span
+                      className="h-7 w-7 rounded-full flex items-center justify-center text-xs font-semibold shrink-0 transition-colors"
                       style={
-                        isApproved ? { backgroundColor: themeColorHex } : {}
+                        isActive || isDone
+                          ? { backgroundColor: themeColorHex, color: "#fff" }
+                          : { backgroundColor: "#f3f4f6", color: "#9ca3af" }
                       }
-                      className={`h-8 ${isApproved ? "text-white" : ""}`}
                     >
-                      {sendingDraftId === draft.id ? (
-                        <Loader2 className="h-3 w-3 animate-spin mr-1" />
-                      ) : (
-                        <Send className="h-3 w-3 mr-1" />
-                      )}
-                      Send
-                    </Button>
-                  </div>
+                      {isDone ? <Check className="h-3.5 w-3.5" /> : s.n}
+                    </span>
+                    <span
+                      className={`text-[11px] font-medium uppercase tracking-wider ${
+                        isActive ? "text-gray-900" : isDone ? "text-gray-500" : "text-gray-400"
+                      }`}
+                    >
+                      {s.label}
+                    </span>
+                  </button>
+                  {i < STEPS.length - 1 && (
+                    <div className="flex-1 h-px bg-gray-200 mx-4" />
+                  )}
                 </div>
               );
             })}
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       )}
 
-      {/* Step 1: Generate */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg flex items-center gap-2">
-            <Sparkles className="h-5 w-5" style={{ color: themeColorHex }} />
-            Step 1 — Generate
-          </CardTitle>
-          <CardDescription>
-            Provide an optional topic and tone to generate a newsletter with AI
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-1.5">
-            <Label htmlFor="topic">Topic (optional)</Label>
-            <Input
-              id="topic"
-              placeholder="e.g. Summer pool maintenance tips, winter closing checklist..."
-              value={topic}
-              onChange={(e) => setTopic(e.target.value)}
-              disabled={generating}
-              className="text-base"
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="tone">Tone</Label>
-            <Select
-              value={tone}
-              onValueChange={(v) => setTone(v as Tone)}
-              disabled={generating}
+      {/* ------------------------------------------------------------------ */}
+      {/* Sent — success state                                                */}
+      {/* ------------------------------------------------------------------ */}
+      {sendSuccess && (
+        <div className="bg-white rounded-xl shadow-sm p-10 text-center">
+          <CheckCircle className="h-10 w-10 mx-auto mb-4" style={{ color: themeColorHex }} />
+          <h2 className="text-lg font-semibold text-gray-900 mb-1">
+            Newsletter sent
+          </h2>
+          <p className="text-sm text-gray-500 mb-6">
+            &quot;{subject}&quot; is on its way to {recipientLabel(recipientType).toLowerCase()}.
+          </p>
+          <div className="flex items-center justify-center gap-3">
+            <Button variant="outline" onClick={() => router.push("/newsletter/history")}>
+              View History
+            </Button>
+            <Button
+              onClick={resetWizard}
+              style={{ backgroundColor: themeColorHex }}
+              className="text-white"
             >
-              <SelectTrigger id="tone">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="professional">Professional</SelectItem>
-                <SelectItem value="friendly">Friendly</SelectItem>
-                <SelectItem value="casual">Casual</SelectItem>
-              </SelectContent>
-            </Select>
+              Compose Another
+            </Button>
           </div>
-          <Button
-            onClick={handleGenerate}
-            disabled={generating}
-            style={{ backgroundColor: themeColorHex }}
-            className="text-white w-full h-11 text-base"
-          >
-            {generating ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Generating newsletter...
-              </>
-            ) : (
-              <>
-                <Sparkles className="mr-2 h-4 w-4" />
-                Generate Newsletter
-              </>
-            )}
-          </Button>
+        </div>
+      )}
 
-          {generateError && (
-            <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 p-3 rounded-lg">
-              <AlertCircle className="h-4 w-4 flex-shrink-0" />
-              {generateError}
+      {/* ------------------------------------------------------------------ */}
+      {/* Step 1 — Generate (or open a pending draft)                         */}
+      {/* ------------------------------------------------------------------ */}
+      {!sendSuccess && step === 1 && (
+        <>
+          {!loadingDrafts && drafts.length > 0 && (
+            <div className="bg-white rounded-xl shadow-sm p-6">
+              <h2 className="text-sm font-medium text-gray-500 uppercase tracking-wider mb-2">
+                Pending Drafts ({drafts.length})
+              </h2>
+              <div className="divide-y divide-gray-50">
+                {drafts.map((draft) => {
+                  const isApproved = draft.status === "approved";
+                  return (
+                    <div
+                      key={draft.id}
+                      className="flex items-center gap-3 py-3"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => handleOpenDraft(draft)}
+                        className="min-w-0 flex-1 text-left group"
+                        title="Open this draft in Review"
+                      >
+                        <p className="font-medium text-sm text-gray-900 truncate group-hover:underline">
+                          {draft.subject || "Untitled Draft"}
+                        </p>
+                        <p className="text-xs text-gray-500 mt-0.5">
+                          Generated{" "}
+                          {new Date(draft.createdAt).toLocaleDateString([], {
+                            month: "short",
+                            day: "numeric",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                          {isApproved && (
+                            <span className="ml-2 text-green-600 font-medium">
+                              Approved
+                            </span>
+                          )}
+                        </p>
+                      </button>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleOpenDraft(draft)}
+                          className="h-8"
+                        >
+                          <Eye className="h-3 w-3 mr-1" />
+                          Open
+                        </Button>
+                        {!isApproved && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleApproveDraft(draft.id)}
+                            disabled={approvingId === draft.id}
+                            className="h-8"
+                          >
+                            {approvingId === draft.id ? (
+                              <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                            ) : (
+                              <ThumbsUp className="h-3 w-3 mr-1" />
+                            )}
+                            Approve
+                          </Button>
+                        )}
+                        <Button
+                          size="sm"
+                          onClick={() => handleSendDraft(draft.id)}
+                          disabled={sendingDraftId === draft.id || !isApproved}
+                          style={isApproved ? { backgroundColor: themeColorHex } : {}}
+                          className={`h-8 ${isApproved ? "text-white" : ""}`}
+                        >
+                          {sendingDraftId === draft.id ? (
+                            <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                          ) : (
+                            <Send className="h-3 w-3 mr-1" />
+                          )}
+                          Send
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           )}
-        </CardContent>
-      </Card>
 
-      {/* Step 2: Preview & Edit */}
-      {hasGenerated && (
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-lg flex items-center gap-2">
-                <Eye className="h-5 w-5" style={{ color: themeColorHex }} />
-                Step 2 — Preview & Edit
-              </CardTitle>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setShowPreview(!showPreview)}
-                  className="gap-1.5 h-8"
+          <div className="bg-white rounded-xl shadow-sm p-6">
+            <h2 className="text-sm font-medium text-gray-500 uppercase tracking-wider mb-1">
+              Generate with AI
+            </h2>
+            <p className="text-xs text-gray-400 mb-5">
+              Provide an optional topic and tone — or open a pending draft above
+            </p>
+            <div className="space-y-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="topic">Topic (optional)</Label>
+                <Input
+                  id="topic"
+                  placeholder="e.g. Summer pool maintenance tips, winter closing checklist..."
+                  value={topic}
+                  onChange={(e) => setTopic(e.target.value)}
+                  disabled={generating}
+                  className="text-base"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="tone">Tone</Label>
+                <Select
+                  value={tone}
+                  onValueChange={(v) => setTone(v as Tone)}
+                  disabled={generating}
                 >
-                  {showPreview ? (
+                  <SelectTrigger id="tone">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="professional">Professional</SelectItem>
+                    <SelectItem value="friendly">Friendly</SelectItem>
+                    <SelectItem value="casual">Casual</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex items-center gap-3 pt-1">
+                <Button
+                  onClick={handleGenerate}
+                  disabled={generating}
+                  style={{ backgroundColor: themeColorHex }}
+                  className="text-white flex-1 h-11 text-base"
+                >
+                  {generating ? (
                     <>
-                      <Code className="h-3.5 w-3.5" /> Edit HTML
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Generating newsletter...
                     </>
                   ) : (
                     <>
-                      <Eye className="h-3.5 w-3.5" /> Preview
+                      <Sparkles className="mr-2 h-4 w-4" />
+                      Generate Newsletter
                     </>
                   )}
                 </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleGenerate}
-                  disabled={generating}
-                  className="gap-1.5 h-8"
-                >
-                  <RefreshCw
-                    className={`h-3.5 w-3.5 ${generating ? "animate-spin" : ""}`}
-                  />
-                  Regenerate
-                </Button>
+                {hasGenerated && (
+                  <Button
+                    variant="outline"
+                    onClick={() => setStep(2)}
+                    className="h-11"
+                  >
+                    Resume Draft
+                    <ArrowRight className="ml-2 h-4 w-4" />
+                  </Button>
+                )}
               </div>
+
+              {generateError && (
+                <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 p-3 rounded-lg">
+                  <AlertCircle className="h-4 w-4 flex-shrink-0" />
+                  {generateError}
+                </div>
+              )}
             </div>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {/* Subject */}
+          </div>
+        </>
+      )}
+
+      {/* ------------------------------------------------------------------ */}
+      {/* Step 2 — Review & Edit                                              */}
+      {/* ------------------------------------------------------------------ */}
+      {!sendSuccess && step === 2 && (
+        <div className="bg-white rounded-xl shadow-sm p-6">
+          <div className="flex items-center justify-between mb-5">
+            <h2 className="text-sm font-medium text-gray-500 uppercase tracking-wider">
+              Review &amp; Edit
+            </h2>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowPreview(!showPreview)}
+                className="gap-1.5 h-8"
+              >
+                {showPreview ? (
+                  <>
+                    <Code className="h-3.5 w-3.5" /> Edit HTML
+                  </>
+                ) : (
+                  <>
+                    <Eye className="h-3.5 w-3.5" /> Preview
+                  </>
+                )}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleGenerate}
+                disabled={generating}
+                className="gap-1.5 h-8"
+              >
+                <RefreshCw
+                  className={`h-3.5 w-3.5 ${generating ? "animate-spin" : ""}`}
+                />
+                Regenerate
+              </Button>
+            </div>
+          </div>
+
+          <div className="space-y-4">
             <div className="space-y-1.5">
               <Label htmlFor="subject">Subject Line</Label>
               <Input
@@ -429,7 +547,6 @@ export default function ComposeNewsletterPage() {
               />
             </div>
 
-            {/* Body */}
             <div className="space-y-1.5">
               <Label>
                 Body{" "}
@@ -464,21 +581,46 @@ export default function ComposeNewsletterPage() {
                 />
               )}
             </div>
-          </CardContent>
-        </Card>
+
+            {generateError && (
+              <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 p-3 rounded-lg">
+                <AlertCircle className="h-4 w-4 flex-shrink-0" />
+                {generateError}
+              </div>
+            )}
+
+            <div className="flex items-center justify-between pt-2">
+              <Button variant="outline" onClick={() => setStep(1)}>
+                <ArrowLeft className="mr-2 h-4 w-4" />
+                Back
+              </Button>
+              <Button
+                onClick={() => setStep(3)}
+                disabled={!subject.trim() || !htmlBody.trim()}
+                style={{ backgroundColor: themeColorHex }}
+                className="text-white"
+              >
+                Continue to Send
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        </div>
       )}
 
-      {/* Step 3: Send */}
-      {hasGenerated && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg flex items-center gap-2">
-              <Send className="h-5 w-5" style={{ color: themeColorHex }} />
-              Step 3 — Send
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {/* Recipient Selection */}
+      {/* ------------------------------------------------------------------ */}
+      {/* Step 3 — Send                                                       */}
+      {/* ------------------------------------------------------------------ */}
+      {!sendSuccess && step === 3 && (
+        <div className="bg-white rounded-xl shadow-sm p-6">
+          <h2 className="text-sm font-medium text-gray-500 uppercase tracking-wider mb-1">
+            Send
+          </h2>
+          <p className="text-xs text-gray-400 mb-5 truncate">
+            &quot;{subject}&quot;
+          </p>
+
+          <div className="space-y-4">
             <div className="space-y-1.5">
               <Label htmlFor="recipients">Recipients</Label>
               <Select
@@ -514,55 +656,54 @@ export default function ComposeNewsletterPage() {
               </div>
             )}
 
-            {/* Action Buttons */}
-            <div className="flex items-center gap-3 pt-2">
-              <Button
-                variant="outline"
-                onClick={handleSendTestEmail}
-                disabled={sendingTest || !subject.trim() || !htmlBody.trim()}
-                className="gap-2"
-              >
-                {sendingTest ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Mail className="h-4 w-4" />
-                )}
-                Send Test to Me
-              </Button>
-              <Button
-                onClick={() => setConfirmOpen(true)}
-                disabled={sending || !subject.trim() || !htmlBody.trim()}
-                style={{ backgroundColor: themeColorHex }}
-                className="text-white gap-2 flex-1"
-              >
-                {sending ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Sending...
-                  </>
-                ) : (
-                  <>
-                    <Send className="h-4 w-4" />
-                    Send Newsletter
-                  </>
-                )}
-              </Button>
-            </div>
-
-            {sendSuccess && (
-              <div className="flex items-center gap-2 text-sm text-green-600 bg-green-50 p-3 rounded-lg">
-                <CheckCircle className="h-4 w-4" />
-                Newsletter sent successfully!
-              </div>
-            )}
             {sendError && (
               <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 p-3 rounded-lg">
-                <AlertCircle className="h-4 w-4" />
+                <AlertCircle className="h-4 w-4 flex-shrink-0" />
                 {sendError}
               </div>
             )}
-          </CardContent>
-        </Card>
+
+            <div className="flex items-center justify-between pt-2">
+              <Button variant="outline" onClick={() => setStep(2)}>
+                <ArrowLeft className="mr-2 h-4 w-4" />
+                Back
+              </Button>
+              <div className="flex items-center gap-3">
+                <Button
+                  variant="outline"
+                  onClick={handleSendTestEmail}
+                  disabled={sendingTest || !subject.trim() || !htmlBody.trim()}
+                  className="gap-2"
+                >
+                  {sendingTest ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Mail className="h-4 w-4" />
+                  )}
+                  Send Test to Me
+                </Button>
+                <Button
+                  onClick={() => setConfirmOpen(true)}
+                  disabled={sending || !subject.trim() || !htmlBody.trim()}
+                  style={{ backgroundColor: themeColorHex }}
+                  className="text-white gap-2"
+                >
+                  {sending ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Sending...
+                    </>
+                  ) : (
+                    <>
+                      <Send className="h-4 w-4" />
+                      Send Newsletter
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Confirmation Dialog */}
@@ -592,7 +733,7 @@ export default function ComposeNewsletterPage() {
               style={{ backgroundColor: themeColorHex }}
               className="text-white"
             >
-              Confirm & Send
+              Confirm &amp; Send
             </Button>
           </div>
         </DialogContent>

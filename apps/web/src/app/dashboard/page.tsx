@@ -29,11 +29,21 @@ import {
   UserPlus,
   BarChart3,
   Zap,
+  XCircle,
 } from "lucide-react";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
+
+interface PeriodJobStats {
+  total: number;
+  completed: number;
+  upcoming: number;
+  unassigned: number;
+  missed: number;
+  cancelled: number;
+}
 
 interface DashboardData {
   metrics: {
@@ -45,6 +55,8 @@ interface DashboardData {
       onSite: number;
       atRisk: number;
     };
+    week?: PeriodJobStats;
+    month?: PeriodJobStats;
     operations?: {
       jobsCompleted30d: number;
       onTimePercentage: number;
@@ -205,6 +217,7 @@ export default function Dashboard() {
   const themeHex = getThemeColor();
 
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
+  const [overviewRange, setOverviewRange] = useState<"today" | "week" | "month">("today");
   const [trends, setTrends] = useState<{ revenue: RevenuePoint[]; planMix: PlanMixSlice[] } | null>(null);
   const [aiRecommendations, setAiRecommendations] = useState<AIRecommendation[]>([]);
   const [aiRecommendationsSource, setAiRecommendationsSource] = useState<"api" | "fallback" | null>(null);
@@ -266,18 +279,33 @@ export default function Dashboard() {
   const outstanding = finance.accountsReceivable;
   const collectionPct = invoiced > 0 ? Math.round((collected / invoiced) * 100) : 0;
 
-  // Stat card definitions
-  const statCards = useMemo(
-    () => [
-      { label: "Total Jobs", value: today.total, sub: "Scheduled today", color: themeHex, bgColor: `${themeHex}15`, icon: Calendar },
-      { label: "Completed", value: today.completed, sub: "Done today", color: "#16a34a", bgColor: "#16a34a15", icon: CheckCircle },
-      { label: "Unassigned", value: today.unassigned, sub: "Need assignment", color: "#d97706", bgColor: "#d9770615", icon: AlertCircle },
-      { label: "En Route", value: today.enRoute, sub: "In transit", color: "#2563eb", bgColor: "#2563eb15", icon: Navigation },
-      { label: "On Site", value: today.onSite, sub: "In progress", color: "#9333ea", bgColor: "#9333ea15", icon: MapPin },
-      { label: "At Risk", value: today.atRisk, sub: "Past window", color: "#dc2626", bgColor: "#dc262615", icon: AlertCircle },
-    ],
-    [today, themeHex],
-  );
+  // Stat card definitions — Today keeps live statuses; week/month show schedule health
+  const emptyPeriod: PeriodJobStats = { total: 0, completed: 0, upcoming: 0, unassigned: 0, missed: 0, cancelled: 0 };
+  const week = metrics.week || emptyPeriod;
+  const month = metrics.month || emptyPeriod;
+
+  const statCards = useMemo(() => {
+    if (overviewRange === "today") {
+      return [
+        { label: "Total Jobs", value: today.total, sub: "Scheduled today", color: themeHex, icon: Calendar },
+        { label: "Completed", value: today.completed, sub: "Done today", color: "#16a34a", icon: CheckCircle },
+        { label: "Unassigned", value: today.unassigned, sub: "Need assignment", color: "#d97706", icon: AlertCircle },
+        { label: "En Route", value: today.enRoute, sub: "In transit", color: "#2563eb", icon: Navigation },
+        { label: "On Site", value: today.onSite, sub: "In progress", color: "#9333ea", icon: MapPin },
+        { label: "At Risk", value: today.atRisk, sub: "Past window", color: "#dc2626", icon: AlertCircle },
+      ];
+    }
+    const p = overviewRange === "week" ? week : month;
+    const noun = overviewRange === "week" ? "this week" : "this month";
+    return [
+      { label: "Total Jobs", value: p.total, sub: `Scheduled ${noun}`, color: themeHex, icon: Calendar },
+      { label: "Completed", value: p.completed, sub: `Done ${noun}`, color: "#16a34a", icon: CheckCircle },
+      { label: "Upcoming", value: p.upcoming, sub: "Still to come", color: "#2563eb", icon: Clock },
+      { label: "Unassigned", value: p.unassigned, sub: "Need assignment", color: "#d97706", icon: AlertCircle },
+      { label: "Missed", value: p.missed, sub: "Past window", color: "#dc2626", icon: AlertCircle },
+      { label: "Cancelled", value: p.cancelled, sub: `Cancelled ${noun}`, color: "#6b7280", icon: XCircle },
+    ];
+  }, [overviewRange, today, week, month, themeHex]);
 
   const quickActions = [
     { label: "Create Job", sub: "Schedule a new service job", href: "/jobs?new=1", icon: Calendar },
@@ -341,14 +369,37 @@ export default function Dashboard() {
       </div>
 
       {/* ------------------------------------------------------------------ */}
-      {/* AI card + Today's Overview — side by side like the list pages       */}
+      {/* AI card + Operations Overview — side by side like the list pages       */}
       {/* ------------------------------------------------------------------ */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
-        {/* Today's Overview — one KPI card, hairline-divided cells */}
+        {/* Operations Overview — one KPI card, hairline-divided cells, period switcher */}
         <section className="lg:col-span-2 bg-white rounded-xl shadow-sm p-5 sm:p-6">
-          <h2 className="text-sm font-medium text-gray-500 uppercase tracking-wider mb-4">
-            Today&apos;s Overview
-          </h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-sm font-medium text-gray-500 uppercase tracking-wider">
+              Operations Overview
+            </h2>
+            <div className="flex items-center bg-gray-50 rounded-lg p-0.5">
+              {(
+                [
+                  { key: "today", label: "Today" },
+                  { key: "week", label: "This Week" },
+                  { key: "month", label: "This Month" },
+                ] as const
+              ).map((r) => (
+                <button
+                  key={r.key}
+                  onClick={() => setOverviewRange(r.key)}
+                  className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors ${
+                    overviewRange === r.key
+                      ? "bg-white text-gray-900 shadow-sm"
+                      : "text-gray-400 hover:text-gray-600"
+                  }`}
+                >
+                  {r.label}
+                </button>
+              ))}
+            </div>
+          </div>
           {loading ? (
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
               {Array.from({ length: 6 }).map((_, i) => (
@@ -406,7 +457,7 @@ export default function Dashboard() {
                 <span className="text-sm text-gray-400 ml-2">this month</span>
               </div>
 
-              {/* Three sub-stats — same hairline-cell language as Today's Overview */}
+              {/* Three sub-stats — same hairline-cell language as Operations Overview */}
               <div className="grid grid-cols-3 gap-px bg-gray-100 rounded-lg overflow-hidden mb-5">
                 <div className="bg-white px-4 py-3">
                   <p className="text-[11px] font-medium text-gray-500 uppercase tracking-wide mb-1">Invoiced</p>

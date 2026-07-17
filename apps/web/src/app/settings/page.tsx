@@ -13,7 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Settings, Building, DollarSign, Save, Globe, MapPin, Mail, Phone, CheckCircle, Image, Palette, Map, Loader2, Send, Sparkles, FileText, Lightbulb, MessageCircleQuestion, Calendar, Inbox, BookOpen } from "lucide-react";
+import { Settings, Building, DollarSign, Save, Globe, MapPin, Mail, Phone, CheckCircle, Image, Palette, Map, Loader2, Send, Sparkles, FileText, Lightbulb, MessageCircleQuestion, Calendar, Inbox, BookOpen, ClipboardCheck } from "lucide-react";
 import LeadSourcesPage from "./lead-sources/page";
 import KnowledgeBasePage from "../knowledge/page";
 import {
@@ -60,7 +60,19 @@ function closestThemeColor(hex: string): string {
   return bestKey.split('-')[0];
 }
 
-type SettingsTab = "org" | "tax" | "policies" | "integrations" | "tips" | "lead-sources" | "knowledge";
+type SettingsTab = "org" | "tax" | "policies" | "integrations" | "tips" | "visits" | "lead-sources" | "knowledge";
+
+// Water-chemistry readings carers can record during a visit (Settings → Visits)
+const VISIT_READING_CATALOG: { key: string; label: string; unit?: string; hint: string }[] = [
+  { key: "ph", label: "pH Level", hint: "7.2 – 7.6" },
+  { key: "chlorineFree", label: "Free Chlorine", unit: "ppm", hint: "1.0 – 3.0 ppm" },
+  { key: "alkalinity", label: "Total Alkalinity", unit: "ppm", hint: "80 – 120 ppm" },
+  { key: "tempC", label: "Temperature", unit: "°C", hint: "Water temperature" },
+  { key: "calciumHardness", label: "Calcium Hardness", unit: "ppm", hint: "200 – 400 ppm" },
+  { key: "cyanuricAcid", label: "Cyanuric Acid", unit: "ppm", hint: "30 – 50 ppm" },
+  { key: "tds", label: "TDS", unit: "ppm", hint: "Total dissolved solids" },
+  { key: "salinity", label: "Salinity", unit: "ppm", hint: "Saltwater pools" },
+];
 
 interface OrgProfile {
   name: string;
@@ -84,6 +96,11 @@ interface OrgProfile {
   locale: string;
   helpAssistantName?: string | null;
   helpAssistantImageUrl?: string | null;
+  appDownloadUrl?: string | null;
+  appDownloadImageUrl?: string | null;
+  appStoreUrl?: string | null;
+  googlePlayUrl?: string | null;
+  onboardingImageUrls?: (string | null)[];
 }
 
 interface TaxSettings {
@@ -143,7 +160,6 @@ export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState<SettingsTab>("org");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [saveSuccess, setSaveSuccess] = useState(false);
   const [testEmailDialogOpen, setTestEmailDialogOpen] = useState(false);
   const [testEmailAddress, setTestEmailAddress] = useState("");
   const [sendingTestEmail, setSendingTestEmail] = useState(false);
@@ -169,6 +185,10 @@ export default function SettingsPage() {
     locale: "en",
     helpAssistantName: null,
     helpAssistantImageUrl: null,
+    appDownloadUrl: null,
+    appDownloadImageUrl: null,
+    appStoreUrl: null,
+    googlePlayUrl: null,
   });
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
@@ -188,6 +208,7 @@ export default function SettingsPage() {
   const [uploadingHomeCardImage, setUploadingHomeCardImage] = useState(false);
   const [uploadingRequestCardImage, setUploadingRequestCardImage] = useState(false);
   const [uploadingChatCardImage, setUploadingChatCardImage] = useState(false);
+  const [uploadingOnboardingSlide, setUploadingOnboardingSlide] = useState<number | null>(null);
   const [splashImageFile, setSplashImageFile] = useState<File | null>(null);
   const [splashImagePreview, setSplashImagePreview] = useState<string | null>(null);
   const [uploadingSplashImage, setUploadingSplashImage] = useState(false);
@@ -276,6 +297,7 @@ export default function SettingsPage() {
       sunday: boolean;
     };
     lastTipIndex: number;
+    autoApprove: boolean;
   }>({
     enabled: false,
     days: {
@@ -288,8 +310,14 @@ export default function SettingsPage() {
       sunday: false,
     },
     lastTipIndex: 0,
+    autoApprove: false,
   });
   const [savingTipSchedule, setSavingTipSchedule] = useState(false);
+
+  // Visit reading settings (which readings carers record)
+  const [visitReadings, setVisitReadings] = useState<Record<string, string>>({});
+  const [visitPhotosAllowGallery, setVisitPhotosAllowGallery] = useState(true);
+  const [savingVisitReadings, setSavingVisitReadings] = useState(false);
 
   // Job Generation Settings
   const [jobGeneration, setJobGeneration] = useState<{
@@ -540,6 +568,7 @@ export default function SettingsPage() {
               sunday: tipData.days?.sunday ?? tipData.sunday ?? false,
             },
             lastTipIndex: tipData.lastTipIndex ?? 0,
+            autoApprove: tipData.autoApprove ?? false,
           });
         }
       }
@@ -920,6 +949,56 @@ export default function SettingsPage() {
     }
   };
 
+  const handleOnboardingImageChange = async (slideIndex: number, e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    try {
+      setUploadingOnboardingSlide(slideIndex);
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+      const uploadFormData = new FormData();
+      uploadFormData.append("onboardingImage", file);
+      uploadFormData.append("slide", String(slideIndex));
+      const response = await fetch(`${API_URL}/settings/upload-onboarding-image`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${localStorage.getItem("auth_token")}` },
+        body: uploadFormData,
+      });
+      if (!response.ok) throw new Error("Upload failed");
+      const data = await response.json();
+      setOrgProfile((prev) => ({ ...prev, onboardingImageUrls: data.onboardingImageUrls }));
+      toast({ title: "Slide image updated" });
+    } catch (error: any) {
+      toast({ title: "Upload failed", description: error.message, variant: "destructive" });
+    } finally {
+      setUploadingOnboardingSlide(null);
+    }
+  };
+
+  const removeOnboardingImage = async (slideIndex: number) => {
+    const next = [...(orgProfile.onboardingImageUrls || [])];
+    while (next.length < 4) next.push(null);
+    next[slideIndex] = null;
+    try {
+      setUploadingOnboardingSlide(slideIndex);
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+      const response = await fetch(`${API_URL}/settings/org`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
+        },
+        body: JSON.stringify({ profile: { onboardingImageUrls: next } }),
+      });
+      if (!response.ok) throw new Error("Failed to remove image");
+      setOrgProfile((prev) => ({ ...prev, onboardingImageUrls: next }));
+    } catch (error: any) {
+      toast({ title: "Remove failed", description: error.message, variant: "destructive" });
+    } finally {
+      setUploadingOnboardingSlide(null);
+    }
+  };
+
   const extractYoutubeId = (url: string): string | null => {
     const patterns = [
       /(?:youtube\.com\/watch\?v=)([a-zA-Z0-9_-]{11})/,
@@ -1011,7 +1090,6 @@ export default function SettingsPage() {
   const handleSaveOrg = async () => {
     try {
       setSaving(true);
-      setSaveSuccess(false);
 
       // Upload images first if files were selected
       let uploadedLogoUrl: string | null = null;
@@ -1125,8 +1203,7 @@ export default function SettingsPage() {
             }
           }
         }
-        setSaveSuccess(true);
-        setTimeout(() => setSaveSuccess(false), 3000);
+        toast({ title: "Settings saved" });
       } else {
         let errorMessage = "Unknown error";
         if (isJson) {
@@ -1153,7 +1230,6 @@ export default function SettingsPage() {
   const handleSaveTax = async () => {
     try {
       setSaving(true);
-      setSaveSuccess(false);
       const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
 
       const response = await fetch(`${API_URL}/settings/tax`, {
@@ -1174,8 +1250,7 @@ export default function SettingsPage() {
           // Update local state with returned data
           setTaxSettings(data);
         }
-        setSaveSuccess(true);
-        setTimeout(() => setSaveSuccess(false), 3000);
+        toast({ title: "Settings saved" });
       } else {
         let errorMessage = "Unknown error";
         if (isJson) {
@@ -1202,7 +1277,6 @@ export default function SettingsPage() {
   const handleSavePolicies = async () => {
     try {
       setSaving(true);
-      setSaveSuccess(false);
       const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
 
       const response = await fetch(`${API_URL}/settings/policies`, {
@@ -1222,8 +1296,7 @@ export default function SettingsPage() {
           const data = await response.json();
           setPolicySettings(data);
         }
-        setSaveSuccess(true);
-        setTimeout(() => setSaveSuccess(false), 3000);
+        toast({ title: "Settings saved" });
       } else {
         let errorMessage = "Unknown error";
         if (isJson) {
@@ -1247,10 +1320,50 @@ export default function SettingsPage() {
     }
   };
 
+  // Load visit reading settings once
+  useEffect(() => {
+    const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+    fetch(`${API_URL}/settings/visit-readings`, {
+      headers: { Authorization: `Bearer ${localStorage.getItem("auth_token")}` },
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (d?.fields) setVisitReadings(d.fields);
+        if (d?.photos?.allowGallery !== undefined) setVisitPhotosAllowGallery(d.photos.allowGallery);
+      })
+      .catch(() => {});
+  }, []);
+
+  const handleSaveVisitReadings = async () => {
+    try {
+      setSavingVisitReadings(true);
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+      const response = await fetch(`${API_URL}/settings/visit-readings`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
+        },
+        body: JSON.stringify({ fields: visitReadings, photos: { allowGallery: visitPhotosAllowGallery } }),
+      });
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.message || "Failed to save");
+      }
+      const data = await response.json();
+      if (data?.fields) setVisitReadings(data.fields);
+      if (data?.photos?.allowGallery !== undefined) setVisitPhotosAllowGallery(data.photos.allowGallery);
+      toast({ title: "Saved", description: "Visit readings updated — carers see the change on their next visit" });
+    } catch (error: any) {
+      toast({ title: "Save failed", description: error.message || "Unknown error", variant: "destructive" });
+    } finally {
+      setSavingVisitReadings(false);
+    }
+  };
+
   const handleSaveTipSchedule = async () => {
     try {
       setSavingTipSchedule(true);
-      setSaveSuccess(false);
       const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
 
       const response = await fetch(`${API_URL}/settings/tip-schedule`, {
@@ -1263,6 +1376,7 @@ export default function SettingsPage() {
           enabled: tipSchedule.enabled,
           ...tipSchedule.days,
           lastTipIndex: tipSchedule.lastTipIndex,
+          autoApprove: tipSchedule.autoApprove,
         }),
       });
 
@@ -1284,11 +1398,10 @@ export default function SettingsPage() {
               sunday: data.days?.sunday ?? data.sunday ?? false,
             },
             lastTipIndex: data.lastTipIndex ?? 0,
+            autoApprove: data.autoApprove ?? false,
           });
         }
-        setSaveSuccess(true);
         toast({ title: "Saved", description: "Tip schedule updated successfully" });
-        setTimeout(() => setSaveSuccess(false), 3000);
       } else {
         let errorMessage = "Unknown error";
         if (isJson) {
@@ -1342,7 +1455,6 @@ export default function SettingsPage() {
   const handleSaveJobGeneration = async () => {
     try {
       setSavingJobGeneration(true);
-      setSaveSuccess(false);
       const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
 
       const response = await fetch(`${API_URL}/settings/job-generation`, {
@@ -1357,9 +1469,7 @@ export default function SettingsPage() {
       if (response.ok) {
         const data = await response.json();
         setJobGeneration(data);
-        setSaveSuccess(true);
         toast({ title: "Saved", description: "Job generation settings updated successfully" });
-        setTimeout(() => setSaveSuccess(false), 3000);
       } else {
         const error = await response.json().catch(() => ({ message: "Unknown error" }));
         toast({ title: "Save failed", description: error.message || "Unknown error", variant: "destructive" });
@@ -1379,6 +1489,7 @@ export default function SettingsPage() {
     { id: "lead-sources" as SettingsTab, label: "Lead Sources", icon: Inbox },
     { id: "knowledge" as SettingsTab, label: "Knowledge Base", icon: BookOpen },
     { id: "tips" as SettingsTab, label: "Tips", icon: Lightbulb },
+    { id: "visits" as SettingsTab, label: "Visits", icon: ClipboardCheck },
   ];
 
   return (
@@ -1648,6 +1759,61 @@ export default function SettingsPage() {
                       {uploadingChatCardImage && <p className="text-sm text-gray-500">Uploading...</p>}
                     </div>
 
+                    {/* App Download (newsletter & email footer) */}
+                    <div className="space-y-3 md:col-span-2 p-4 rounded-lg border border-dashed border-gray-200 bg-gray-50">
+                      <div>
+                        <Label className="flex items-center gap-2 text-sm font-semibold">
+                          <Image className="h-4 w-4" />
+                          App Download Links
+                        </Label>
+                        <p className="text-xs text-gray-500 mt-1">
+                          Power the App Store / Google Play buttons on the website and in newsletter footers. Each button links to its own store; the fallback link is used wherever a store link is empty. Leave everything empty to hide the buttons.
+                        </p>
+                      </div>
+                      <div className="flex items-start gap-6">
+                        <div className="flex-1 space-y-3">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <div>
+                              <Label htmlFor="appStoreUrl" className="text-xs text-gray-600 mb-1 block">
+                                App Store URL (iOS)
+                              </Label>
+                              <Input
+                                id="appStoreUrl"
+                                type="url"
+                                value={orgProfile.appStoreUrl || ""}
+                                onChange={(e) => setOrgProfile({ ...orgProfile, appStoreUrl: e.target.value || null })}
+                                placeholder="https://apps.apple.com/app/..."
+                              />
+                            </div>
+                            <div>
+                              <Label htmlFor="googlePlayUrl" className="text-xs text-gray-600 mb-1 block">
+                                Google Play URL (Android)
+                              </Label>
+                              <Input
+                                id="googlePlayUrl"
+                                type="url"
+                                value={orgProfile.googlePlayUrl || ""}
+                                onChange={(e) => setOrgProfile({ ...orgProfile, googlePlayUrl: e.target.value || null })}
+                                placeholder="https://play.google.com/store/apps/details?id=..."
+                              />
+                            </div>
+                          </div>
+                          <div>
+                            <Label htmlFor="appDownloadUrl" className="text-xs text-gray-600 mb-1 block">
+                              Fallback Download URL (used when a store link is empty)
+                            </Label>
+                            <Input
+                              id="appDownloadUrl"
+                              type="url"
+                              value={orgProfile.appDownloadUrl || ""}
+                              onChange={(e) => setOrgProfile({ ...orgProfile, appDownloadUrl: e.target.value || null })}
+                              placeholder="https://poolcare.africa/app"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
                     {/* App Splash Screen */}
                     <div className="space-y-3 md:col-span-2 p-4 rounded-lg border border-dashed border-gray-200 bg-gray-50">
                       <div>
@@ -1728,6 +1894,76 @@ export default function SettingsPage() {
                             <p className="text-xs text-gray-400 mt-1 text-center">~preview</p>
                           </div>
                         )}
+                      </div>
+                    </div>
+
+                    {/* Client App Onboarding Slides */}
+                    <div className="space-y-3 md:col-span-2 p-4 rounded-lg border border-dashed border-gray-200 bg-gray-50">
+                      <div>
+                        <Label className="flex items-center gap-2 text-sm font-semibold">
+                          <Image className="h-4 w-4" />
+                          Client App Onboarding Slides
+                        </Label>
+                        <p className="text-xs text-gray-500 mt-1">
+                          Images for the 4 welcome slides new clients see the first time they open the app. Slides without an image show a themed icon instead. Max 2MB, JPG/PNG/WebP — portrait or square works best.
+                        </p>
+                      </div>
+                      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                        {[
+                          "Your pool, expertly managed",
+                          "Track every visit",
+                          "Pay & shop with ease",
+                          "We're one tap away",
+                        ].map((slideTitle, i) => {
+                          const url = orgProfile.onboardingImageUrls?.[i] || null;
+                          const busy = uploadingOnboardingSlide === i;
+                          return (
+                            <div key={i} className="space-y-2">
+                              <p className="text-xs font-medium text-gray-600">
+                                Slide {i + 1} <span className="font-normal text-gray-400">— {slideTitle}</span>
+                              </p>
+                              <label
+                                htmlFor={`onboardingImage${i}`}
+                                className="block w-full aspect-[3/4] rounded-lg border-2 border-dashed border-gray-200 bg-white overflow-hidden cursor-pointer hover:border-gray-300 transition-colors relative"
+                              >
+                                {url ? (
+                                  <img
+                                    src={url}
+                                    alt={`Onboarding slide ${i + 1}`}
+                                    className="w-full h-full object-cover"
+                                    onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                                  />
+                                ) : (
+                                  <span className="absolute inset-0 flex items-center justify-center text-xs text-gray-400">
+                                    {busy ? "Uploading..." : "Upload image"}
+                                  </span>
+                                )}
+                                {busy && url && (
+                                  <span className="absolute inset-0 flex items-center justify-center bg-white/70 text-xs text-gray-600">
+                                    Uploading...
+                                  </span>
+                                )}
+                              </label>
+                              <input
+                                id={`onboardingImage${i}`}
+                                type="file"
+                                accept="image/jpeg,image/jpg,image/png,image/webp"
+                                onChange={(e) => handleOnboardingImageChange(i, e)}
+                                className="hidden"
+                              />
+                              {url && (
+                                <button
+                                  type="button"
+                                  onClick={() => removeOnboardingImage(i)}
+                                  disabled={busy}
+                                  className="text-xs text-gray-400 hover:text-red-500 disabled:opacity-50"
+                                >
+                                  Remove
+                                </button>
+                              )}
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
 
@@ -2173,12 +2409,6 @@ export default function SettingsPage() {
                 </div>
 
                 <div className="flex justify-end gap-3 pt-4 border-t">
-                  {saveSuccess && (
-                    <div className="flex items-center gap-2 text-green-600 mr-auto">
-                      <CheckCircle className="h-5 w-5" />
-                      <span className="text-sm font-medium">Settings saved successfully!</span>
-                    </div>
-                  )}
                   <Button
                     onClick={handleSaveOrg}
                     disabled={saving || !orgProfile.name.trim()}
@@ -2331,12 +2561,6 @@ export default function SettingsPage() {
                 </div>
 
                 <div className="flex justify-end gap-3 pt-4 border-t">
-                  {saveSuccess && (
-                    <div className="flex items-center gap-2 text-green-600 mr-auto">
-                      <CheckCircle className="h-5 w-5" />
-                      <span className="text-sm font-medium">Settings saved successfully!</span>
-                    </div>
-                  )}
                   <Button
                     onClick={handleSaveTax}
                     disabled={saving}
@@ -2416,12 +2640,6 @@ export default function SettingsPage() {
                 </div>
 
                 <div className="flex justify-end gap-3 pt-4 border-t">
-                  {saveSuccess && (
-                    <div className="flex items-center gap-2 text-green-600 mr-auto">
-                      <CheckCircle className="h-5 w-5" />
-                      <span className="text-sm font-medium">Settings saved successfully!</span>
-                    </div>
-                  )}
                   <Button
                     onClick={handleSavePolicies}
                     disabled={saving}
@@ -2628,12 +2846,6 @@ export default function SettingsPage() {
                   </div>
 
                   <div className="flex justify-end gap-3 pt-4 border-t">
-                    {saveSuccess && (
-                      <div className="flex items-center gap-2 text-green-600 mr-auto">
-                        <CheckCircle className="h-5 w-5" />
-                        <span className="text-sm font-medium">Settings saved successfully!</span>
-                      </div>
-                    )}
                     <Button
                       variant="outline"
                       onClick={() => {
@@ -2650,8 +2862,7 @@ export default function SettingsPage() {
                       onClick={async () => {
                         try {
                           setSaving(true);
-                          setSaveSuccess(false);
-                          const API_URL =
+                                              const API_URL =
                             process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
 
                           // Only send password if it was actually changed (not empty)
@@ -2690,9 +2901,8 @@ export default function SettingsPage() {
                                   : (data.settings.password || prev.password || (localStorage.getItem("smtp_password_set") === "true" ? "••••••••" : "")),
                               }));
                             }
-                            setSaveSuccess(true);
-                            setTimeout(() => setSaveSuccess(false), 3000);
-                          } else {
+                            toast({ title: "Settings saved" });
+                                              } else {
                             const error = await response.json();
                             toast({ title: "Save failed", description: error.error || "Unknown error", variant: "destructive" });
                           }
@@ -2821,18 +3031,11 @@ export default function SettingsPage() {
                   </div>
 
                   <div className="flex justify-end gap-3 pt-4 border-t">
-                    {saveSuccess && (
-                      <div className="flex items-center gap-2 text-green-600 mr-auto">
-                        <CheckCircle className="h-5 w-5" />
-                        <span className="text-sm font-medium">Settings saved successfully!</span>
-                      </div>
-                    )}
                     <Button
                       onClick={async () => {
                         try {
                           setSaving(true);
-                          setSaveSuccess(false);
-                          const API_URL =
+                                              const API_URL =
                             process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
 
                           // Only send password if it was actually changed (not empty or masked)
@@ -2892,9 +3095,8 @@ export default function SettingsPage() {
                                 return newSettings;
                               });
                             }
-                            setSaveSuccess(true);
-                            setTimeout(() => setSaveSuccess(false), 3000);
-                          } else {
+                            toast({ title: "Settings saved" });
+                                              } else {
                             const error = await response.json();
                             toast({ title: "Save failed", description: error.error || "Unknown error", variant: "destructive" });
                           }
@@ -3080,19 +3282,12 @@ export default function SettingsPage() {
                   </div>
 
                   <div className="flex justify-end gap-3 pt-4 border-t">
-                    {saveSuccess && (
-                      <div className="flex items-center gap-2 text-green-600 mr-auto">
-                        <CheckCircle className="h-5 w-5" />
-                        <span className="text-sm font-medium">Settings saved successfully!</span>
-                      </div>
-                    )}
                     <Button
                       onClick={async () => {
                         try {
                           setSaving(true);
                           setVerifyingApiKey(true);
-                          setSaveSuccess(false);
-                          const API_URL =
+                                              const API_URL =
                             process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
 
                           // Only send API key if it was actually changed (not empty or masked)
@@ -3146,9 +3341,8 @@ export default function SettingsPage() {
                                 return newSettings;
                               });
                             }
-                            setSaveSuccess(true);
-                            setTimeout(() => setSaveSuccess(false), 3000);
-                          } else {
+                            toast({ title: "Settings saved" });
+                                              } else {
                             const error = await response.json();
                             toast({ title: "Save failed", description: error.message || error.error || "Unknown error", variant: "destructive" });
                           }
@@ -3686,6 +3880,23 @@ export default function SettingsPage() {
                     </div>
                   </div>
 
+                  {/* Auto-approve */}
+                  <label className="flex items-start gap-3 p-3 rounded-lg border border-gray-200 hover:border-gray-300 cursor-pointer transition-colors">
+                    <input
+                      type="checkbox"
+                      checked={tipSchedule.autoApprove}
+                      onChange={(e) => setTipSchedule({ ...tipSchedule, autoApprove: e.target.checked })}
+                      className="h-4 w-4 rounded mt-0.5"
+                      style={{ accentColor: colorMap[theme.primary] || undefined }}
+                    />
+                    <span>
+                      <span className="text-sm font-medium block">Fully automatic (auto-approve)</span>
+                      <span className="text-xs text-gray-500 block mt-0.5">
+                        Each Sunday the coming week&apos;s tips are AI-generated and approved automatically, then sent on the scheduled days — no manual review needed. Leave off to review and approve each week&apos;s queue yourself.
+                      </span>
+                    </span>
+                  </label>
+
                   {/* Save Button */}
                   <div className="flex justify-end pt-4 border-t">
                     <Button
@@ -3698,11 +3909,6 @@ export default function SettingsPage() {
                         <>
                           <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                           Saving...
-                        </>
-                      ) : saveSuccess ? (
-                        <>
-                          <CheckCircle className="h-4 w-4 mr-2" />
-                          Saved!
                         </>
                       ) : (
                         <>
@@ -3767,6 +3973,85 @@ export default function SettingsPage() {
                 </CardContent>
               </Card>
             </div>
+          )}
+
+          {/* Visit Readings */}
+          {activeTab === "visits" && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Visit Readings</CardTitle>
+                <CardDescription>
+                  Choose which water-chemistry readings carers record during a visit. Required readings must be filled in before the carer can continue; hidden readings don&apos;t appear in the app at all.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="divide-y divide-gray-100">
+                  {VISIT_READING_CATALOG.map((field) => (
+                    <div key={field.key} className="flex items-center gap-4 py-3">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-900">
+                          {field.label}
+                          {field.unit && <span className="text-gray-400 font-normal"> ({field.unit})</span>}
+                        </p>
+                        <p className="text-xs text-gray-500">{field.hint}</p>
+                      </div>
+                      <Select
+                        value={visitReadings[field.key] || "optional"}
+                        onValueChange={(v) => setVisitReadings({ ...visitReadings, [field.key]: v })}
+                      >
+                        <SelectTrigger className="w-[140px]">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="required">Required</SelectItem>
+                          <SelectItem value="optional">Optional</SelectItem>
+                          <SelectItem value="hidden">Hidden</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  ))}
+                </div>
+                <div className="pt-4 border-t">
+                  <p className="text-sm font-medium text-gray-900 mb-1">Visit Photos</p>
+                  <p className="text-xs text-gray-500 mb-3">
+                    Where carers can get before/after and checklist photos from. With &quot;Camera only&quot;, the gallery is still offered as a fallback if the camera fails or its permission is denied — so a faulty camera never blocks a visit.
+                  </p>
+                  <Select
+                    value={visitPhotosAllowGallery ? "camera_and_gallery" : "camera_only"}
+                    onValueChange={(v) => setVisitPhotosAllowGallery(v === "camera_and_gallery")}
+                  >
+                    <SelectTrigger className="w-[260px]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="camera_only">Camera only (recommended)</SelectItem>
+                      <SelectItem value="camera_and_gallery">Camera &amp; gallery</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="flex justify-end pt-4 border-t">
+                  <Button
+                    onClick={handleSaveVisitReadings}
+                    disabled={savingVisitReadings}
+                    className={`bg-${theme.primary} hover:bg-${theme.primary}/90`}
+                    style={{ backgroundColor: colorMap[theme.primary] || undefined }}
+                  >
+                    {savingVisitReadings ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Saving...
+                      </>
+                    ) : (
+                      <>
+                        <Save className="h-4 w-4 mr-2" />
+                        Save Readings
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
           )}
 
           {/* Lead Sources (embedded) */}

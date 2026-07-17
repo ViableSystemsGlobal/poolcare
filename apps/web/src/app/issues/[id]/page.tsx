@@ -1,5 +1,7 @@
 "use client";
 
+import { formatCurrencyForDisplay } from "@/lib/utils";
+
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -149,7 +151,7 @@ export default function IssueDetailPage() {
   };
 
   const formatCurrency = (cents: number, currency: string) => {
-    return `${(cents / 100).toFixed(2)} ${currency}`;
+    return `${formatCurrencyForDisplay(currency)}${(cents / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
 
   if (loading) {
@@ -186,7 +188,7 @@ export default function IssueDetailPage() {
             Back
           </Button>
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">{issue.type}</h1>
+            <h1 className="text-2xl font-bold text-gray-900 capitalize">{issue.type.replace(/_/g, " ")}</h1>
             <p className="text-gray-600 mt-1">Issue details and resolution</p>
           </div>
         </div>
@@ -264,7 +266,7 @@ export default function IssueDetailPage() {
                 <AlertCircle className="h-5 w-5 text-gray-400 mt-0.5" />
                 <div>
                   <p className="text-sm font-medium text-gray-900">Type</p>
-                  <p className="text-sm text-gray-600">{issue.type}</p>
+                  <p className="text-sm text-gray-600 capitalize">{issue.type.replace(/_/g, " ")}</p>
                 </div>
               </div>
 

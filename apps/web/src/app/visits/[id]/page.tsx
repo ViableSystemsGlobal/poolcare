@@ -1,5 +1,7 @@
 "use client";
 
+import { formatCurrencyForDisplay } from "@/lib/utils";
+
 import { useState, useEffect, type ChangeEvent } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -20,6 +22,7 @@ import {
   Star,
   CheckCircle2,
   DollarSign,
+  Banknote,
 } from "lucide-react";
 import {
   Dialog,
@@ -42,6 +45,7 @@ import { useTheme } from "@/contexts/theme-context";
 import { SkeletonMetricCard } from "@/components/ui/skeleton";
 import { FileAttachments } from "@/components/files/file-attachments";
 import { useToast } from "@/hooks/use-toast";
+import { useConfirm } from "@/components/ui/confirm-provider";
 
 interface Reading {
   id: string;
@@ -125,6 +129,8 @@ export default function VisitDetailPage() {
   const { getThemeClasses } = useTheme();
   const theme = getThemeClasses();
   const { toast } = useToast();
+  const confirm = useConfirm();
+  const [markingPaid, setMarkingPaid] = useState(false);
   const visitId = params.id as string;
 
   const [loading, setLoading] = useState(true);
@@ -237,8 +243,48 @@ export default function VisitDetailPage() {
     }
   };
 
+  const handleMarkPaid = async () => {
+    if (!visit) return;
+    const amount = visit.paymentAmountCents
+      ? `GH₵${(visit.paymentAmountCents / 100).toFixed(2)}`
+      : "the approved amount";
+    const ok = await confirm({
+      title: "Mark visit as paid?",
+      description: `This records that ${amount} has been paid to the carer for this visit and notifies them. It can't be undone from here.`,
+      confirmLabel: "Mark as Paid",
+    });
+    if (!ok) return;
+
+    setMarkingPaid(true);
+    try {
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+      const response = await fetch(`${API_URL}/visits/${visitId}/mark-paid`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
+        },
+      });
+      if (response.ok) {
+        await fetchVisit();
+        toast({ title: "Marked as paid", description: "The carer has been notified." });
+      } else {
+        const error = await response.json().catch(() => ({}));
+        toast({
+          title: "Failed to mark as paid",
+          description: error.error || error.message || "Unknown error",
+          variant: "destructive",
+        });
+      }
+    } catch {
+      toast({ title: "Failed to mark as paid", description: "Please try again.", variant: "destructive" });
+    } finally {
+      setMarkingPaid(false);
+    }
+  };
+
   const formatCurrency = (cents: number, currency: string = "GHS") => {
-    return `${(cents / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currency}`;
+    return `${formatCurrencyForDisplay(currency)}${(cents / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
 
   const calculateDuration = () => {
@@ -289,10 +335,15 @@ export default function VisitDetailPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {visit.paymentStatus === "approved" ? (
+          {visit.paymentStatus === "paid" ? (
             <span className="px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-700 flex items-center gap-2">
               <CheckCircle2 className="h-4 w-4" />
-              Approved
+              Paid
+            </span>
+          ) : visit.paymentStatus === "approved" ? (
+            <span className="px-3 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-700 flex items-center gap-2">
+              <CheckCircle2 className="h-4 w-4" />
+              Approved — Awaiting Payment
             </span>
           ) : isCompleted ? (
             <span className="px-3 py-1 rounded-full text-sm font-medium bg-yellow-100 text-yellow-700 flex items-center gap-2">
@@ -305,10 +356,16 @@ export default function VisitDetailPage() {
               In Progress
             </span>
           )}
-          {isCompleted && visit.paymentStatus !== "approved" && (
+          {isCompleted && visit.paymentStatus !== "approved" && visit.paymentStatus !== "paid" && (
             <Button onClick={() => setIsApproveDialogOpen(true)}>
               <CheckCircle2 className="h-4 w-4 mr-2" />
               Approve for Payment
+            </Button>
+          )}
+          {visit.paymentStatus === "approved" && (
+            <Button onClick={handleMarkPaid} disabled={markingPaid}>
+              <Banknote className="h-4 w-4 mr-2" />
+              {markingPaid ? "Saving..." : "Mark as Paid"}
             </Button>
           )}
         </div>

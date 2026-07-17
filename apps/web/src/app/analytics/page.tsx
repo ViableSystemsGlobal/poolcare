@@ -18,6 +18,8 @@ import {
   PieChart,
   Inbox,
   Sparkles,
+  Star,
+  MessageSquare,
 } from "lucide-react";
 import { useTheme } from "@/contexts/theme-context";
 import { DashboardAICard } from "@/components/dashboard-ai-card";
@@ -56,6 +58,19 @@ interface TrendData {
   completed?: number;
 }
 
+interface ReviewsMetrics {
+  completedVisits: number;
+  reviewedVisits: number;
+  reviewRate: number;
+  avgRating: number | null;
+  distribution: Array<{ stars: number; count: number }>;
+  carers: Array<{ id: string; name: string; avgRating: number | null; reviews: number; completedVisits: number }>;
+  recentFeedback: Array<{
+    visitId: string; rating: number; feedback: string; completedAt: string;
+    pool: string | null; client: string | null; carer: string | null;
+  }>;
+}
+
 const PERIOD_OPTIONS = [
   { value: "7d", label: "7 Days" },
   { value: "30d", label: "30 Days" },
@@ -73,6 +88,7 @@ export default function AnalyticsPage() {
   const [priorOps, setPriorOps] = useState<OperationsMetrics | null>(null);
   const [revenueTrend, setRevenueTrend] = useState<TrendData[]>([]);
   const [jobsTrend, setJobsTrend] = useState<TrendData[]>([]);
+  const [reviews, setReviews] = useState<ReviewsMetrics | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedPeriod, setSelectedPeriod] = useState("30d");
   const [fromDate, setFromDate] = useState("");
@@ -115,7 +131,7 @@ export default function AnalyticsPage() {
       const prior = priorRange(fromDate, toDate);
       const priorParams = new URLSearchParams({ from: prior.from, to: prior.to });
 
-      const [financeRes, opsRes, revTrendRes, jobsTrendRes, priorFinRes, priorOpsRes] =
+      const [financeRes, opsRes, revTrendRes, jobsTrendRes, priorFinRes, priorOpsRes, reviewsRes] =
         await Promise.all([
           authedGet(`/analytics/finance?${params}`),
           authedGet(`/analytics/operations?${params}`),
@@ -123,6 +139,7 @@ export default function AnalyticsPage() {
           authedGet(`/analytics/jobs-trend?${params}`),
           authedGet(`/analytics/finance?${priorParams}`),
           authedGet(`/analytics/operations?${priorParams}`),
+          authedGet(`/analytics/reviews?${params}`),
         ]);
 
       if (financeRes.ok) setFinanceMetrics(await financeRes.json());
@@ -131,6 +148,7 @@ export default function AnalyticsPage() {
       if (jobsTrendRes.ok) setJobsTrend((await jobsTrendRes.json()).trend || []);
       if (priorFinRes.ok) setPriorFinance(await priorFinRes.json());
       if (priorOpsRes.ok) setPriorOps(await priorOpsRes.json());
+      if (reviewsRes.ok) setReviews(await reviewsRes.json());
     } catch (error) {
       console.error("Failed to fetch analytics:", error);
     } finally {
@@ -369,6 +387,102 @@ export default function AnalyticsPage() {
             <EmptyState icon={Calendar} text="No jobs scheduled in this period" />
           )}
         </ChartCard>
+      </section>
+
+      {/* ------------------------------ Service Quality ------------------------------ */}
+      <section>
+        <Eyebrow>Service Quality</Eyebrow>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-px bg-gray-100 rounded-xl overflow-hidden shadow-sm">
+          <StatCard
+            label="Avg Rating"
+            value={reviews?.avgRating != null ? `${reviews.avgRating} / 5` : "—"}
+            sub={reviews?.avgRating != null ? "★".repeat(Math.round(reviews.avgRating)) : "No reviews yet"}
+            icon={Star} color="#eab308" loading={loading}
+          />
+          <StatCard
+            label="Reviews" value={reviews ? formatNumber(reviews.reviewedVisits) : "—"}
+            sub={reviews ? `of ${reviews.completedVisits} completed visits` : ""}
+            icon={MessageSquare} color="#2563eb" loading={loading}
+          />
+          <StatCard
+            label="Review Rate" value={reviews ? `${reviews.reviewRate}%` : "—"}
+            sub="Visits with a rating"
+            icon={CheckCircle} color="#16a34a" loading={loading}
+          />
+          <StatCard
+            label="5-Star Visits"
+            value={reviews ? formatNumber(reviews.distribution.find((d) => d.stars === 5)?.count ?? 0) : "—"}
+            sub={reviews && reviews.reviewedVisits > 0
+              ? `${Math.round(((reviews.distribution.find((d) => d.stars === 5)?.count ?? 0) / reviews.reviewedVisits) * 100)}% of reviews`
+              : ""}
+            icon={Star} color="#9333ea" loading={loading}
+          />
+        </div>
+
+        {!loading && reviews && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
+            {/* Carer ratings */}
+            <div className="bg-white rounded-xl shadow-sm p-6">
+              <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wider mb-2">
+                Ratings by Carer
+              </h3>
+              {reviews.carers.length === 0 ? (
+                <EmptyState icon={Star} text="No completed visits in this period" />
+              ) : (
+                <div className="divide-y divide-gray-50">
+                  {reviews.carers.map((c) => (
+                    <div key={c.id} className="flex items-center gap-3 py-2.5">
+                      <span className="text-sm text-gray-900 font-medium flex-1 truncate">{c.name}</span>
+                      <span className="text-xs text-gray-400">
+                        {c.reviews}/{c.completedVisits} reviewed
+                      </span>
+                      {c.avgRating != null ? (
+                        <span className="flex items-center gap-1 text-sm font-semibold text-gray-900 tabular-nums w-16 justify-end">
+                          <Star className="h-3.5 w-3.5 text-yellow-500 fill-yellow-500" />
+                          {c.avgRating.toFixed(1)}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-gray-300 w-16 text-right">No ratings</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Recent feedback */}
+            <div className="bg-white rounded-xl shadow-sm p-6">
+              <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wider mb-2">
+                Recent Feedback
+              </h3>
+              {reviews.recentFeedback.length === 0 ? (
+                <EmptyState icon={MessageSquare} text="No written feedback in this period" />
+              ) : (
+                <div className="divide-y divide-gray-50">
+                  {reviews.recentFeedback.map((f) => (
+                    <div key={f.visitId} className="py-2.5">
+                      <div className="flex items-center gap-2 mb-0.5">
+                        <span className="flex items-center gap-0.5">
+                          {[1, 2, 3, 4, 5].map((s) => (
+                            <Star
+                              key={s}
+                              className={`h-3 w-3 ${s <= f.rating ? "text-yellow-500 fill-yellow-500" : "text-gray-200"}`}
+                            />
+                          ))}
+                        </span>
+                        <span className="text-xs text-gray-500 truncate">
+                          {[f.client, f.pool].filter(Boolean).join(" · ")}
+                          {f.carer && ` — served by ${f.carer}`}
+                        </span>
+                      </div>
+                      <p className="text-sm text-gray-700">{f.feedback}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </section>
     </div>
   );
