@@ -9,6 +9,7 @@ import { api } from "../src/lib/api-client";
 import { fixUrlForMobile } from "../src/lib/network-utils";
 import { useTheme } from "../src/contexts/ThemeContext";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as SecureStore from "expo-secure-store";
 import Loader from "../src/components/Loader";
 
 const localHomeCard = require("../assets/home-card.png");
@@ -166,7 +167,9 @@ export default function ClientDashboard() {
         setCheckingAuth(true);
         const token = await api.getAuthToken();
         if (!token) {
-          router.replace("/(auth)/login");
+          // First launch gets the onboarding tour; afterwards go straight to login
+          const seenOnboarding = await SecureStore.getItemAsync("has_seen_onboarding").catch(() => null);
+          router.replace(seenOnboarding ? "/(auth)/login" : "/(auth)/onboarding");
           return;
         }
         // Token exists: show app immediately, load dashboard in background (don't block on API)

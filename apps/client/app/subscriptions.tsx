@@ -73,13 +73,13 @@ export default function SubscriptionsScreen() {
         api.getCarers().catch(() => null),
       ]);
 
-      const templatesData = templatesRes.items || templatesRes || [];
-      const poolsData = poolsRes.items || poolsRes || [];
+      const templatesData = (templatesRes as any).items || templatesRes || [];
+      const poolsData = (poolsRes as any).items || poolsRes || [];
 
       setTemplates(templatesData);
       setPools(poolsData);
       if (carersRes) {
-        const carersData = carersRes.items || carersRes || [];
+        const carersData = (carersRes as any).items || carersRes || [];
         setCarers(carersData.map((c: any) => ({ id: c.id, name: c.name || "Unknown" })));
       }
     } catch (error) {

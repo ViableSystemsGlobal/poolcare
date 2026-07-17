@@ -95,7 +95,7 @@ export default function PoolsListScreen() {
             }
 
             // Get next service from upcoming scheduled jobs
-            const upcomingJobsResponse = await api.getJobs({ status: "scheduled", poolId: pool.id });
+            const upcomingJobsResponse: any = await api.getJobs({ status: "scheduled", poolId: pool.id });
             const upcomingJobs = Array.isArray(upcomingJobsResponse)
               ? upcomingJobsResponse
               : (upcomingJobsResponse.items || []);

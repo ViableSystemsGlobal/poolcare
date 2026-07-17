@@ -1,6 +1,7 @@
 import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
 import { router, usePathname } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "../contexts/ThemeContext";
 
 const TABS = [
@@ -13,6 +14,7 @@ const TABS = [
 
 export default function BottomNav() {
   const { themeColor } = useTheme();
+  const insets = useSafeAreaInsets();
   const pathname = usePathname();
 
   const isActive = (route: string) => {
@@ -25,7 +27,7 @@ export default function BottomNav() {
   };
 
   return (
-    <View style={styles.bottomNav}>
+    <View style={[styles.bottomNav, { bottom: Math.max(insets.bottom, 16) }]}>
       {TABS.map((tab) => {
         const active = isActive(tab.route);
         return (
@@ -57,13 +59,11 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     backgroundColor: "#ffffff",
     borderRadius: 24,
-    paddingTop: 12,
-    paddingBottom: 24,
+    paddingVertical: 10,
     paddingHorizontal: 16,
     justifyContent: "space-around",
     alignItems: "center",
     position: "absolute",
-    bottom: 16,
     left: 16,
     right: 16,
     shadowColor: "#000",
@@ -78,7 +78,10 @@ const styles = StyleSheet.create({
   },
   navLabel: {
     fontSize: 11,
+    lineHeight: 13,
     color: "#6b7280",
-    marginTop: 4,
+    marginTop: 3,
+    includeFontPadding: false,
+    textAlignVertical: "center",
   },
 });

@@ -22,10 +22,21 @@ import {
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
+    shouldShowBanner: true,
+    shouldShowList: true,
     shouldPlaySound: true,
     shouldSetBadge: true,
   }),
 });
+
+// Android needs an explicit high-importance channel for heads-up banners
+if (Platform.OS === "android") {
+  Notifications.setNotificationChannelAsync("default", {
+    name: "Default",
+    importance: Notifications.AndroidImportance.MAX,
+    vibrationPattern: [0, 250, 250, 250],
+  });
+}
 
 const TAB_ROUTES = ["/", "/index", "index", "/visits", "visits", "/pools", "pools", "/poolshop", "poolshop", "/settings", "settings"];
 
@@ -119,7 +130,7 @@ export default function RootLayout() {
 function LayoutInner() {
   const pathname = usePathname();
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const notificationResponseListener = useRef<Notifications.EventSubscription>();
+  const notificationResponseListener = useRef<Notifications.EventSubscription | undefined>(undefined);
 
   // Re-check auth whenever the route changes so BottomNav appears/disappears correctly
   useEffect(() => {

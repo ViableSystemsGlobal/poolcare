@@ -571,6 +571,7 @@ class ApiClient {
       logoUrl: string | null;
       themeColor: string;
       primaryColorHex: string;
+      onboardingImageUrls?: (string | null)[];
     }>("/settings/branding", { requireAuth: false });
   }
 

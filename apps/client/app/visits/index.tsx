@@ -60,7 +60,7 @@ export default function VisitsPage() {
       setLoading(true);
       
       // Fetch scheduled jobs for upcoming visits
-      const scheduledJobsResponse = await api.getJobs({ status: "scheduled" });
+      const scheduledJobsResponse: any = await api.getJobs({ status: "scheduled" });
       const scheduledJobs = Array.isArray(scheduledJobsResponse) 
         ? scheduledJobsResponse 
         : (scheduledJobsResponse.items || []);
@@ -97,7 +97,7 @@ export default function VisitsPage() {
       setUpcomingVisits(upcoming);
 
       // Fetch completed visits for past visits
-      const completedVisitsResponse = await api.getVisits({ status: "completed" });
+      const completedVisitsResponse: any = await api.getVisits({ status: "completed" });
       const completedVisits = Array.isArray(completedVisitsResponse) 
         ? completedVisitsResponse 
         : (completedVisitsResponse.items || []);

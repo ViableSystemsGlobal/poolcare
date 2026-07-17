@@ -53,7 +53,7 @@ export default function PoolDetailScreen() {
       setLoading(true);
 
       // Fetch pool details
-      const poolData = await api.getPool(id);
+      const poolData: any = await api.getPool(id);
 
       // Fix localhost URLs in image URLs
       const fixedImageUrls = (poolData.imageUrls || []).map((url: string) =>
@@ -61,7 +61,7 @@ export default function PoolDetailScreen() {
       );
 
       // Fetch visits for this pool
-      const visitsResponse = await api.getVisits({ poolId: id });
+      const visitsResponse: any = await api.getVisits({ poolId: id });
       const visits = Array.isArray(visitsResponse)
         ? visitsResponse
         : visitsResponse.items || [];
@@ -99,7 +99,7 @@ export default function PoolDetailScreen() {
       }
 
       // Get next scheduled service
-      const upcomingJobsResponse = await api.getJobs({
+      const upcomingJobsResponse: any = await api.getJobs({
         status: "scheduled",
         poolId: id,
       });

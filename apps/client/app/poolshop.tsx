@@ -266,7 +266,7 @@ export default function PoolShopScreen() {
             </View>
             <Text style={styles.emptyTitle}>Couldn't load products</Text>
             <Text style={styles.emptyText}>{error}</Text>
-            <TouchableOpacity style={[styles.retryButton, { backgroundColor: themeColor }]} onPress={fetchProducts}>
+            <TouchableOpacity style={[styles.retryButton, { backgroundColor: themeColor }]} onPress={() => fetchProducts()}>
               <Ionicons name="refresh-outline" size={20} color="#fff" />
               <Text style={styles.retryButtonText}>Try again</Text>
             </TouchableOpacity>

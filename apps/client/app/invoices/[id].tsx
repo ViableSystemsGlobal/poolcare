@@ -60,7 +60,7 @@ export default function InvoiceDetailScreen() {
   const loadInvoice = async () => {
     try {
       setLoading(true);
-      const data = await api.getInvoice(id);
+      const data: any = await api.getInvoice(id);
 
       const totalAmount = data.totalCents ? data.totalCents / 100 : (data.amount || 0);
       const paidAmount = data.paidCents ? data.paidCents / 100 : 0;

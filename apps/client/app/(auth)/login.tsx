@@ -30,6 +30,8 @@ export default function LoginScreen() {
   const [otp, setOtp] = useState("");
   const [step, setStep] = useState<"phone" | "otp">("phone");
   const [loading, setLoading] = useState(false);
+  const [resending, setResending] = useState(false);
+  const [resendIn, setResendIn] = useState(0);
   const [devOtpCode, setDevOtpCode] = useState<string | null>(null);
   const [orgLogoUrl, setOrgLogoUrl] = useState<string | null>(null);
   const [orgName, setOrgName] = useState<string>("PoolCare");
@@ -41,6 +43,13 @@ export default function LoginScreen() {
       if (data.logoUrl) setOrgLogoUrl(fixUrlForMobile(data.logoUrl));
     }).catch(() => {});
   }, [setThemeFromOrgProfile]);
+
+  // Countdown for the resend-code cooldown
+  useEffect(() => {
+    if (resendIn <= 0) return;
+    const t = setTimeout(() => setResendIn((s) => s - 1), 1000);
+    return () => clearTimeout(t);
+  }, [resendIn]);
 
   const handleRequestOtp = async () => {
     if (!phone.trim()) {
@@ -57,10 +66,31 @@ export default function LoginScreen() {
         } catch {}
       }
       setStep("otp");
+      setResendIn(45);
     } catch (error: any) {
       Alert.alert("Error", error.message || "Failed to send OTP. Please try again.");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleResendOtp = async () => {
+    if (resendIn > 0 || resending) return;
+    setResending(true);
+    try {
+      await api.requestOtp("phone", phone.trim());
+      if (__DEV__) {
+        try {
+          const check = await api.checkOtpCode("phone", phone.trim());
+          if (check.exists && check.code) setDevOtpCode(check.code);
+        } catch {}
+      }
+      setOtp("");
+      setResendIn(45);
+    } catch (error: any) {
+      Alert.alert("Error", error.message || "Failed to resend code. Please try again.");
+    } finally {
+      setResending(false);
     }
   };
 
@@ -200,6 +230,21 @@ export default function LoginScreen() {
                     <Ionicons name="checkmark" size={18} color="#ffffff" />
                   </>
                 )}
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.linkBtn}
+                onPress={handleResendOtp}
+                disabled={resendIn > 0 || resending}
+              >
+                <Ionicons name="refresh" size={14} color={resendIn > 0 ? "#9ca3af" : activeColor} />
+                <Text style={[styles.linkText, { color: resendIn > 0 ? "#9ca3af" : activeColor }]}>
+                  {resending
+                    ? "Sending new code..."
+                    : resendIn > 0
+                      ? `Resend code in ${resendIn}s`
+                      : "Resend code"}
+                </Text>
               </TouchableOpacity>
 
               <TouchableOpacity style={styles.linkBtn} onPress={() => { setStep("phone"); setOtp(""); }}>
