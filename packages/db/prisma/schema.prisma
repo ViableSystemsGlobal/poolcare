@@ -326,6 +326,8 @@ model Carer {
   imageUrl           String? // Profile image URL
   homeBaseLat        Float?
   homeBaseLng        Float?
+  homeBaseAddress    String? // Nearest landmark / formatted address (from Google)
+  ghanaPostAddress   String? // GhanaPost GPS digital address, e.g. GA-183-8164
   currentLat         Float? // Current location latitude
   currentLng         Float? // Current location longitude
   lastLocationUpdate DateTime? @db.Timestamptz(6) // When location was last updated
@@ -663,6 +665,8 @@ model VisitEntry {
   // Carer payment fields
   approvedAt         DateTime? @db.Timestamptz(6)
   approvedBy         String?   @db.Uuid
+  paidAt             DateTime? @db.Timestamptz(6)
+  paidBy             String?   @db.Uuid
   paymentAmountCents Int?
   paymentStatus      String?   @default("pending") // pending, approved, paid
   createdAt          DateTime  @default(now()) @db.Timestamptz(6)
