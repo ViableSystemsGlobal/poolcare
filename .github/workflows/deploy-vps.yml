@@ -1,0 +1,50 @@
+# Builds the two VPS-hosted images (admin web + api) off-box and pushes them to
+# GHCR, per DEPLOY_VPS.md. The VPS then just does `docker compose pull && up -d`.
+name: Build VPS images
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: vps-images-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - app: api
+            build_args: ""
+          - app: web
+            build_args: |
+              NEXT_PUBLIC_API_URL=https://api.poolcare.africa/api
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/${{ matrix.app }}/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/viablesystemsglobal/poolcare-${{ matrix.app }}:latest
+            ghcr.io/viablesystemsglobal/poolcare-${{ matrix.app }}:${{ github.sha }}
+          build-args: ${{ matrix.build_args }}
+          cache-from: type=gha,scope=${{ matrix.app }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.app }}
