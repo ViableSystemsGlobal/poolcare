@@ -36,6 +36,14 @@ export class CreateCarerDto {
   homeBase?: HomeBaseDto;
 
   @IsOptional()
+  @IsString()
+  homeBaseAddress?: string;
+
+  @IsOptional()
+  @IsString()
+  ghanaPostAddress?: string;
+
+  @IsOptional()
   @IsBoolean()
   active?: boolean;
 }

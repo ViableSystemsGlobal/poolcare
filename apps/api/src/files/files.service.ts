@@ -244,6 +244,21 @@ export class FilesService {
     })));
   }
 
+  /**
+   * Resolve a stored photo/file URL to something fetchable: absolute URLs pass
+   * through, bare storage keys (e.g. "org/x/visit_photo/y/z.jpg") get a
+   * presigned (or local-route) URL.
+   */
+  async resolveUrl(url: string): Promise<string> {
+    if (!url || url.startsWith("http://") || url.startsWith("https://") || url.startsWith("data:")) {
+      return url;
+    }
+    if (url.startsWith("/api/files/")) {
+      return `${this.localBaseUrl()}${url}`;
+    }
+    return this.publicUrlFor(url.startsWith("local/") ? "local" : this.bucket, url);
+  }
+
   private localBaseUrl(): string {
     return this.configService.get<string>("API_PUBLIC_URL")
       || this.configService.get<string>("RENDER_EXTERNAL_URL")

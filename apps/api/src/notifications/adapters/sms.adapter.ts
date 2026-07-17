@@ -2,8 +2,9 @@ import { Injectable, Logger, Inject, forwardRef, InternalServerErrorException, S
 import { ConfigService } from "@nestjs/config";
 import { SettingsService } from "../../settings/settings.service";
 import * as crypto from 'crypto';
+import { resolveEncryptionKey } from '../../utils/encryption-key.util';
 
-const ENCRYPTION_KEY = process.env.SETTINGS_ENCRYPTION_KEY || 'poolcare-dev-encryption-key-32ch';
+const ENCRYPTION_KEY = resolveEncryptionKey();
 
 function decrypt(text: string): string {
   try {

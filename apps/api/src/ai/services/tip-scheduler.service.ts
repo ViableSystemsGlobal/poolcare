@@ -5,35 +5,36 @@ import { NotificationsService } from "../../notifications/notifications.service"
 import { NewsletterAgentService } from "./newsletter-agent.service";
 import { SettingsService } from "../../settings/settings.service";
 
+// Fallback tips, written for Ghana's climate (rainy season Apr–Jul & Sep–Oct,
+// dry season, harmattan Nov–Feb). Used when the org has no LLM configured.
 const POOL_CARE_TIPS: string[] = [
-  "Test your pool water at least 2-3 times per week during summer and once per week in winter to maintain proper chemical balance.",
+  "Test your pool water 2-3 times per week during the rainy season and at least weekly in the dry season to maintain proper chemical balance.",
   "Keep your pool's pH level between 7.2 and 7.6 for optimal swimmer comfort and chlorine effectiveness.",
   "Run your pool pump for at least 8-12 hours per day to ensure proper water circulation and filtration.",
   "Skim the surface of your pool daily to remove leaves, insects, and other debris before they sink.",
   "Brush your pool walls and floor weekly to prevent algae buildup and calcium deposits.",
   "Clean your skimmer basket at least once a week to maintain proper water flow and filtration efficiency.",
-  "Shock your pool every 1-2 weeks, or after heavy use, rain, or a major temperature change.",
+  "Shock your pool every 1-2 weeks, and always after heavy use or a major rainstorm.",
   "Maintain your pool's alkalinity between 80-120 ppm to help stabilize pH levels.",
   "Keep the water level at the center of your pool skimmer for optimal operation.",
   "Backwash your sand or DE filter when the pressure gauge reads 8-10 psi above normal.",
-  "Use a pool cover when the pool is not in use to reduce evaporation, heat loss, and debris accumulation.",
+  "Use a pool cover when the pool is not in use to reduce evaporation, debris, and harmattan dust accumulation.",
   "Inspect your pool equipment regularly for leaks, cracks, or unusual noises.",
   "Calcium hardness should be maintained between 200-400 ppm to protect your pool surfaces and equipment.",
   "Trim trees and bushes near your pool to reduce the amount of debris falling into the water.",
   "Never mix pool chemicals together. Always add chemicals to water, never water to chemicals.",
   "Store pool chemicals in a cool, dry, well-ventilated area away from direct sunlight.",
   "Check and clean your pool filter cartridge every 4-8 weeks for cartridge filters.",
-  "Cyanuric acid (stabilizer) levels should be between 30-50 ppm to protect chlorine from UV degradation.",
-  "After heavy rain, test your water chemistry as rainwater can significantly alter your pool's balance.",
+  "Cyanuric acid (stabilizer) levels should be between 30-50 ppm to protect chlorine from Ghana's strong year-round sunshine.",
+  "After heavy rain, test your water chemistry within 24 hours — rainwater dilutes chlorine and can quickly alter your pool's balance.",
   "Vacuum your pool at least once a week to remove settled debris from the floor.",
-  "Consider using a robotic pool cleaner to reduce manual cleaning time and improve circulation.",
+  "During the harmattan, skim and vacuum more often — fine dust settles quickly, clouds the water, and clogs filters.",
+  "Ghana's warm water (28-32°C) makes chlorine deplete faster — check free chlorine frequently and keep it at 1-3 ppm.",
   "Keep a log of your pool's chemical readings to track trends and catch problems early.",
   "If your pool water looks cloudy, check the filter pressure and chemical balance before adding clarifier.",
-  "Winterize your pool properly at the end of the season to prevent freeze damage to pipes and equipment.",
-  "In spring, open your pool gradually — clean, balance chemicals, and run the pump before swimming.",
-  "Solar blankets can raise your pool temperature by 10-15 degrees and cut heating costs significantly.",
+  "In the rainy season, check your pool's water level after storms and drain any overflow to keep the skimmer working properly.",
+  "Warm water and strong sun make algae grow fast — brush and treat at the first sign of green before it spreads.",
   "Phosphates feed algae. If you have recurring algae problems, test for and treat high phosphate levels.",
-  "Run your pool pump during off-peak electricity hours to save on energy costs.",
   "Saltwater pools still need regular monitoring — check salt levels, pH, and chlorine output monthly.",
   "A clean pool deck helps keep debris out of the water. Sweep or hose down the area regularly.",
   "Replace worn pool equipment gaskets and O-rings promptly to prevent leaks and costly damage.",
@@ -62,6 +63,7 @@ export interface TipSchedule {
   saturday: boolean;
   sunday: boolean;
   lastTipIndex: number;
+  autoApprove?: boolean;
   weeklyQueue?: WeeklyQueueEntry[];
 }
 
@@ -75,6 +77,7 @@ const DEFAULT_TIP_SCHEDULE: TipSchedule = {
   saturday: false,
   sunday: false,
   lastTipIndex: -1,
+  autoApprove: false,
 };
 
 @Injectable()
@@ -512,14 +515,20 @@ export class TipSchedulerService {
       enabledDays = ["monday", "wednesday", "friday"];
     }
 
+    const autoApprove = tipSchedule.autoApprove === true;
+    const previousTips: string[] = (tipSchedule.weeklyQueue || []).map((e: any) => e.tip).filter(Boolean);
+    const aiTips = await this.generateTipsWithAI(orgId, enabledDays.length, previousTips);
+
     let currentIndex = tipSchedule.lastTipIndex ?? -1;
+    let aiIndex = 0;
     const weeklyQueue: WeeklyQueueEntry[] = [];
 
     for (let i = 0; i < 7; i++) {
       const dayName = dayNames[i];
       if (!enabledDays.includes(dayName)) continue;
 
-      currentIndex = (currentIndex + 1) % POOL_CARE_TIPS.length;
+      const aiTip = aiTips?.[aiIndex++];
+      if (!aiTip) currentIndex = (currentIndex + 1) % POOL_CARE_TIPS.length;
       const date = new Date(weekStart);
       date.setDate(date.getDate() + i);
 
@@ -527,9 +536,9 @@ export class TipSchedulerService {
         day: dayName,
         dayName,
         date: date.toISOString().slice(0, 10),
-        tipIndex: currentIndex,
-        tip: POOL_CARE_TIPS[currentIndex],
-        approved: false,
+        tipIndex: aiTip ? -1 : currentIndex,
+        tip: aiTip || POOL_CARE_TIPS[currentIndex],
+        approved: autoApprove,
       });
     }
 
@@ -553,6 +562,46 @@ export class TipSchedulerService {
   }
 
   /**
+   * Generate fresh, Ghana-specific tips with the org's LLM.
+   * Returns null when no LLM is configured or generation fails — callers
+   * fall back to the static POOL_CARE_TIPS rotation.
+   */
+  private async generateTipsWithAI(
+    orgId: string,
+    count: number,
+    avoid: string[],
+  ): Promise<string[] | null> {
+    try {
+      const config = await this.settingsService.getLlmConfig(orgId);
+      if (!config || !config.apiKey) return null;
+
+      const month = new Date().toLocaleDateString("en-US", { month: "long" });
+      const systemPrompt =
+        "You are a pool care expert at a pool service company in Ghana, West Africa. " +
+        "Ghana's climate is warm year-round (water 28-32°C) with a rainy season roughly April-July and September-October, " +
+        "a dry season, and the dusty harmattan from November to February. " +
+        "NEVER mention summer, winter, spring, autumn/fall, freezing, winterizing, or pool heating — those do not apply in Ghana. " +
+        "Use GH₵ for any prices.";
+      const avoidBlock = avoid.length
+        ? `\n\nDo not repeat or closely paraphrase any of these recent tips:\n${avoid.map((t) => `- ${t}`).join("\n")}`
+        : "";
+      const userPrompt = `Write ${count} practical pool care tips for Ghanaian pool owners, relevant to the month of ${month}. Each tip must be a single self-contained sentence or two, under 220 characters (SMS-friendly), and immediately actionable.${avoidBlock}\n\nRespond ONLY with a JSON array of ${count} strings — no markdown, no code fences, no other text.`;
+
+      const raw = await this.newsletterAgentService.callLlm(config, systemPrompt, userPrompt);
+      const match = raw.match(/\[[\s\S]*\]/);
+      const parsed = JSON.parse(match ? match[0] : raw);
+      if (!Array.isArray(parsed)) return null;
+      const tips = parsed
+        .filter((t): t is string => typeof t === "string" && t.trim().length > 0)
+        .map((t) => t.trim());
+      return tips.length >= count ? tips.slice(0, count) : tips.length > 0 ? tips : null;
+    } catch (err: any) {
+      this.logger.warn(`AI tip generation failed for org ${orgId}: ${err?.message ?? err}`);
+      return null;
+    }
+  }
+
+  /**
    * Pre-select the coming week's tips based on enabled days and store in weeklyQueue.
    */
   private async prepareWeeklyTips(
@@ -568,14 +617,20 @@ export class TipSchedulerService {
 
     if (enabledDays.length === 0) return false;
 
+    const autoApprove = tipSchedule.autoApprove === true;
+    const previousTips: string[] = (tipSchedule.weeklyQueue || []).map((e: any) => e.tip).filter(Boolean);
+    const aiTips = await this.generateTipsWithAI(orgId, enabledDays.length, previousTips);
+
     let currentIndex = tipSchedule.lastTipIndex ?? -1;
+    let aiIndex = 0;
     const weeklyQueue: WeeklyQueueEntry[] = [];
 
     for (let i = 0; i < 7; i++) {
       const dayName = dayNames[i];
       if (!tipSchedule[dayName]) continue;
 
-      currentIndex = (currentIndex + 1) % POOL_CARE_TIPS.length;
+      const aiTip = aiTips?.[aiIndex++];
+      if (!aiTip) currentIndex = (currentIndex + 1) % POOL_CARE_TIPS.length;
       const date = new Date(weekStart);
       date.setDate(date.getDate() + i);
 
@@ -583,9 +638,9 @@ export class TipSchedulerService {
         day: dayName,
         dayName,
         date: date.toISOString().slice(0, 10),
-        tipIndex: currentIndex,
-        tip: POOL_CARE_TIPS[currentIndex],
-        approved: false,
+        tipIndex: aiTip ? -1 : currentIndex,
+        tip: aiTip || POOL_CARE_TIPS[currentIndex],
+        approved: autoApprove,
       });
     }
 

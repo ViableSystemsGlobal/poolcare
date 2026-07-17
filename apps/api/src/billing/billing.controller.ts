@@ -48,9 +48,14 @@ export class BillingController {
     @Query("orgId") orgId?: string,
     @Headers("x-cron-secret") secret?: string
   ) {
-    // Verify cron secret if set
+    // Verify cron secret. Fail closed in production: this endpoint triggers
+    // real billing, so a missing CRON_SECRET must not leave it open.
     const expectedSecret = process.env.CRON_SECRET;
-    if (expectedSecret && secret !== expectedSecret) {
+    if (!expectedSecret) {
+      if (process.env.NODE_ENV === "production") {
+        throw new UnauthorizedException("Cron secret not configured");
+      }
+    } else if (secret !== expectedSecret) {
       throw new UnauthorizedException();
     }
 

@@ -168,9 +168,13 @@ export class AuthService {
           }
         }
         
-        // Warn if no channels succeeded
+        // Warn if no channels succeeded — never log the code in production
         if (sendResults.length === 0) {
-          console.warn(`⚠️  [OTP] WARNING: Failed to send OTP via any channel. Code: ${code} (logged in dev mode)`);
+          if (process.env.NODE_ENV === "production") {
+            console.warn(`⚠️  [OTP] WARNING: Failed to send OTP via any channel for ${dto.channel}:${dto.target}`);
+          } else {
+            console.warn(`⚠️  [OTP] WARNING: Failed to send OTP via any channel. Code: ${code} (dev)`);
+          }
         }
       } catch (error: any) {
         console.error(`[OTP] Failed to send OTP:`, error.message);
@@ -276,6 +280,19 @@ export class AuthService {
         if (!user) {
           console.log('[AuthService] Invite-only: no user for', dto.target);
           throw new UnauthorizedException(INVITE_ONLY_MESSAGE);
+        }
+
+        // Self-heal: a Carer record without its CARER membership row (legacy /
+        // imported data) should still be able to log into the carer app.
+        if (app === "carer") {
+          const carerRecord = await prisma.carer.findFirst({ where: { userId: user.id } });
+          if (carerRecord) {
+            await prisma.orgMember.upsert({
+              where: { orgId_userId_role: { orgId: carerRecord.orgId, userId: user.id, role: "CARER" } },
+              create: { orgId: carerRecord.orgId, userId: user.id, role: "CARER" },
+              update: {},
+            });
+          }
         }
 
         // Fetch ALL memberships for this user to build multi-role JWT

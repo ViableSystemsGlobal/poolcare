@@ -35,6 +35,19 @@ export class SettingsController {
     return this.settingsService.updateOrgSettings(user.org_id, data);
   }
 
+  // Readable by any authenticated user — the carer app renders its readings form from this
+  @Get("visit-readings")
+  async getVisitReadings(@CurrentUser() user: any) {
+    return this.settingsService.getVisitReadingSettings(user.org_id);
+  }
+
+  @Patch("visit-readings")
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "MANAGER")
+  async updateVisitReadings(@CurrentUser() user: any, @Body() data: any) {
+    return this.settingsService.updateVisitReadingSettings(user.org_id, data);
+  }
+
   @Get("tip-schedule")
   @UseGuards(RolesGuard)
   @Roles("ADMIN", "MANAGER")
@@ -342,6 +355,69 @@ export class SettingsController {
       return { chatCardImageUrl };
     } catch (error: any) {
       throw new BadRequestException(error.message || "Failed to upload chat card image");
+    }
+  }
+
+  @Post("upload-app-download-image")
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "MANAGER")
+  @UseInterceptors(FileInterceptor("appDownloadImage"))
+  async uploadAppDownloadImage(
+    @CurrentUser() user: { org_id: string },
+    @UploadedFile(
+      new ParseFilePipe({
+        fileIsRequired: true,
+        validators: [
+          new MaxFileSizeValidator({ maxSize: 2 * 1024 * 1024 }),
+          new FileTypeValidator({ fileType: /(jpeg|jpg|png|webp)$/ }),
+        ],
+      })
+    )
+    file: Express.Multer.File
+  ) {
+    try {
+      const appDownloadImageUrl = await this.filesService.uploadImage(user.org_id, file, "app_download_image", user.org_id);
+      await this.settingsService.updateOrgSettings(user.org_id, { profile: { appDownloadImageUrl } });
+      return { appDownloadImageUrl };
+    } catch (error: any) {
+      throw new BadRequestException(error.message || "Failed to upload app download image");
+    }
+  }
+
+  @Post("upload-onboarding-image")
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "MANAGER")
+  @UseInterceptors(FileInterceptor("onboardingImage"))
+  async uploadOnboardingImage(
+    @CurrentUser() user: { org_id: string },
+    @Body("slide") slide: string,
+    @UploadedFile(
+      new ParseFilePipe({
+        fileIsRequired: true,
+        validators: [
+          new MaxFileSizeValidator({ maxSize: 2 * 1024 * 1024 }),
+          new FileTypeValidator({ fileType: /(jpeg|jpg|png|webp)$/ }),
+        ],
+      })
+    )
+    file: Express.Multer.File
+  ) {
+    const slideIndex = Number(slide);
+    if (!Number.isInteger(slideIndex) || slideIndex < 0 || slideIndex > 3) {
+      throw new BadRequestException("slide must be an index between 0 and 3");
+    }
+    try {
+      const url = await this.filesService.uploadImage(user.org_id, file, "onboarding_image", user.org_id);
+      const current = await this.settingsService.getOrgSettings(user.org_id);
+      const onboardingImageUrls: (string | null)[] = Array.isArray((current.profile as any).onboardingImageUrls)
+        ? [...(current.profile as any).onboardingImageUrls]
+        : [];
+      while (onboardingImageUrls.length < 4) onboardingImageUrls.push(null);
+      onboardingImageUrls[slideIndex] = url;
+      await this.settingsService.updateOrgSettings(user.org_id, { profile: { onboardingImageUrls } });
+      return { onboardingImageUrls };
+    } catch (error: any) {
+      throw new BadRequestException(error.message || "Failed to upload onboarding image");
     }
   }
 

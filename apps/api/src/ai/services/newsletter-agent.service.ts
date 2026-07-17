@@ -60,7 +60,8 @@ export class NewsletterAgentService {
   /**
    * Call the configured LLM to generate newsletter content.
    */
-  private async callLlm(
+  /** Shared LLM caller — also used by TipSchedulerService for tip generation. */
+  async callLlm(
     config: { provider: string; apiKey: string; model: string; baseUrl: string | null },
     systemPrompt: string,
     userPrompt: string,
@@ -75,7 +76,7 @@ export class NewsletterAgentService {
         },
         body: JSON.stringify({
           model: config.model,
-          max_tokens: 2048,
+          max_tokens: 8192,
           system: systemPrompt,
           messages: [{ role: "user", content: userPrompt }],
         }),
@@ -85,6 +86,9 @@ export class NewsletterAgentService {
         throw new BadRequestException(
           data.error?.message || data.message || JSON.stringify(data),
         );
+      }
+      if (data.stop_reason === "max_tokens") {
+        this.logger.warn("LLM response truncated at max_tokens — output may be incomplete");
       }
       return data.content?.[0]?.text ?? "";
     }
@@ -100,7 +104,7 @@ export class NewsletterAgentService {
       },
       body: JSON.stringify({
         model: config.model,
-        max_tokens: 2048,
+        max_tokens: 8192,
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: userPrompt },
@@ -112,6 +116,9 @@ export class NewsletterAgentService {
       throw new BadRequestException(
         data.error?.message || data.message || JSON.stringify(data),
       );
+    }
+    if (data.choices?.[0]?.finish_reason === "length") {
+      this.logger.warn("LLM response truncated at max_tokens — output may be incomplete");
     }
     return data.choices?.[0]?.message?.content ?? "";
   }
@@ -219,6 +226,14 @@ export class NewsletterAgentService {
       // Knowledge base may not be available — continue without it
     }
 
+    // Org branding — used in the prompt (heading colors) and the email template
+    const orgName =
+      (await prisma.organization.findUnique({ where: { id: orgId }, select: { name: true } }))
+        ?.name || "PoolCare";
+    const orgSetting = await prisma.orgSetting.findUnique({ where: { orgId } });
+    const profile = (orgSetting?.profile as any) || {};
+    const themeColor = profile.customColorHex || "#397d54";
+
     const toneInstruction = tone ? `Use a ${tone} tone.` : "Use a friendly and professional tone.";
     const topicInstruction = topic
       ? `Focus the newsletter on the following topic: ${topic}.`
@@ -245,7 +260,7 @@ ${tipsInstruction}
 Respond ONLY with valid JSON in this exact format (no markdown, no code fences):
 {
   "subject": "The email subject line",
-  "htmlBody": "The newsletter body as clean HTML fragments (headings, paragraphs, lists with inline styles). Do NOT include html/head/body tags or full document structure — just the inner content. Use h2 for section headings, p for paragraphs, ul/li for lists. Keep inline styles simple.",
+  "htmlBody": "The newsletter body as clean HTML fragments (headings, paragraphs, lists with inline styles). Do NOT include html/head/body tags or full document structure — just the inner content. Use h2 for section headings, p for paragraphs, ul/li for lists. Keep inline styles simple. Use ${themeColor} (the company's brand color) for all heading colors and accents — never blue or any other color.",
   "textBody": "Plain text version of the same content."
 }`;
 
@@ -272,22 +287,36 @@ Respond ONLY with valid JSON in this exact format (no markdown, no code fences):
         .replace(/"\s*,\s*"textBody"\s*:[\s\S]*$/i, "")
         .trim();
     } catch {
-      this.logger.warn("LLM returned non-JSON response, attempting to extract content");
-      // Try to strip JSON wrapper from raw text
-      let content = raw
-        .replace(/^\s*\{?\s*"subject"\s*:\s*"[^"]*"\s*,?\s*/i, "")
-        .replace(/^\s*"htmlBody"\s*:\s*"/i, "")
-        .replace(/"\s*,?\s*"textBody"\s*:\s*"[\s\S]*$/i, "")
-        .replace(/```json\s*/gi, "").replace(/```\s*/gi, "")
-        .trim();
-      if (content) {
+      this.logger.warn("LLM returned non-JSON response, attempting to extract fields");
+      // Salvage individual fields — works even when the JSON is truncated
+      // mid-string (e.g. the response hit max_tokens before closing the object).
+      const unescape = (s: string) =>
+        s
+          .replace(/\\n/g, "\n")
+          .replace(/\\t/g, "\t")
+          .replace(/\\"/g, '"')
+          .replace(/\\\//g, "/")
+          .replace(/\\\\/g, "\\");
+      const grab = (key: string): string => {
+        const m = raw.match(new RegExp(`"${key}"\\s*:\\s*"((?:[^"\\\\]|\\\\.)*)`));
+        return m ? unescape(m[1]).trim() : "";
+      };
+      subject = grab("subject") || subject;
+      contentHtml = grab("htmlBody") || grab("html_body");
+      textBody = grab("textBody") || grab("text_body") || contentHtml.replace(/<[^>]+>/g, "");
+      if (!contentHtml) {
+        // No recognizable JSON at all — treat the raw text as the newsletter body
+        const content = raw.replace(/```json\s*/gi, "").replace(/```\s*/gi, "").trim();
         contentHtml = `<div>${content.replace(/\n\n/g, "</p><p>").replace(/\n/g, "<br>")}</div>`;
         textBody = content;
-      } else {
-        contentHtml = `<div>${raw.replace(/\n/g, "<br>")}</div>`;
-        textBody = raw;
       }
     }
+
+    // Enforce the brand color on headings regardless of what the LLM chose
+    contentHtml = contentHtml.replace(
+      /(<h[1-4][^>]*?color:\s*)#[0-9a-fA-F]{3,8}/gi,
+      `$1${themeColor}`,
+    );
 
     // Add tips section
     if (tips.length > 0) {
@@ -296,23 +325,17 @@ Respond ONLY with valid JSON in this exact format (no markdown, no code fences):
       textBody += `\n\nThis Week's Pool Care Tips:\n${textTips}`;
     }
 
-    // Fetch org branding for the email template
-    const orgName = (await prisma.organization.findUnique({ where: { id: orgId }, select: { name: true } }))?.name || "PoolCare";
-    const orgSetting = await prisma.orgSetting.findUnique({ where: { orgId } });
-    const profile = (orgSetting?.profile as any) || {};
-    const logoUrl = profile.logoUrl || "";
-    const themeColor = profile.customColorHex || "#397d54";
-    const supportEmail = profile.supportEmail || "info@poolcare.africa";
-    const supportPhone = profile.supportPhone || "";
-
     // Wrap content in a polished email template
     const htmlBody = this.wrapInEmailTemplate({
       contentHtml,
       orgName,
-      logoUrl,
+      logoUrl: profile.logoUrl || "",
       themeColor,
-      supportEmail,
-      supportPhone,
+      supportEmail: profile.supportEmail || "info@poolcare.africa",
+      supportPhone: profile.supportPhone || "",
+      appDownloadUrl: profile.appDownloadUrl || "",
+      appStoreUrl: profile.appStoreUrl || "",
+      googlePlayUrl: profile.googlePlayUrl || "",
       subject,
     });
 
@@ -329,14 +352,51 @@ Respond ONLY with valid JSON in this exact format (no markdown, no code fences):
     themeColor: string;
     supportEmail: string;
     supportPhone: string;
+    appDownloadUrl?: string;
+    appStoreUrl?: string;
+    googlePlayUrl?: string;
     subject: string;
   }): string {
-    const { contentHtml, orgName, logoUrl, themeColor, supportEmail, supportPhone, subject } = opts;
+    const {
+      contentHtml, orgName, logoUrl, themeColor, supportEmail, supportPhone,
+      appDownloadUrl, appStoreUrl, googlePlayUrl, subject,
+    } = opts;
     const year = new Date().getFullYear();
     const logoBlock = logoUrl
       ? `<img src="${logoUrl}" alt="${orgName}" style="max-height:48px;max-width:180px;display:block;margin:0 auto;" />`
       : `<h1 style="margin:0;font-size:24px;font-weight:700;color:${themeColor};">${orgName}</h1>`;
     const phoneBlock = supportPhone ? `<span style="color:#999999;"> | </span><a href="tel:${supportPhone.replace(/\s/g,'')}" style="color:#999999;text-decoration:none;">${supportPhone}</a>` : "";
+    // Store badges (same design as the website's) built in table HTML — email
+    // clients strip SVG, so the store glyphs are PNGs served from the API.
+    const apiBase =
+      process.env.RENDER_EXTERNAL_URL || process.env.API_URL || "http://localhost:4000";
+    const storeBadge = (href: string, topLine: string, storeName: string, icon: string, iconH: number) => `
+<table role="presentation" cellpadding="0" cellspacing="0" align="center" style="display:inline-table;margin:0 4px 8px;"><tr>
+<td style="background-color:#1a3d2a;border-radius:10px;">
+<a href="${href}" style="display:inline-block;padding:9px 18px;text-decoration:none;">
+<table role="presentation" cellpadding="0" cellspacing="0"><tr>
+<td style="vertical-align:middle;padding-right:11px;"><img src="${apiBase}/api/files/local/email_assets/${icon}" width="22" height="${iconH}" alt="" style="display:block;border:0;" /></td>
+<td style="vertical-align:middle;text-align:left;">
+<span style="display:block;font-size:10px;color:#b9cabf;letter-spacing:0.02em;line-height:1.3;">${topLine}</span>
+<span style="display:block;font-size:15px;font-weight:600;color:#ffffff;line-height:1.35;">${storeName}</span>
+</td>
+</tr></table>
+</a>
+</td></tr></table>`;
+    // Store links fall back to the general download link so both badges
+    // always render whenever any app link is configured.
+    const appleHref = appStoreUrl || appDownloadUrl;
+    const googleHref = googlePlayUrl || appDownloadUrl;
+    const storeBadges = [
+      appleHref ? storeBadge(appleHref, "Download on the", "App Store", "badge-apple.png", 26) : "",
+      googleHref ? storeBadge(googleHref, "Get it on", "Google Play", "badge-play.png", 24) : "",
+    ].join("");
+    const appBlock = storeBadges
+      ? `<div style="margin:0 0 16px;">
+<p style="margin:0 0 10px;font-size:13px;color:#666666;">Get the ${orgName} app</p>
+${storeBadges}
+</div>`
+      : "";
 
     return `<!DOCTYPE html>
 <html lang="en">
@@ -376,6 +436,7 @@ ${contentHtml}
 <!-- Footer -->
 <tr>
 <td style="padding:24px 32px;text-align:center;">
+${appBlock}
 <p style="margin:0 0 8px;font-size:13px;color:#999999;">
 Sent with care by <strong style="color:#666666;">${orgName}</strong>
 </p>
@@ -536,14 +597,14 @@ Sent with care by <strong style="color:#666666;">${orgName}</strong>
   }
 
   /**
-   * Get pending newsletter drafts for an org.
+   * Get pending newsletter drafts for an org (unsent: awaiting approval or approved).
    */
   async getDrafts(orgId: string) {
     const drafts = await prisma.notification.findMany({
       where: {
         orgId,
         template: "newsletter_draft",
-        status: "draft",
+        status: { in: ["draft", "approved"] },
       },
       orderBy: { createdAt: "desc" },
       take: 50,

@@ -46,6 +46,12 @@ export class MapsController {
     return this.mapsService.geocode(body.address, orgApiKey);
   }
 
+  @Post("search-places")
+  async searchPlaces(@CurrentUser() user: any, @Body() body: { query: string }) {
+    const orgApiKey = await this.settingsService.getGoogleMapsApiKey(user.org_id);
+    return { items: await this.mapsService.searchPlaces(body.query, orgApiKey) };
+  }
+
   @Post("reverse-geocode")
   async reverseGeocode(@CurrentUser() user: any, @Body() body: { lat: number; lng: number; apiKey?: string }) {
     // Get org-specific API key if not provided

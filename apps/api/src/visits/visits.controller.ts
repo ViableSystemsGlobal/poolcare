@@ -143,6 +143,14 @@ export class VisitsController {
     return this.visitsService.review(user.org_id, user.role, user.sub, visitId, dto);
   }
 
+  @Post(":id/mark-paid")
+  async markPaid(
+    @CurrentUser() user: { org_id: string; role: string; sub: string },
+    @Param("id") visitId: string
+  ) {
+    return this.visitsService.markPaid(user.org_id, user.role, user.sub, visitId);
+  }
+
   // Temporary approve endpoint for admin UI (no DB fields yet)
   @Post(":id/approve")
   async approve(

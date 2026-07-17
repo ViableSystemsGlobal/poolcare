@@ -1,9 +1,10 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import { Injectable, NotFoundException, BadRequestException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { prisma } from "@poolcare/db";
 import * as crypto from 'crypto';
+import { resolveEncryptionKey } from '../utils/encryption-key.util';
 
-const ENCRYPTION_KEY = process.env.SETTINGS_ENCRYPTION_KEY || 'poolcare-dev-encryption-key-32ch'; // Must be 32 chars
+const ENCRYPTION_KEY = resolveEncryptionKey(); // 32 chars; throws in prod if SETTINGS_ENCRYPTION_KEY unset
 const IV_LENGTH = 16;
 
 function encrypt(text: string): string {
@@ -46,6 +47,10 @@ export class SettingsService {
     primaryColorHex: string;
     loginBackgroundUrl: string | null;
     loginBackgroundType: string | null;
+    onboardingImageUrls: (string | null)[];
+    appStoreUrl: string | null;
+    googlePlayUrl: string | null;
+    appDownloadUrl: string | null;
   }> {
     // Find an OrgSetting that has branding configured (logoUrl or custom theme)
     const orgSettings = await prisma.orgSetting.findMany({
@@ -88,6 +93,10 @@ export class SettingsService {
         primaryColorHex: "#6b7280",
         loginBackgroundUrl: null,
         loginBackgroundType: null,
+        onboardingImageUrls: [],
+        appStoreUrl: null,
+        googlePlayUrl: null,
+        appDownloadUrl: null,
       };
     }
 
@@ -104,6 +113,9 @@ export class SettingsService {
     const rawLoginBgUrl = profile.loginBackgroundUrl || null;
     const loginBackgroundUrl = rawLoginBgUrl ? this.toAbsoluteLogoUrl(rawLoginBgUrl) : null;
     const loginBackgroundType: string | null = profile.loginBackgroundType || null;
+    const onboardingImageUrls: (string | null)[] = Array.isArray(profile.onboardingImageUrls)
+      ? profile.onboardingImageUrls.map((u: string | null) => (u ? this.toAbsoluteLogoUrl(u) : null))
+      : [];
     return {
       organizationName: org.name || "PoolCare",
       logoUrl,
@@ -112,6 +124,10 @@ export class SettingsService {
       primaryColorHex,
       loginBackgroundUrl,
       loginBackgroundType,
+      onboardingImageUrls,
+      appStoreUrl: profile.appStoreUrl || null,
+      googlePlayUrl: profile.googlePlayUrl || null,
+      appDownloadUrl: profile.appDownloadUrl || null,
     };
   }
 
@@ -177,6 +193,13 @@ export class SettingsService {
         supportPhone: profile.supportPhone || null,
         helpAssistantName: profile.helpAssistantName || null,
         helpAssistantImageUrl: profile.helpAssistantImageUrl || null,
+        appDownloadUrl: profile.appDownloadUrl || null,
+        appDownloadImageUrl: profile.appDownloadImageUrl || null,
+        appStoreUrl: profile.appStoreUrl || null,
+        googlePlayUrl: profile.googlePlayUrl || null,
+        splashImageUrl: profile.splashImageUrl || null,
+        splashBackgroundColor: profile.splashBackgroundColor || null,
+        onboardingImageUrls: Array.isArray(profile.onboardingImageUrls) ? profile.onboardingImageUrls : [],
       },
     };
   }
@@ -231,6 +254,15 @@ export class SettingsService {
           supportPhone: profile.supportPhone || currentProfile.supportPhone || null,
           helpAssistantName: profile.helpAssistantName !== undefined ? (profile.helpAssistantName || null) : (currentProfile.helpAssistantName || null),
           helpAssistantImageUrl: profile.helpAssistantImageUrl !== undefined ? (profile.helpAssistantImageUrl || null) : (currentProfile.helpAssistantImageUrl || null),
+          appDownloadUrl: profile.appDownloadUrl !== undefined ? (profile.appDownloadUrl || null) : (currentProfile.appDownloadUrl || null),
+          appDownloadImageUrl: profile.appDownloadImageUrl !== undefined ? (profile.appDownloadImageUrl || null) : (currentProfile.appDownloadImageUrl || null),
+          appStoreUrl: profile.appStoreUrl !== undefined ? (profile.appStoreUrl || null) : (currentProfile.appStoreUrl || null),
+          googlePlayUrl: profile.googlePlayUrl !== undefined ? (profile.googlePlayUrl || null) : (currentProfile.googlePlayUrl || null),
+          splashImageUrl: profile.splashImageUrl !== undefined ? (profile.splashImageUrl || null) : (currentProfile.splashImageUrl || null),
+          splashBackgroundColor: profile.splashBackgroundColor !== undefined ? (profile.splashBackgroundColor || null) : (currentProfile.splashBackgroundColor || null),
+          onboardingImageUrls: profile.onboardingImageUrls !== undefined
+            ? (Array.isArray(profile.onboardingImageUrls) ? profile.onboardingImageUrls : [])
+            : (Array.isArray(currentProfile.onboardingImageUrls) ? currentProfile.onboardingImageUrls : []),
         },
       },
     });
@@ -258,6 +290,13 @@ export class SettingsService {
         supportPhone: savedProfile.supportPhone || null,
         helpAssistantName: savedProfile.helpAssistantName || null,
         helpAssistantImageUrl: savedProfile.helpAssistantImageUrl || null,
+        appDownloadUrl: savedProfile.appDownloadUrl || null,
+        appDownloadImageUrl: savedProfile.appDownloadImageUrl || null,
+        appStoreUrl: savedProfile.appStoreUrl || null,
+        googlePlayUrl: savedProfile.googlePlayUrl || null,
+        splashImageUrl: savedProfile.splashImageUrl || null,
+        splashBackgroundColor: savedProfile.splashBackgroundColor || null,
+        onboardingImageUrls: Array.isArray(savedProfile.onboardingImageUrls) ? savedProfile.onboardingImageUrls : [],
       },
     };
   }
@@ -639,6 +678,69 @@ export class SettingsService {
     }
   }
 
+  /* ------------------------- visit reading settings ------------------------ */
+
+  // Which water-chemistry readings carers record during a visit.
+  // Modes: "required" (gates the checklist), "optional", "hidden".
+  static readonly VISIT_READING_KEYS = [
+    "ph", "chlorineFree", "alkalinity", "tempC",
+    "calciumHardness", "cyanuricAcid", "tds", "salinity",
+  ] as const;
+
+  static readonly VISIT_READING_DEFAULTS: Record<string, string> = {
+    ph: "required",
+    chlorineFree: "optional",
+    alkalinity: "optional",
+    tempC: "optional",
+    calciumHardness: "optional",
+    cyanuricAcid: "optional",
+    tds: "optional",
+    salinity: "optional",
+  };
+
+  async getVisitReadingSettings(orgId: string) {
+    const orgSetting = await this.getOrCreateOrgSetting(orgId);
+    const integrations = (orgSetting.integrations as any) || {};
+    const saved = integrations.visitReadings?.fields || {};
+    return {
+      fields: { ...SettingsService.VISIT_READING_DEFAULTS, ...saved },
+      photos: { allowGallery: integrations.visitReadings?.photos?.allowGallery ?? true },
+    };
+  }
+
+  async updateVisitReadingSettings(
+    orgId: string,
+    data: { fields?: Record<string, string>; photos?: { allowGallery?: boolean } },
+  ) {
+    const orgSetting = await this.getOrCreateOrgSetting(orgId);
+    const integrations = (orgSetting.integrations as any) || {};
+    const current = integrations.visitReadings?.fields || {};
+
+    const validModes = ["required", "optional", "hidden"];
+    const updated: Record<string, string> = { ...current };
+    for (const key of SettingsService.VISIT_READING_KEYS) {
+      const value = data.fields?.[key];
+      if (value !== undefined) {
+        if (!validModes.includes(value)) {
+          throw new BadRequestException(`Invalid mode "${value}" for reading "${key}"`);
+        }
+        updated[key] = value;
+      }
+    }
+
+    const allowGallery =
+      data.photos?.allowGallery !== undefined
+        ? !!data.photos.allowGallery
+        : (integrations.visitReadings?.photos?.allowGallery ?? true);
+
+    integrations.visitReadings = { fields: updated, photos: { allowGallery } };
+    await prisma.orgSetting.update({ where: { orgId }, data: { integrations } });
+    return {
+      fields: { ...SettingsService.VISIT_READING_DEFAULTS, ...updated },
+      photos: { allowGallery },
+    };
+  }
+
   async getTipSchedule(orgId: string) {
     const orgSetting = await this.getOrCreateOrgSetting(orgId);
     const integrations = (orgSetting.integrations as any) || {};
@@ -654,6 +756,7 @@ export class SettingsService {
       saturday: schedule.saturday || false,
       sunday: schedule.sunday || false,
       lastTipIndex: schedule.lastTipIndex ?? -1,
+      autoApprove: schedule.autoApprove || false,
     };
   }
 
@@ -672,9 +775,11 @@ export class SettingsService {
       saturday: data.saturday !== undefined ? data.saturday : (current.saturday || false),
       sunday: data.sunday !== undefined ? data.sunday : (current.sunday || false),
       lastTipIndex: data.lastTipIndex !== undefined ? data.lastTipIndex : (current.lastTipIndex ?? -1),
+      autoApprove: data.autoApprove !== undefined ? data.autoApprove : (current.autoApprove || false),
     };
 
-    integrations.tipSchedule = updated;
+    // Merge over the current schedule so unrelated keys (e.g. weeklyQueue) survive
+    integrations.tipSchedule = { ...current, ...updated };
 
     await prisma.orgSetting.update({
       where: { orgId },

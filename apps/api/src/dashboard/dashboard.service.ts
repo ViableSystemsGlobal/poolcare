@@ -3,6 +3,44 @@ import { prisma } from "@poolcare/db";
 
 @Injectable()
 export class DashboardService {
+  /** Job stats for a scheduling window [start, end) — used for Today / This Week / This Month. */
+  private async jobStatsForRange(orgId: string, start: Date, end: Date) {
+    const now = new Date();
+    const inRange = { gte: start, lt: end };
+    const [total, completed, unassigned, cancelled, upcoming, missed, enRoute, onSite] =
+      await Promise.all([
+        prisma.job.count({ where: { orgId, windowStart: inRange } }),
+        prisma.job.count({ where: { orgId, status: "completed", windowStart: inRange } }),
+        prisma.job.count({
+          where: {
+            orgId,
+            assignedCarerId: null,
+            status: { not: "cancelled" },
+            windowStart: inRange,
+          },
+        }),
+        prisma.job.count({ where: { orgId, status: "cancelled", windowStart: inRange } }),
+        prisma.job.count({
+          where: {
+            orgId,
+            status: { notIn: ["completed", "cancelled"] },
+            windowStart: { gte: now > start ? now : start, lt: end },
+          },
+        }),
+        prisma.job.count({
+          where: {
+            orgId,
+            status: { notIn: ["completed", "cancelled"] },
+            windowEnd: { lt: now },
+            windowStart: inRange,
+          },
+        }),
+        prisma.job.count({ where: { orgId, status: "en_route", windowStart: inRange } }),
+        prisma.job.count({ where: { orgId, status: "on_site", windowStart: inRange } }),
+      ]);
+    return { total, completed, unassigned, cancelled, upcoming, missed, enRoute, onSite };
+  }
+
   async getDashboardData(orgId: string, userId: string) {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -12,16 +50,19 @@ export class DashboardService {
     const thisMonth = new Date(today.getFullYear(), today.getMonth(), 1);
     const nextMonth = new Date(today.getFullYear(), today.getMonth() + 1, 1);
 
-    // Get today's jobs
-    const todayJobs = await prisma.job.count({
-      where: {
-        orgId,
-        windowStart: {
-          gte: today,
-          lt: tomorrow,
-        },
-      },
-    });
+    // Week starts Monday
+    const weekStart = new Date(today);
+    weekStart.setDate(weekStart.getDate() - ((weekStart.getDay() + 6) % 7));
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekEnd.getDate() + 7);
+
+    // Job stats per scheduling period
+    const [todayStats, weekStats, monthStats] = await Promise.all([
+      this.jobStatsForRange(orgId, today, tomorrow),
+      this.jobStatsForRange(orgId, weekStart, weekEnd),
+      this.jobStatsForRange(orgId, thisMonth, nextMonth),
+    ]);
+    const todayJobs = todayStats.total;
 
     // Get total clients
     const totalClients = await prisma.client.count({
@@ -137,72 +178,6 @@ export class DashboardService {
     ]
       .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
       .slice(0, 5);
-
-    // Enhanced metrics - Today's Operations
-    const todayCompleted = await prisma.job.count({
-      where: {
-        orgId,
-        status: "completed",
-        windowStart: {
-          gte: today,
-          lt: tomorrow,
-        },
-      },
-    });
-
-    const todayUnassigned = await prisma.job.count({
-      where: {
-        orgId,
-        assignedCarerId: null,
-        windowStart: {
-          gte: today,
-          lt: tomorrow,
-        },
-        status: {
-          not: "cancelled",
-        },
-      },
-    });
-
-    const todayEnRoute = await prisma.job.count({
-      where: {
-        orgId,
-        status: "en_route",
-        windowStart: {
-          gte: today,
-          lt: tomorrow,
-        },
-      },
-    });
-
-    const todayOnSite = await prisma.job.count({
-      where: {
-        orgId,
-        status: "on_site",
-        windowStart: {
-          gte: today,
-          lt: tomorrow,
-        },
-      },
-    });
-
-    // Get jobs at risk (past window end and not completed)
-    const now = new Date();
-    const atRiskJobs = await prisma.job.count({
-      where: {
-        orgId,
-        windowEnd: {
-          lt: now,
-        },
-        status: {
-          notIn: ["completed", "cancelled"],
-        },
-        windowStart: {
-          gte: today,
-          lt: tomorrow,
-        },
-      },
-    });
 
     // Operations metrics (last 30 days)
     const thirtyDaysAgo = new Date(today);
@@ -371,15 +346,17 @@ export class DashboardService {
 
     return {
       metrics: {
-        // Today's overview
+        // Operations overview, per scheduling period
         today: {
-          total: todayJobs,
-          completed: todayCompleted,
-          unassigned: todayUnassigned,
-          enRoute: todayEnRoute,
-          onSite: todayOnSite,
-          atRisk: atRiskJobs,
+          total: todayStats.total,
+          completed: todayStats.completed,
+          unassigned: todayStats.unassigned,
+          enRoute: todayStats.enRoute,
+          onSite: todayStats.onSite,
+          atRisk: todayStats.missed,
         },
+        week: weekStats,
+        month: monthStats,
         // Operations
         operations: {
           jobsCompleted30d: jobsLast30Days.length,

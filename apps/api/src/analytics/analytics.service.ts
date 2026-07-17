@@ -148,6 +148,85 @@ export class AnalyticsService {
   }
 
   // Build a deterministic digest (current vs prior window) for the AI report generator.
+  /** Visit review stats: ratings distribution, review rate, per-carer averages, recent feedback. */
+  async reviews(orgId: string, from?: string, to?: string) {
+    const { fromDate, toDate } = resolveRange(from, to);
+
+    const visits = await prisma.visitEntry.findMany({
+      where: { orgId, completedAt: { gte: fromDate, lte: toDate } },
+      select: {
+        id: true,
+        rating: true,
+        feedback: true,
+        completedAt: true,
+        job: {
+          select: {
+            pool: { select: { name: true, address: true, client: { select: { name: true } } } },
+            assignedCarer: { select: { id: true, name: true } },
+          },
+        },
+      },
+      orderBy: { completedAt: "desc" },
+    });
+
+    const completed = visits.length;
+    const rated = visits.filter((v) => v.rating != null);
+    const avgRating = rated.length
+      ? rated.reduce((t, v) => t + (v.rating || 0), 0) / rated.length
+      : null;
+
+    const distribution = [1, 2, 3, 4, 5].map((stars) => ({
+      stars,
+      count: rated.filter((v) => v.rating === stars).length,
+    }));
+
+    // Per-carer averages
+    const byCarer = new Map<string, { name: string; total: number; count: number; visits: number }>();
+    for (const v of visits) {
+      const carer = v.job?.assignedCarer;
+      if (!carer) continue;
+      const entry = byCarer.get(carer.id) || { name: carer.name || "Unnamed", total: 0, count: 0, visits: 0 };
+      entry.visits += 1;
+      if (v.rating != null) {
+        entry.total += v.rating;
+        entry.count += 1;
+      }
+      byCarer.set(carer.id, entry);
+    }
+    const carers = [...byCarer.entries()]
+      .map(([id, c]) => ({
+        id,
+        name: c.name,
+        avgRating: c.count ? c.total / c.count : null,
+        reviews: c.count,
+        completedVisits: c.visits,
+      }))
+      .sort((a, b) => (b.avgRating ?? 0) - (a.avgRating ?? 0));
+
+    const recentFeedback = visits
+      .filter((v) => v.rating != null && v.feedback)
+      .slice(0, 10)
+      .map((v) => ({
+        visitId: v.id,
+        rating: v.rating,
+        feedback: v.feedback,
+        completedAt: v.completedAt,
+        pool: v.job?.pool?.name || v.job?.pool?.address || null,
+        client: v.job?.pool?.client?.name || null,
+        carer: v.job?.assignedCarer?.name || null,
+      }));
+
+    return {
+      completedVisits: completed,
+      reviewedVisits: rated.length,
+      reviewRate: completed ? Math.round((rated.length / completed) * 100) : 0,
+      avgRating: avgRating != null ? Math.round(avgRating * 10) / 10 : null,
+      distribution,
+      carers,
+      recentFeedback,
+    };
+  }
+
   async buildReportDigest(orgId: string, from?: string, to?: string) {
     const { fromDate, toDate } = resolveRange(from, to);
     const days = Math.max(1, Math.round((toDate.getTime() - fromDate.getTime()) / 86400000) + 1);

@@ -181,6 +181,13 @@ export class VisitsService {
       }
     }
 
+    // Older photo records store bare storage keys — resolve to fetchable URLs
+    if (visit.photos?.length) {
+      visit.photos = await Promise.all(
+        visit.photos.map(async (p) => ({ ...p, url: await this.filesService.resolveUrl(p.url) }))
+      );
+    }
+
     return visit;
   }
 
@@ -1282,20 +1289,21 @@ export class VisitsService {
         });
       }
 
-      // Push notification (only if client has userId)
+      // Push notification (only if client has userId) — with review call-to-action
       if (client.userId) {
         await this.notificationsService.send(orgId, {
           channel: "push",
           to: "", // Will use recipientId
           recipientId: client.userId,
           recipientType: "user",
-          subject: "Service Completed",
-          body: `Service completed for ${poolName} by ${carerName}`,
+          subject: `Service completed — how did ${carerName} do?`,
+          body: `${poolName} has been serviced. Tap to see the report and leave a rating.`,
           metadata: {
             visitId: visit.id,
             jobId: visit.jobId,
             poolId: pool.id,
             type: "visit_completed",
+            url: `/visits/${visit.id}`,
           },
         });
       }
@@ -1327,20 +1335,69 @@ export class VisitsService {
     // Build approval message
     const poolName = pool?.name || "the pool";
     const clientName = client?.name || "the client";
-    const amount = visit.paymentAmountCents 
-      ? `GH₵${(visit.paymentAmountCents / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-      : "payment";
+    const fmt = (cents: number) =>
+      `GH₵${(cents / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    const amount = visit.paymentAmountCents ? fmt(visit.paymentAmountCents) : "payment";
+
+    // Earnings summary (this month + all time, approved visits only)
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const [monthAgg, totalAgg] = await Promise.all([
+      prisma.visitEntry.aggregate({
+        where: {
+          orgId,
+          paymentStatus: { in: ["approved", "paid"] },
+          approvedAt: { gte: monthStart },
+          job: { assignedCarerId: carer.id },
+        },
+        _sum: { paymentAmountCents: true },
+        _count: true,
+      }),
+      prisma.visitEntry.aggregate({
+        where: { orgId, paymentStatus: { in: ["approved", "paid"] }, job: { assignedCarerId: carer.id } },
+        _sum: { paymentAmountCents: true },
+      }),
+    ]);
+    const monthTotal = monthAgg._sum.paymentAmountCents || 0;
+    const monthVisits = monthAgg._count || 0;
+    const allTimeTotal = totalAgg._sum.paymentAmountCents || 0;
+    const earningsLine = `This month: ${fmt(monthTotal)} from ${monthVisits} approved visit${monthVisits !== 1 ? "s" : ""}.`;
 
     const message = `Your visit to ${poolName} has been approved!\n\n` +
       `Client: ${clientName}\n` +
-      `Payment Amount: ${amount}\n\n` +
+      `Payment Amount: ${amount}\n` +
+      `${earningsLine}\n\n` +
       `Thank you for your excellent work!`;
 
     const emailSubject = `Visit Approved - ${poolName}`;
     const emailBody = `Your visit to ${poolName} has been approved.\n\n` +
       `Client: ${clientName}\n` +
-      `Payment Amount: ${amount}\n\n` +
+      `Payment Amount: ${amount}\n` +
+      `${earningsLine}\n\n` +
       `Thank you for your excellent work!`;
+
+    // Push notification (tapping opens the Earnings screen in the carer app)
+    if (carerUserId) {
+      try {
+        await this.notificationsService.send(orgId, {
+          channel: "push",
+          to: "",
+          recipientId: carerUserId,
+          recipientType: "user",
+          subject: `Visit approved — ${amount}`,
+          body: `${poolName} · ${clientName}. ${earningsLine}`,
+          metadata: {
+            visitId: visit.id,
+            jobId: visit.jobId,
+            poolId: pool?.id,
+            type: "visit_approved",
+            url: "/earnings",
+          },
+        });
+      } catch (error) {
+        console.error(`Failed to send push approval notification to carer ${carer.id}:`, error);
+      }
+    }
 
     // Send SMS if phone available
     if (carerPhone) {
@@ -1375,6 +1432,15 @@ export class VisitsService {
           <p style="margin: 0 0 16px 0;">Your visit to ${poolName} has been approved!</p>
           <p style="margin: 0 0 8px 0;"><strong>Client:</strong> ${clientName}</p>
           <p style="margin: 0 0 16px 0;"><strong>Payment Amount:</strong> ${amount}</p>
+          <table role="presentation" style="width: 100%; border-collapse: collapse; background-color: #f9fafb; border-radius: 8px; margin: 0 0 16px 0;">
+            <tr>
+              <td style="padding: 14px 16px;">
+                <p style="margin: 0 0 4px 0; font-size: 12px; letter-spacing: 0.05em; text-transform: uppercase; color: #6b7280;">Your Earnings</p>
+                <p style="margin: 0 0 4px 0; color: #333333;">This month: <strong>${fmt(monthTotal)}</strong> from ${monthVisits} approved visit${monthVisits !== 1 ? "s" : ""}</p>
+                <p style="margin: 0; color: #333333;">All time: <strong>${fmt(allTimeTotal)}</strong></p>
+              </td>
+            </tr>
+          </table>
           <p style="margin: 16px 0 0 0;">Thank you for your excellent work!</p>
         `;
         
@@ -1565,6 +1631,77 @@ export class VisitsService {
     } catch (error) {
       console.error(`Failed to send approval notification for visit ${visitId}:`, error);
       // Don't fail the approval if notification fails
+    }
+
+    return updated;
+  }
+
+  /** Record that the carer has been paid for an approved visit, and tell them. */
+  async markPaid(orgId: string, role: string, userId: string, visitId: string) {
+    await this.verifyVisitAccess(orgId, userId, visitId);
+
+    if (role !== "ADMIN" && role !== "MANAGER" && role !== "SUPER_ADMIN") {
+      throw new ForbiddenException("Only admins or managers can mark visits as paid");
+    }
+
+    const visit = await prisma.visitEntry.findUnique({
+      where: { id: visitId },
+      select: { paymentStatus: true },
+    });
+    if (visit?.paymentStatus === "paid") {
+      throw new BadRequestException("This visit is already marked as paid");
+    }
+    if (visit?.paymentStatus !== "approved") {
+      throw new BadRequestException("Visit must be approved before it can be marked as paid");
+    }
+
+    const updated = await prisma.visitEntry.update({
+      where: { id: visitId },
+      data: { paymentStatus: "paid", paidAt: new Date(), paidBy: userId },
+      include: {
+        job: {
+          include: {
+            pool: { select: { id: true, name: true } },
+            assignedCarer: { include: { user: true } },
+          },
+        },
+      },
+    });
+
+    // Tell the carer they've been paid (best effort)
+    try {
+      const carer = updated.job?.assignedCarer;
+      const carerUserId = carer?.userId || carer?.user?.id;
+      const poolName = updated.job?.pool?.name || "the pool";
+      const amount = updated.paymentAmountCents
+        ? `GH₵${(updated.paymentAmountCents / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+        : "your payment";
+
+      if (carerUserId) {
+        await this.notificationsService.send(orgId, {
+          channel: "push",
+          to: "",
+          recipientId: carerUserId,
+          recipientType: "user",
+          subject: `Payment sent — ${amount}`,
+          body: `Your payment for the visit to ${poolName} has been made.`,
+          metadata: { visitId: updated.id, jobId: updated.jobId, type: "visit_paid", url: "/earnings" },
+        });
+      }
+      const carerPhone = carer?.user?.phone || carer?.phone;
+      if (carerPhone) {
+        await this.notificationsService.send(orgId, {
+          channel: "sms",
+          to: carerPhone,
+          recipientId: carerUserId || undefined,
+          recipientType: "user",
+          subject: "Payment Sent",
+          body: `Payment sent: ${amount} for your visit to ${poolName}. Thank you!`,
+          metadata: { visitId: updated.id, type: "visit_paid" },
+        });
+      }
+    } catch (error) {
+      console.error(`Failed to send payment notification for visit ${visitId}:`, error);
     }
 
     return updated;

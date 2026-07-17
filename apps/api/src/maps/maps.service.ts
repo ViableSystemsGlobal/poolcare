@@ -205,6 +205,47 @@ export class MapsService {
   }
 
   /**
+   * Search places (landmarks, businesses, addresses) via Google Places Text Search.
+   * Biased to Ghana. Returns up to 5 candidates with coordinates.
+   */
+  async searchPlaces(
+    query: string,
+    orgApiKey?: string | null,
+  ): Promise<Array<{ name: string; address: string; lat: number; lng: number; placeId?: string }>> {
+    const apiKey = this.getApiKey(orgApiKey);
+    if (!apiKey) {
+      throw new BadRequestException("Google Maps API key not configured");
+    }
+    try {
+      const url = `${this.baseUrl}/place/textsearch/json?query=${encodeURIComponent(query)}&region=gh&key=${apiKey}`;
+      const response = await fetch(url);
+      const data = (await response.json()) as any;
+
+      if (data.status === "ZERO_RESULTS") return [];
+      if (data.status !== "OK") {
+        let errorMessage = `Place search failed: ${data.status}`;
+        if (data.status === "REQUEST_DENIED") {
+          errorMessage =
+            "Google Maps API request denied. Ensure the Places API is enabled in Google Cloud Console and the key allows server-side requests.";
+        }
+        throw new BadRequestException(errorMessage);
+      }
+
+      return (data.results || []).slice(0, 5).map((r: any) => ({
+        name: r.name,
+        address: r.formatted_address,
+        lat: r.geometry?.location?.lat,
+        lng: r.geometry?.location?.lng,
+        placeId: r.place_id,
+      }));
+    } catch (error: any) {
+      if (error instanceof BadRequestException) throw error;
+      this.logger.error(`Place search failed for query: ${query}`, error);
+      throw new BadRequestException(`Failed to search places: ${error.message}`);
+    }
+  }
+
+  /**
    * Calculate distance and duration between two points using Google Maps
    * This provides more accurate distance than Haversine (accounts for roads, obstacles)
    */

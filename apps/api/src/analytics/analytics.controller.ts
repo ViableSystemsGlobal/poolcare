@@ -30,6 +30,11 @@ export class AnalyticsController {
     return this.analytics.revenueTrend(user.org_id, from, to);
   }
 
+  @Get("reviews")
+  reviews(@CurrentUser() user: { org_id: string }, @Query("from") from?: string, @Query("to") to?: string) {
+    return this.analytics.reviews(user.org_id, from, to);
+  }
+
   @Get("jobs-trend")
   jobsTrend(@CurrentUser() user: { org_id: string }, @Query("from") from?: string, @Query("to") to?: string) {
     return this.analytics.jobsTrend(user.org_id, from, to);

@@ -137,6 +137,8 @@ export class CarersService {
         phone: phone ?? dto.phone,
         homeBaseLat: dto.homeBase?.lat,
         homeBaseLng: dto.homeBase?.lng,
+        homeBaseAddress: dto.homeBaseAddress,
+        ghanaPostAddress: dto.ghanaPostAddress,
         active: dto.active ?? true,
       },
       include: {
@@ -190,6 +192,8 @@ export class CarersService {
         imageUrl: dto.imageUrl,
         homeBaseLat: dto.homeBase?.lat,
         homeBaseLng: dto.homeBase?.lng,
+        homeBaseAddress: dto.homeBaseAddress,
+        ghanaPostAddress: dto.ghanaPostAddress,
         active: dto.active,
         ratePerVisitCents: dto.ratePerVisitCents,
         currency: dto.currency,
@@ -218,8 +222,9 @@ export class CarersService {
     const where: any = {
       orgId,
       OR: [
-        { recipientId: userId, recipientType: { in: ["carer", "org", null] } },
-        { recipientId: carer.id, recipientType: { in: ["carer", "org", null] } },
+        // Anything addressed to this carer (by user id or carer record id)
+        { recipientId: { in: [userId, carer.id] } },
+        // Org-wide broadcasts
         { recipientId: null, recipientType: "org" },
       ],
     };
@@ -454,67 +459,89 @@ export class CarersService {
     const now = new Date();
     const currentMonth = filters?.month || now.getMonth() + 1;
     const currentYear = filters?.year || now.getFullYear();
-    
+
     const monthStart = new Date(currentYear, currentMonth - 1, 1);
     const monthEnd = new Date(currentYear, currentMonth, 0, 23, 59, 59, 999);
+    const yearStart = new Date(currentYear, 0, 1);
+    const yearEnd = new Date(currentYear, 11, 31, 23, 59, 59, 999);
 
-    // Get approved visits for this carer (only visits with paymentStatus = "approved" and paymentAmountCents set)
-    const [monthlyVisits, allTimeVisits] = await Promise.all([
-      prisma.visitEntry.findMany({
-        where: {
-          orgId,
-          job: {
-            assignedCarerId: carer.id,
-          },
-          paymentStatus: "approved",
-          paymentAmountCents: {
-            not: null,
-          },
-          approvedAt: {
-            gte: monthStart,
-            lte: monthEnd,
-          },
-        },
-        select: {
-          id: true,
-          paymentAmountCents: true,
-          approvedAt: true,
-        },
-      }),
-      prisma.visitEntry.findMany({
-        where: {
-          orgId,
-          job: {
-            assignedCarerId: carer.id,
-          },
-          paymentStatus: "approved",
-          paymentAmountCents: {
-            not: null,
-          },
-        },
-        select: {
-          id: true,
-          paymentAmountCents: true,
-          approvedAt: true,
-        },
-      }),
-    ]);
-
-    // Calculate earnings from actual approved payment amounts
-    const calculateEarnings = (visits: any[]) => {
-      return visits.reduce((total, visit) => {
-        return total + (visit.paymentAmountCents || 0);
-      }, 0);
+    // "Earned" = approved OR already paid (marking a visit paid must not shrink earnings)
+    const earnedStatus = { in: ["approved", "paid"] };
+    const baseWhere = {
+      orgId,
+      job: { assignedCarerId: carer.id },
+      paymentAmountCents: { not: null },
     };
 
-    const monthlyEarningsCents = calculateEarnings(monthlyVisits);
-    const totalEarningsCents = calculateEarnings(allTimeVisits);
+    const [monthlyVisits, allTimeVisits, monthlyPaid, outstanding, yearEarned, yearPaid] =
+      await Promise.all([
+        prisma.visitEntry.findMany({
+          where: { ...baseWhere, paymentStatus: earnedStatus, approvedAt: { gte: monthStart, lte: monthEnd } },
+          select: { paymentAmountCents: true },
+        }),
+        prisma.visitEntry.findMany({
+          where: { ...baseWhere, paymentStatus: earnedStatus },
+          select: { paymentAmountCents: true },
+        }),
+        // Paid this month (by payment date)
+        prisma.visitEntry.aggregate({
+          where: { ...baseWhere, paymentStatus: "paid", paidAt: { gte: monthStart, lte: monthEnd } },
+          _sum: { paymentAmountCents: true },
+          _count: true,
+        }),
+        // Approved but not yet paid — what the org still owes this carer
+        prisma.visitEntry.aggregate({
+          where: { ...baseWhere, paymentStatus: "approved" },
+          _sum: { paymentAmountCents: true },
+          _count: true,
+        }),
+        // Year breakdowns
+        prisma.visitEntry.findMany({
+          where: { ...baseWhere, paymentStatus: earnedStatus, approvedAt: { gte: yearStart, lte: yearEnd } },
+          select: { paymentAmountCents: true, approvedAt: true },
+        }),
+        prisma.visitEntry.findMany({
+          where: { ...baseWhere, paymentStatus: "paid", paidAt: { gte: yearStart, lte: yearEnd } },
+          select: { paymentAmountCents: true, paidAt: true },
+        }),
+      ]);
+
+    const sum = (visits: { paymentAmountCents: number | null }[]) =>
+      visits.reduce((total, v) => total + (v.paymentAmountCents || 0), 0);
+
+    // Per-month breakdown for the selected year
+    const months = Array.from({ length: 12 }, (_, i) => ({
+      month: i + 1,
+      earnedCents: 0,
+      paidCents: 0,
+      visits: 0,
+    }));
+    for (const v of yearEarned) {
+      const m = new Date(v.approvedAt as any).getMonth();
+      months[m].earnedCents += v.paymentAmountCents || 0;
+      months[m].visits += 1;
+    }
+    for (const v of yearPaid) {
+      const m = new Date(v.paidAt as any).getMonth();
+      months[m].paidCents += v.paymentAmountCents || 0;
+    }
 
     return {
-      totalEarningsCents,
-      monthlyEarningsCents,
+      totalEarningsCents: sum(allTimeVisits),
+      monthlyEarningsCents: sum(monthlyVisits),
       totalApprovedVisits: allTimeVisits.length,
       monthlyApprovedVisits: monthlyVisits.length,
+      monthlyPaidCents: monthlyPaid._sum.paymentAmountCents || 0,
+      monthlyPaidVisits: monthlyPaid._count || 0,
+      outstandingCents: outstanding._sum.paymentAmountCents || 0,
+      outstandingVisits: outstanding._count || 0,
+      yearly: {
+        year: currentYear,
+        months,
+        earnedCents: months.reduce((t, m) => t + m.earnedCents, 0),
+        paidCents: months.reduce((t, m) => t + m.paidCents, 0),
+        visits: months.reduce((t, m) => t + m.visits, 0),
+      },
       currency: carer.currency || "GHS",
       month: currentMonth,
       year: currentYear,
@@ -557,7 +584,7 @@ export class CarersService {
           job: {
             assignedCarerId: carer.id,
           },
-          paymentStatus: "approved",
+          paymentStatus: { in: ["approved", "paid"] },
           paymentAmountCents: {
             not: null,
           },
@@ -578,7 +605,7 @@ export class CarersService {
           job: {
             assignedCarerId: carer.id,
           },
-          paymentStatus: "approved",
+          paymentStatus: { in: ["approved", "paid"] },
           paymentAmountCents: {
             not: null,
           },
@@ -629,11 +656,39 @@ export class CarersService {
     const monthlyEarningsCents = calculateEarnings(monthlyVisits);
     const totalEarningsCents = calculateEarnings(allTimeVisits);
 
+    // Paid vs still-owed split
+    const [paidAgg, outstandingAgg] = await Promise.all([
+      prisma.visitEntry.aggregate({
+        where: {
+          orgId,
+          paymentStatus: "paid",
+          paymentAmountCents: { not: null },
+          job: { assignedCarerId: carer.id },
+        },
+        _sum: { paymentAmountCents: true },
+        _count: true,
+      }),
+      prisma.visitEntry.aggregate({
+        where: {
+          orgId,
+          paymentStatus: "approved",
+          paymentAmountCents: { not: null },
+          job: { assignedCarerId: carer.id },
+        },
+        _sum: { paymentAmountCents: true },
+        _count: true,
+      }),
+    ]);
+
     return {
       totalEarningsCents,
       monthlyEarningsCents,
       totalApprovedVisits: allTimeVisits.length,
       monthlyApprovedVisits: monthlyVisits.length,
+      totalPaidCents: paidAgg._sum.paymentAmountCents || 0,
+      paidVisits: paidAgg._count || 0,
+      outstandingCents: outstandingAgg._sum.paymentAmountCents || 0,
+      outstandingVisits: outstandingAgg._count || 0,
       pendingVisits: pendingVisits.map((v) => ({
         id: v.id,
         completedAt: v.completedAt?.toISOString() || "",

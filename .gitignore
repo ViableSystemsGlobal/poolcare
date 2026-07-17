@@ -56,9 +56,15 @@ apps/carer/credentials.json
 apps/carer/credentials/
 
 # Uploaded files (stored on server, not in git)
-apps/api/uploads/
+apps/api/uploads/**
+# ...except static email template assets (store badge glyphs), which ship with the code
+!apps/api/uploads/email_assets/
+!apps/api/uploads/email_assets/**
 
 # Accidental env copies
 "apps/web/.env copy"
 apps/web/.env\ copy
 
+
+# TypeScript incremental build cache (machine-specific)
+*.tsbuildinfo

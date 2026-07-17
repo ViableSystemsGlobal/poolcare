@@ -11,7 +11,13 @@ export class WebhooksController {
   private verifyWebhookSignature(body: any, headers: any): void {
     const secret = process.env.WEBHOOK_SECRET;
     if (!secret) {
-      this.logger.warn("WEBHOOK_SECRET not set — skipping signature verification (set it in production)");
+      // Fail closed in production: an unverified webhook lets anyone inject
+      // inbound messages into any org's inbox via ?orgId=. Only skip in dev.
+      if (process.env.NODE_ENV === "production") {
+        this.logger.error("WEBHOOK_SECRET not set — rejecting webhook in production");
+        throw new UnauthorizedException("Webhook verification not configured");
+      }
+      this.logger.warn("WEBHOOK_SECRET not set — skipping signature verification (dev only)");
       return;
     }
 
