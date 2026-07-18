@@ -6,6 +6,8 @@ import { CrmMessagingService } from "./crm-messaging.service";
 import { PushAdapter } from "../notifications/adapters/push.adapter";
 import { EmailAdapter } from "../notifications/adapters/email.adapter";
 import { createEmailTemplate, getOrgEmailSettings } from "../email/email-template.util";
+import { MapsService } from "../maps/maps.service";
+import { SettingsService } from "../settings/settings.service";
 
 // The assessment form lives on the PUBLIC marketing site (no login), not the admin.
 // NEXT_PUBLIC_SITE_URL must be set in production — the localhost fallback is for
@@ -18,6 +20,8 @@ export class OpportunitiesService {
     private readonly messaging: CrmMessagingService,
     private readonly push: PushAdapter,
     private readonly email: EmailAdapter,
+    private readonly maps: MapsService,
+    private readonly settings: SettingsService,
   ) {}
 
   async list(
@@ -355,10 +359,26 @@ export class OpportunitiesService {
     // Stamp locationAt only when coordinates actually came through, so a form
     // submitted without location permission doesn't look like a captured pin.
     const hasLocation = typeof dto.lat === "number" && typeof dto.lng === "number";
+
+    // Turn the raw pin into a street address via Google. Done server-side so
+    // the public form never handles the Maps key, and best-effort: a geocoding
+    // failure must not lose a completed field assessment.
+    let capturedAddress = dto.capturedAddress;
+    if (hasLocation && !capturedAddress) {
+      try {
+        const orgKey = await this.settings.getGoogleMapsApiKey(r.orgId);
+        const res = await this.maps.reverseGeocode(dto.lat!, dto.lng!, orgKey);
+        capturedAddress = res?.formattedAddress || undefined;
+      } catch {
+        capturedAddress = undefined;
+      }
+    }
+
     const updated = await prisma.assessmentReport.update({
       where: { id: r.id },
       data: {
         ...dto,
+        capturedAddress,
         status: "COMPLETED",
         assessedAt: new Date(),
         ...(hasLocation ? { locationAt: new Date() } : {}),

@@ -19,9 +19,11 @@ import { LeadsController } from "./leads.controller";
 import { OpportunitiesController } from "./opportunities.controller";
 import { ActivitiesController } from "./activities.controller";
 import { LeadSourcesController } from "./lead-sources.controller";
+import { MapsModule } from "../maps/maps.module";
+import { SettingsModule } from "../settings/settings.module";
 
 @Module({
-  imports: [AuthModule, FilesModule, NotificationsModule],
+  imports: [AuthModule, FilesModule, NotificationsModule, MapsModule, SettingsModule],
   controllers: [
     PublicLeadsController,
     PublicAssessmentController,
