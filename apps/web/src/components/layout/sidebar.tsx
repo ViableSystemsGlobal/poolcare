@@ -115,6 +115,7 @@ const navigationGroups = [
           { name: "Leads", href: "/crm/leads", icon: Inbox },
           { name: "Prospects", href: "/crm/accounts", icon: Building2 },
           { name: "Opportunities", href: "/crm/opportunities", icon: Target },
+          { name: "Assessments", href: "/crm/assessments", icon: ClipboardCheck },
           { name: "Contacts", href: "/crm/contacts", icon: Users },
         ],
       },

@@ -547,6 +547,16 @@ class ApiClient {
     return this.request<{ items: any[]; total: number; page: number; limit: number }>(`/crm/opportunities${this.qs(params)}`);
   }
   async getOpportunity(id: string) { return this.request<any>(`/crm/opportunities/${id}`); }
+  async getAssessmentsForDay(date?: string) {
+    return this.request<{
+      date: string; total: number; completed: number; withLocation: number;
+      routes: {
+        assessorId: string | null; assessorName: string;
+        carer: { id: string; name: string | null; phone: string | null; homeBaseLat: number | null; homeBaseLng: number | null } | null;
+        stops: { id: string; opportunityId: string; client: string; scheduledAt: string; status: string; lat: number | null; lng: number | null; address: string | null; hasLocation: boolean }[];
+      }[];
+    }>(`/crm/opportunities/assessments/day${this.qs({ date })}`);
+  }
   async saveAssessment(id: string, data: any) { return this.request<any>(`/crm/opportunities/${id}/assessment`, { method: "POST", body: JSON.stringify(data) }); }
   async dispatchAssessment(id: string, data: { assigneeId: string; scheduledAt: string; note?: string }) { return this.request<any>(`/crm/opportunities/${id}/assessment/dispatch`, { method: "POST", body: JSON.stringify(data) }); }
   async getMembers() { return this.request<{ items: { userId: string; role: string; user: { id: string; name?: string; email?: string } }[]; total: number }>(`/orgs/members`); }

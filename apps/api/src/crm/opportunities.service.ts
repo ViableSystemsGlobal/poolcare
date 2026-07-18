@@ -286,12 +286,83 @@ export class OpportunitiesService {
     };
   }
 
+  /**
+   * Assessments scheduled on a given day, grouped by assessor — the daily
+   * dispatch view. Stops come back in visit order so the UI (and any routing
+   * hand-off) can use them directly. `date` is YYYY-MM-DD in server time.
+   */
+  async assessmentsForDay(orgId: string, date?: string) {
+    const day = date ? new Date(`${date}T00:00:00`) : new Date();
+    if (Number.isNaN(day.getTime())) throw new BadRequestException("Invalid date");
+    const start = new Date(day); start.setHours(0, 0, 0, 0);
+    const end = new Date(start); end.setDate(end.getDate() + 1);
+
+    const reports = await prisma.assessmentReport.findMany({
+      where: { orgId, scheduledAt: { gte: start, lt: end } },
+      orderBy: { scheduledAt: "asc" },
+      include: {
+        assessor: { select: { id: true, name: true, email: true, phone: true } },
+        assignedCarer: { select: { id: true, name: true, phone: true, homeBaseLat: true, homeBaseLng: true } },
+        opportunity: {
+          select: {
+            id: true, name: true,
+            account: { select: { id: true, name: true } },
+            lead: { select: { address: true } },
+          },
+        },
+      },
+    });
+
+    // Group by assessor; unassigned reports collect under a null key so they
+    // are visible rather than silently dropped from the day's view.
+    const groups = new Map<string, any>();
+    for (const r of reports) {
+      const key = r.assessorId ?? "unassigned";
+      if (!groups.has(key)) {
+        groups.set(key, {
+          assessorId: r.assessorId,
+          assessorName: r.assessor?.name || r.assessor?.email || "Unassigned",
+          carer: r.assignedCarer ?? null,
+          stops: [] as any[],
+        });
+      }
+      groups.get(key).stops.push({
+        id: r.id,
+        opportunityId: r.opportunityId,
+        client: r.opportunity?.account?.name || r.opportunity?.name || "—",
+        scheduledAt: r.scheduledAt,
+        status: r.status,
+        lat: r.lat,
+        lng: r.lng,
+        address: r.capturedAddress || r.opportunity?.lead?.address || null,
+        hasLocation: r.lat != null && r.lng != null,
+      });
+    }
+
+    const routes = [...groups.values()];
+    return {
+      date: start.toISOString().slice(0, 10),
+      total: reports.length,
+      completed: reports.filter((r) => r.status === "COMPLETED").length,
+      withLocation: reports.filter((r) => r.lat != null && r.lng != null).length,
+      routes,
+    };
+  }
+
   async submitFormByToken(token: string, dto: SubmitAssessmentFormDto) {
     const r = await prisma.assessmentReport.findFirst({ where: { formToken: token }, select: { id: true, orgId: true, opportunityId: true } });
     if (!r) throw new NotFoundException("This assessment link is invalid or has expired");
+    // Stamp locationAt only when coordinates actually came through, so a form
+    // submitted without location permission doesn't look like a captured pin.
+    const hasLocation = typeof dto.lat === "number" && typeof dto.lng === "number";
     const updated = await prisma.assessmentReport.update({
       where: { id: r.id },
-      data: { ...dto, status: "COMPLETED", assessedAt: new Date() },
+      data: {
+        ...dto,
+        status: "COMPLETED",
+        assessedAt: new Date(),
+        ...(hasLocation ? { locationAt: new Date() } : {}),
+      },
     });
     await prisma.activity.create({
       data: { orgId: r.orgId, type: "STATUS_CHANGE", body: "On-site assessment completed via field form", opportunityId: r.opportunityId },

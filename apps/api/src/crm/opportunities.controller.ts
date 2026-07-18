@@ -42,6 +42,16 @@ export class OpportunitiesController {
     return this.opportunities.metrics(user.org_id);
   }
 
+  // Assessments scheduled for a given day, grouped by assessor — the daily
+  // dispatch/route view. `date` is YYYY-MM-DD; defaults to today.
+  @Get("assessments/day")
+  assessmentsForDay(
+    @CurrentUser() user: { org_id: string },
+    @Query("date") date?: string
+  ) {
+    return this.opportunities.assessmentsForDay(user.org_id, date);
+  }
+
   @Get(":id")
   getOne(@CurrentUser() user: { org_id: string }, @Param("id") id: string) {
     return this.opportunities.getOne(user.org_id, id);

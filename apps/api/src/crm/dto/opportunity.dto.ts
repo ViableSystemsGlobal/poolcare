@@ -60,6 +60,10 @@ export class SubmitAssessmentFormDto {
   @IsOptional() @IsString() recommendedPlan?: string;
   @IsOptional() @IsInt() @Type(() => Number) estimatedCostCents?: number;
   @IsOptional() @IsArray() @IsString({ each: true }) photoUrls?: string[];
+  // Captured from the assessor's device on site (see AssessmentReport.lat/lng).
+  @IsOptional() @IsNumber() @Type(() => Number) lat?: number;
+  @IsOptional() @IsNumber() @Type(() => Number) lng?: number;
+  @IsOptional() @IsString() capturedAddress?: string;
 }
 
 export class CreateOpportunityDto {

@@ -26,6 +26,29 @@ export default function AssessmentForm() {
   const [photos, setPhotos] = React.useState([]);
   const [uploading, setUploading] = React.useState(false);
   const [submitting, setSubmitting] = React.useState(false);
+  // Site location, captured from the device. Optional: never block submission
+  // on it, since the assessor may have denied permission or be indoors.
+  const [coords, setCoords] = React.useState(null);
+  const [locating, setLocating] = React.useState(false);
+  const [locError, setLocError] = React.useState('');
+
+  const captureLocation = () => {
+    if (!navigator.geolocation) { setLocError('This device cannot share location.'); return; }
+    setLocating(true); setLocError('');
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy });
+        setLocating(false);
+      },
+      (err) => {
+        setLocError(err.code === err.PERMISSION_DENIED
+          ? 'Location permission denied — you can still submit without it.'
+          : 'Could not get location — you can still submit without it.');
+        setLocating(false);
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+    );
+  };
 
   React.useEffect(() => {
     fetch(`${API_BASE}/public/assessment/${token}`)
@@ -74,6 +97,7 @@ export default function AssessmentForm() {
         dimensions: form.dimensions || undefined, equipmentNotes: form.equipmentNotes || undefined,
         findings: form.findings || undefined, recommendation: form.recommendation || undefined, recommendedPlan: form.recommendedPlan || undefined,
         photoUrls: photos,
+        ...(coords ? { lat: coords.lat, lng: coords.lng } : {}),
       };
       for (const k of NUMERIC) if (form[k] !== '' && form[k] != null) payload[k] = Number(form[k]);
       if (form.estimatedCost !== '' && form.estimatedCost != null) payload.estimatedCostCents = Math.round(Number(form.estimatedCost) * 100);
@@ -161,6 +185,33 @@ export default function AssessmentForm() {
                 <input type="file" accept="image/*" multiple style={{ display: 'none' }} disabled={uploading} onChange={(e) => { upload(e.target.files); e.target.value = ''; }} />
               </label>
             </div>
+          </Card>
+
+          <Card title="Site location">
+            {coords ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span style={{ width: 28, height: 28, borderRadius: 999, background: '#e8f5ee', color: '#397d54', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15 }}>✓</span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 14, color: 'var(--ink)' }}>Location captured</div>
+                  <div style={{ fontSize: 12, color: 'var(--ink-3)' }}>
+                    {coords.lat.toFixed(5)}, {coords.lng.toFixed(5)}
+                    {coords.accuracy ? ` · ±${Math.round(coords.accuracy)}m` : ''}
+                  </div>
+                </div>
+                <button type="button" onClick={captureLocation}
+                  style={{ border: '1px solid var(--line)', background: 'transparent', borderRadius: 10, padding: '6px 12px', fontSize: 13, color: 'var(--ink-3)', cursor: 'pointer' }}>Redo</button>
+              </div>
+            ) : (
+              <>
+                <button type="button" onClick={captureLocation} disabled={locating}
+                  style={{ width: '100%', height: 46, borderRadius: 12, border: '2px dashed var(--line)', background: 'transparent', color: 'var(--ink-3)', fontSize: 14, cursor: 'pointer' }}>
+                  {locating ? 'Getting location…' : '📍 Use my current location'}
+                </button>
+                <p style={{ fontSize: 12, color: 'var(--ink-3)', margin: '8px 0 0' }}>
+                  {locError || 'Tap while at the pool so the office has an exact pin. Optional.'}
+                </p>
+              </>
+            )}
           </Card>
 
           <button onClick={submit} disabled={submitting}

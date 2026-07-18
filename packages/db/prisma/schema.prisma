@@ -1602,6 +1602,14 @@ model AssessmentReport {
   estimatedCostCents Int?
   photoUrls       String[] @default([])
 
+  // Site location, captured from the assessor's device when they open the form
+  // on site. A verified pin beats the free-text address on the Lead: it drives
+  // the daily route view and doubles as evidence the assessor was there.
+  lat             Float?
+  lng             Float?
+  capturedAddress String? // reverse-geocoded at capture time
+  locationAt      DateTime? @db.Timestamptz(6)
+
   createdAt DateTime @default(now()) @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @db.Timestamptz(6)
 
