@@ -38,9 +38,9 @@ function LoginBackground({ branding }: { branding: Branding | null }) {
         <img
           src={bgUrl}
           alt=""
-          className="absolute inset-0 w-full h-full object-cover"
+          className="fixed inset-0 w-full h-full object-cover"
         />
-        <div className="absolute inset-0 bg-black/40" />
+        <div className="fixed inset-0 bg-black/40" />
       </>
     );
   }
@@ -54,9 +54,9 @@ function LoginBackground({ branding }: { branding: Branding | null }) {
           muted
           loop
           playsInline
-          className="absolute inset-0 w-full h-full object-cover"
+          className="fixed inset-0 w-full h-full object-cover"
         />
-        <div className="absolute inset-0 bg-black/40" />
+        <div className="fixed inset-0 bg-black/40" />
       </>
     );
   }
@@ -70,11 +70,11 @@ function LoginBackground({ branding }: { branding: Branding | null }) {
           src={`https://www.youtube.com/embed/${videoId}?autoplay=1&mute=1&loop=1&controls=0&showinfo=0&playlist=${videoId}&modestbranding=1&rel=0`}
           allow="autoplay; encrypted-media"
           allowFullScreen
-          className="absolute inset-0 w-full h-full border-0 pointer-events-none"
+          className="fixed inset-0 w-full h-full border-0 pointer-events-none"
           style={{ objectFit: "cover", transform: "scale(1.2)" }}
           title=""
         />
-        <div className="absolute inset-0 bg-black/40" />
+        <div className="fixed inset-0 bg-black/40" />
       </>
     );
   }
@@ -192,7 +192,7 @@ export default function LoginPage() {
   const hasBg = !!(branding?.loginBackgroundUrl && branding?.loginBackgroundType);
 
   return (
-    <div className="relative min-h-screen flex items-center justify-center bg-gray-50 px-4 overflow-hidden">
+    <div className="relative min-h-dvh flex items-center justify-center bg-gray-50 px-4 overflow-hidden">
       <LoginBackground branding={branding} />
       <Card className={`w-full max-w-md ${hasBg ? "relative z-10 bg-white shadow-xl" : ""}`}>
         <CardHeader className="space-y-1 text-center">
