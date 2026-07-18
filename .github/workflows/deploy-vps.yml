@@ -27,6 +27,13 @@ jobs:
           - app: web
             build_args: |
               NEXT_PUBLIC_API_URL=https://api.poolcare.africa/api
+          # SEO-critical: canonicals, og:url, sitemap.xml, robots.txt and
+          # llms.txt all derive from NEXT_PUBLIC_SITE_URL at build time.
+          - app: website
+            build_args: |
+              NEXT_PUBLIC_SITE_URL=https://poolcare.africa
+              NEXT_PUBLIC_API_URL=https://api.poolcare.africa/api
+              NEXT_PUBLIC_STUDIO_ORIGIN=https://admin.poolcare.africa
     steps:
       - uses: actions/checkout@v4
 

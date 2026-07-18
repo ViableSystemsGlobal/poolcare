@@ -38,7 +38,7 @@
 |---|---|---|---|
 | DOCM (live) | 3101 3102 4100 15432 | docm_default | docmchurch.org, admin., api. |
 | TailoredHands | 4110 15433 | tailored_net | tailoredhands.africa, admin., api. |
-| **poolcare (this)** | **web 3110, api 4120, pg 15434** | **poolcare_net** | **admin.poolcare.africa, api.poolcare.africa** |
+| **poolcare (this)** | **web 3110, api 4120, website 3130, pg 15434** | **poolcare_net** | **admin.poolcare.africa, api.poolcare.africa, poolcare.africa** |
 | adpoolsgroup | 3120 3121 15435 | adpools_net | thepoolshop.africa, www., sms. |
 
 ## THIS client: poolcare
@@ -48,7 +48,7 @@
   |---|---|---|---|
   | `apps/web` | Next.js SSR (the admin console) | yes — container `127.0.0.1:3110` | `admin.poolcare.africa` |
   | `apps/api` | Node API | yes — container `127.0.0.1:4120` | `api.poolcare.africa` |
-  | `apps/website` | Next.js SSR (public marketing site) | planned — **no port assigned yet**: get a slot added to the Resource registry first (never pick one ad hoc) | `poolcare.africa` |
+  | `apps/website` | Next.js SSR (public marketing site) | yes — container `127.0.0.1:3130` | `poolcare.africa`, `www.` |
   | `apps/carer` | Expo mobile | **NO — EAS / app store** | — |
   | `apps/client` | Expo mobile | **NO — EAS / app store** | — |
 - Postgres: own container, DB `poolcare`, `127.0.0.1:15434`, `mem_limit: 384m`.
