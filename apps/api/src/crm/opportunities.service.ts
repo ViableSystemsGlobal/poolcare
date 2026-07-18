@@ -5,8 +5,11 @@ import { CreateOpportunityDto, UpdateOpportunityDto, SendMessageDto, UpsertAsses
 import { CrmMessagingService } from "./crm-messaging.service";
 import { PushAdapter } from "../notifications/adapters/push.adapter";
 import { EmailAdapter } from "../notifications/adapters/email.adapter";
+import { createEmailTemplate, getOrgEmailSettings } from "../email/email-template.util";
 
 // The assessment form lives on the PUBLIC marketing site (no login), not the admin.
+// NEXT_PUBLIC_SITE_URL must be set in production — the localhost fallback is for
+// local dev only, and shipped real carers a localhost link when it was unset.
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || process.env.WEBSITE_PUBLIC_URL || "http://localhost:3003";
 
 @Injectable()
@@ -238,7 +241,14 @@ export class OpportunitiesService {
     let emailed = false;
     if (assignee.email) {
       const text = `You've been assigned a pool assessment for ${account}, scheduled ${when}.${note ? `\n\nNote: ${note}` : ""}\n\nOpen the assessment form (no login needed):\n${formUrl}`;
-      const html = `<p>You've been assigned a pool assessment for <strong>${account}</strong>, scheduled <strong>${when}</strong>.</p>${note ? `<p>Note: ${note}</p>` : ""}<p><a href="${formUrl}" style="display:inline-block;background:#0d2419;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none">Open the assessment form</a></p><p style="color:#888;font-size:12px">No login required. Or paste this link: ${formUrl}</p>`;
+      const orgSettings = await getOrgEmailSettings(orgId);
+      const content = `
+        <p style="margin:0 0 16px">You've been assigned a pool assessment for <strong>${account}</strong>, scheduled <strong>${when}</strong>.</p>
+        ${note ? `<p style="margin:0 0 16px">Note: ${note}</p>` : ""}
+        <p style="margin:0 0 16px"><a href="${formUrl}" style="display:inline-block;background:${orgSettings.primaryColor || "#0d9488"};color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600">Open the assessment form</a></p>
+        <p style="margin:0;color:#888;font-size:12px">No login required. Or paste this link: <a href="${formUrl}" style="color:#888">${formUrl}</a></p>
+      `;
+      const html = createEmailTemplate(content, orgSettings);
       try {
         await this.email.send(assignee.email, `Pool assessment assigned: ${account}`, text, html, orgId);
         emailed = true;
