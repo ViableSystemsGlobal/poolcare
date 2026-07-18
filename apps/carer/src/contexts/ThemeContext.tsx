@@ -12,6 +12,40 @@ interface ThemeContextValue {
 const DEFAULT_COLOR = "#397d54";
 const STORAGE_KEY = "poolcare_carer_theme";
 
+// Org settings store the theme as a preset NAME ("green") plus an optional
+// customColorHex. Screens interpolate this value into colours (`${themeColor}18`),
+// and React Native throws on an invalid colour string — so a preset name leaking
+// through here crashes the app. Always resolve to a hex. Mirrors the client app.
+const PRESET_HEX: Record<string, string> = {
+  purple: "#9333ea",
+  blue: "#2563eb",
+  green: "#397d54",
+  orange: "#ea580c",
+  red: "#dc2626",
+  indigo: "#4f46e5",
+  pink: "#db2777",
+  teal: "#0d9488",
+};
+
+function themeHexFromProfile(profile: {
+  themeColor?: string;
+  customColorHex?: string | null;
+}): string {
+  if (profile.customColorHex && profile.customColorHex.trim()) {
+    const hex = profile.customColorHex.trim();
+    return hex.startsWith("#") ? hex : `#${hex}`;
+  }
+  const preset = profile.themeColor || "";
+  return PRESET_HEX[preset] || DEFAULT_COLOR;
+}
+
+// Guards the cached value too: an earlier build may have persisted "green".
+function asHex(value: unknown): string | null {
+  return typeof value === "string" && /^#[0-9a-fA-F]{3,8}$/.test(value.trim())
+    ? value.trim()
+    : null;
+}
+
 const ThemeContext = createContext<ThemeContextValue>({
   themeColor: DEFAULT_COLOR,
   orgName: "PoolCare",
@@ -32,7 +66,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         if (!saved) return;
         try {
           const cached = JSON.parse(saved);
-          if (cached.themeColor) setThemeColor(cached.themeColor);
+          const cachedHex = asHex(cached.themeColor);
+          if (cachedHex) setThemeColor(cachedHex);
           if (cached.orgName) setOrgName(cached.orgName);
           if (cached.orgLogoUrl !== undefined) setOrgLogoUrl(cached.orgLogoUrl);
           if (cached.homeCardImageUrl !== undefined) setHomeCardImageUrl(cached.homeCardImageUrl);
@@ -46,7 +81,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       .getOrgSettings()
       .then((settings: any) => {
         const profile = settings?.profile || {};
-        const color = profile.themeColor || DEFAULT_COLOR;
+        const color = themeHexFromProfile(profile);
         const name = profile.name || "PoolCare";
         const logo = profile.logoUrl || null;
         const card = profile.homeCardImageUrl && profile.homeCardImageUrl.trim()

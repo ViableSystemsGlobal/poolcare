@@ -1,0 +1,22 @@
+# Files EAS Build does not need. The build uploads the whole monorepo, which was
+# shipping ~462 MB (local uploads, other apps' build output) on every build.
+# Keeps only what's needed to build the carer app.
+
+# Locally-stored uploads (product/carer images) — served from the API, not bundled
+apps/api/uploads/
+
+# Other apps' build output
+apps/web/.next/
+apps/website/.next/
+apps/api/dist/
+**/.next/
+**/dist/
+
+# Dependencies are reinstalled on the build server
+**/node_modules/
+
+# Local env / tooling noise
+**/.env.local
+**/*.log
+.git/
+deploy/
