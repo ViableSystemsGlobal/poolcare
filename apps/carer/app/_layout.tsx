@@ -13,6 +13,7 @@ import BottomNav from "../src/components/BottomNav";
 import { api } from "../src/lib/api-client";
 import { fixUrlForMobile } from "../src/lib/network-utils";
 import { getCachedLogoUrl, setCachedLogoUrl } from "../src/lib/logo-cache";
+import { ErrorBoundary } from "../src/components/ErrorBoundary";
 
 // Show notifications even when the app is in the foreground
 Notifications.setNotificationHandler({
@@ -99,18 +100,22 @@ export default function RootLayout() {
   // When hideAsync() is called, the splash fades to reveal Loader already showing the logo.
   if (!appIsReady) {
     return (
-      <ThemeProvider>
-        <Loader logoUrl={loaderLogoUrl} />
-      </ThemeProvider>
+      <ErrorBoundary>
+        <ThemeProvider>
+          <Loader logoUrl={loaderLogoUrl} />
+        </ThemeProvider>
+      </ErrorBoundary>
     );
   }
 
   return (
-    <ThemeProvider>
-      <ToastProvider>
-        <LayoutInner />
-      </ToastProvider>
-    </ThemeProvider>
+    <ErrorBoundary>
+      <ThemeProvider>
+        <ToastProvider>
+          <LayoutInner />
+        </ToastProvider>
+      </ThemeProvider>
+    </ErrorBoundary>
   );
 }
 
