@@ -14,11 +14,24 @@ import {
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import * as ImagePicker from "expo-image-picker";
 import * as Location from "expo-location";
 import { api } from "../src/lib/api-client";
 import { useTheme } from "../src/contexts/ThemeContext";
 import { useToast } from "../src/components/Toast";
+
+// expo-image-picker is loaded lazily, not at module scope. A native module that
+// fails while initialising takes the whole route module down with it, and the
+// screen then closes with no JS error to catch. Deferring the require means the
+// screen still opens and only the photo action fails.
+type ImagePickerModule = typeof import("expo-image-picker");
+function getImagePicker(): ImagePickerModule | null {
+  try {
+    return require("expo-image-picker") as ImagePickerModule;
+  } catch {
+    return null;
+  }
+}
+
 
 type Step = "find-client" | "pool-details" | "success";
 
@@ -158,7 +171,9 @@ export default function OnboardPoolScreen() {
   };
 
   const handlePickImage = async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({
+    const ImagePicker = getImagePicker();
+    if (!ImagePicker) { showToast("Photo picker unavailable on this device", "error"); return; }
+    const result = await ImagePicker!.launchImageLibraryAsync({
       mediaTypes: ["images"],
       quality: 0.8,
       allowsMultipleSelection: false,
@@ -172,12 +187,14 @@ export default function OnboardPoolScreen() {
   };
 
   const handleTakePhoto = async () => {
-    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    const ImagePicker = getImagePicker();
+    if (!ImagePicker) { showToast("Photo picker unavailable on this device", "error"); return; }
+    const { status } = await ImagePicker!.requestCameraPermissionsAsync();
     if (status !== "granted") {
       showToast("Camera permission required", "error");
       return;
     }
-    const result = await ImagePicker.launchCameraAsync({
+    const result = await ImagePicker!.launchCameraAsync({
       quality: 0.8,
     });
     if (!result.canceled && result.assets.length > 0) {

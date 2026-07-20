@@ -18,10 +18,23 @@ import {
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import * as ImagePicker from "expo-image-picker";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useTheme } from "../src/contexts/ThemeContext";
 import { api } from "../src/lib/api-client";
+
+// expo-image-picker is loaded lazily, not at module scope. A native module that
+// fails while initialising takes the whole route module down with it, and the
+// screen then closes with no JS error to catch. Deferring the require means the
+// screen still opens and only the photo action fails.
+type ImagePickerModule = typeof import("expo-image-picker");
+function getImagePicker(): ImagePickerModule | null {
+  try {
+    return require("expo-image-picker") as ImagePickerModule;
+  } catch {
+    return null;
+  }
+}
+
 
 const NOTIF_PREFS_KEY = "notification_preferences";
 
@@ -124,22 +137,24 @@ export default function ProfileScreen() {
   };
 
   const pickImage = async (source: "camera" | "library") => {
+    const ImagePicker = getImagePicker();
+    if (!ImagePicker) { Alert.alert("Unavailable", "The photo picker is not available on this device."); return; }
     try {
-      let result: ImagePicker.ImagePickerResult;
+      let result: Awaited<ReturnType<ImagePickerModule["launchCameraAsync"]>>;
       if (source === "camera") {
-        const { status } = await ImagePicker.requestCameraPermissionsAsync();
+        const { status } = await ImagePicker!.requestCameraPermissionsAsync();
         if (status !== "granted") {
           Alert.alert("Permission Required", "Camera access is needed to take a photo.");
           return;
         }
-        result = await ImagePicker.launchCameraAsync({ allowsEditing: true, aspect: [1, 1], quality: 0.8 });
+        result = await ImagePicker!.launchCameraAsync({ allowsEditing: true, aspect: [1, 1], quality: 0.8 });
       } else {
-        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        const { status } = await ImagePicker!.requestMediaLibraryPermissionsAsync();
         if (status !== "granted") {
           Alert.alert("Permission Required", "Photo library access is needed.");
           return;
         }
-        result = await ImagePicker.launchImageLibraryAsync({
+        result = await ImagePicker!.launchImageLibraryAsync({
           mediaTypes: ["images"],
           allowsEditing: true,
           aspect: [1, 1],
