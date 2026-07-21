@@ -224,8 +224,10 @@ export class CarersService {
       OR: [
         // Anything addressed to this carer (by user id or carer record id)
         { recipientId: { in: [userId, carer.id] } },
-        // Org-wide broadcasts
-        { recipientId: null, recipientType: "org" },
+        // Broadcasts aimed at carers (or everyone). NOTE: do not include the
+        // generic "org" / client bucket here — that surfaces client-facing
+        // broadcasts (e.g. pool tips) in every carer's feed.
+        { recipientId: null, recipientType: { in: ["carers", "all"] } },
       ],
     };
 
