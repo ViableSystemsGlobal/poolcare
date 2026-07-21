@@ -13,6 +13,7 @@ import {
   Users,
   Droplet,
   FileText,
+  ClipboardList,
   TrendingUp,
   Plus,
   ArrowRight,
@@ -64,7 +65,9 @@ interface DashboardData {
     };
     business?: {
       totalClients: number;
+      totalPools: number;
       activePools: number;
+      activeServicePlans: number;
       pendingQuotes: number;
     };
     finance?: {
@@ -268,7 +271,7 @@ export default function Dashboard() {
   // Derived metrics (support legacy + new structure)
   const metrics = dashboardData?.metrics || {};
   const today = metrics.today || { total: metrics.todayJobs || 0, completed: 0, unassigned: 0, enRoute: 0, onSite: 0, atRisk: 0 };
-  const business = metrics.business || { totalClients: metrics.totalClients || 0, activePools: metrics.activePools || 0, pendingQuotes: metrics.pendingQuotes || 0 };
+  const business = metrics.business || { totalClients: metrics.totalClients || 0, totalPools: 0, activePools: metrics.activePools || 0, activeServicePlans: 0, pendingQuotes: metrics.pendingQuotes || 0 };
   const finance = metrics.finance || { monthlyRevenue: metrics.monthlyRevenue || 0, monthlyInvoiced: 0, monthlyCollected: 0, accountsReceivable: 0 };
   const operations = metrics.operations || { jobsCompleted30d: 0, onTimePercentage: 0, avgVisitDuration: 0 };
   const supplies = metrics.supplies || { pendingRequests: 0, urgentRequests: 0 };
@@ -526,9 +529,20 @@ export default function Dashboard() {
                 />
                 <SnapshotRow
                   icon={Droplet}
-                  label="Active Pools"
-                  value={business.activePools.toLocaleString()}
+                  label="Total Pools"
+                  value={business.totalPools.toLocaleString()}
                   color="#2563eb"
+                  onClick={() => router.push("/pools")}
+                />
+                <SnapshotRow
+                  icon={ClipboardList}
+                  label="Active Service Plans"
+                  value={business.activeServicePlans.toLocaleString()}
+                  sub={business.activeServicePlans === 0 && business.totalPools > 0
+                    ? `${business.totalPools} pool${business.totalPools === 1 ? "" : "s"} not yet on a plan`
+                    : undefined}
+                  color="#7c3aed"
+                  onClick={() => router.push("/plans")}
                 />
                 <SnapshotRow
                   icon={FileText}
@@ -641,12 +655,14 @@ function SnapshotRow({
   label,
   value,
   color,
+  sub,
   onClick,
 }: {
   icon: typeof Users;
   label: string;
   value: string;
   color: string;
+  sub?: string;
   onClick?: () => void;
 }) {
   const Wrapper = onClick ? "button" : "div";
@@ -658,7 +674,10 @@ function SnapshotRow({
       {...(onClick ? { onClick } : {})}
     >
       <Icon className="h-4 w-4 shrink-0" style={{ color }} />
-      <span className="text-sm text-gray-600 flex-1 truncate">{label}</span>
+      <span className="flex-1 min-w-0">
+        <span className="block text-sm text-gray-600 truncate">{label}</span>
+        {sub && <span className="block text-xs text-amber-600 truncate">{sub}</span>}
+      </span>
       <span className="text-sm font-semibold text-gray-900 tabular-nums">{value}</span>
     </Wrapper>
   );

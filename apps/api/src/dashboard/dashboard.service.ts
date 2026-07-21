@@ -69,7 +69,12 @@ export class DashboardService {
       where: { orgId },
     });
 
-    // Get active pools (pools with active service plans)
+    // Total pools on the books, regardless of whether they're on a plan yet.
+    const totalPools = await prisma.pool.count({ where: { orgId } });
+
+    // Active pools = pools currently on a live service plan. This is 0 until
+    // pools are subscribed to a plan, even when pools exist — that's why a
+    // fresh setup shows pools but no "active" ones.
     const activePools = await prisma.pool.count({
       where: {
         orgId,
@@ -79,6 +84,11 @@ export class DashboardService {
           },
         },
       },
+    });
+
+    // Live service-plan subscriptions across all pools.
+    const activeServicePlans = await prisma.servicePlan.count({
+      where: { orgId, status: "active" },
     });
 
     // Get pending quotes
@@ -366,7 +376,9 @@ export class DashboardService {
         // Business
         business: {
           totalClients,
+          totalPools,
           activePools,
+          activeServicePlans,
           pendingQuotes,
         },
         // Finance
