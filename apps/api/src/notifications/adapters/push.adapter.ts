@@ -155,22 +155,26 @@ export class PushAdapter {
     orgId: string,
     title: string,
     body: string,
-    data?: Record<string, any>
+    data?: Record<string, any>,
+    // When set, only send to device tokens belonging to that app. A single
+    // person can have BOTH the carer and client apps (or be both a carer and a
+    // client), so an unscoped userId lookup can deliver a client push to the
+    // carer app and vice versa. Pass the role to keep pushes on the right app.
+    appRole?: "carer" | "client"
   ): Promise<string[]> {
-    // Fetch all device tokens for this user
-    const deviceTokens = await prisma.deviceToken.findMany({
-      where: {
-        userId,
-        orgId,
-        platform: {
-          in: ["ios", "android"], // Only mobile platforms
-        },
-      },
-    });
+    const where: any = {
+      userId,
+      orgId,
+      platform: { in: ["ios", "android"] }, // Only mobile platforms
+    };
+    if (appRole === "carer") where.carerId = { not: null };
+    else if (appRole === "client") where.clientId = { not: null };
+
+    const deviceTokens = await prisma.deviceToken.findMany({ where });
 
     if (deviceTokens.length === 0) {
       this.logger.warn(
-        `No device tokens found for user ${userId} in org ${orgId}`
+        `No device tokens found for user ${userId} in org ${orgId}${appRole ? ` (${appRole} app)` : ""}`
       );
       return [];
     }
@@ -186,7 +190,7 @@ export class PushAdapter {
   }
 
   /**
-   * Send push notification to a carer
+   * Send push notification to a carer — only to CARER-app device tokens.
    */
   async sendToCarer(
     carerId: string,
@@ -195,23 +199,23 @@ export class PushAdapter {
     body: string,
     data?: Record<string, any>
   ): Promise<string[]> {
-    const carer = await prisma.carer.findFirst({
-      where: { id: carerId, orgId },
-      include: {
-        user: true,
-      },
+    const deviceTokens = await prisma.deviceToken.findMany({
+      where: { carerId, orgId, platform: { in: ["ios", "android"] } },
     });
 
-    if (!carer || !carer.userId) {
-      this.logger.warn(`Carer ${carerId} not found or has no userId`);
+    if (deviceTokens.length === 0) {
+      this.logger.warn(`No carer-app device tokens for carer ${carerId} in org ${orgId}`);
       return [];
     }
 
-    return this.sendToUser(carer.userId, orgId, title, body, data);
+    return this.sendBulk(
+      deviceTokens.map((dt) => ({ token: dt.token, title, body, data })),
+      orgId
+    );
   }
 
   /**
-   * Send push notification to a client
+   * Send push notification to a client — only to CLIENT-app device tokens.
    */
   async sendToClient(
     clientId: string,
@@ -220,16 +224,19 @@ export class PushAdapter {
     body: string,
     data?: Record<string, any>
   ): Promise<string[]> {
-    const client = await prisma.client.findFirst({
-      where: { id: clientId, orgId },
+    const deviceTokens = await prisma.deviceToken.findMany({
+      where: { clientId, orgId, platform: { in: ["ios", "android"] } },
     });
 
-    if (!client || !client.userId) {
-      this.logger.warn(`Client ${clientId} not found or has no userId`);
+    if (deviceTokens.length === 0) {
+      this.logger.warn(`No client-app device tokens for client ${clientId} in org ${orgId}`);
       return [];
     }
 
-    return this.sendToUser(client.userId, orgId, title, body, data);
+    return this.sendBulk(
+      deviceTokens.map((dt) => ({ token: dt.token, title, body, data })),
+      orgId
+    );
   }
 
   /**
@@ -265,13 +272,17 @@ export class PushAdapter {
       return { sent: 0, failed: 0, total: 0 };
     }
 
-    const deviceTokens = await prisma.deviceToken.findMany({
-      where: {
-        orgId,
-        userId: { in: Array.from(userIdSet) },
-        platform: { in: ["ios", "android"] },
-      },
-    });
+    const tokenWhere: any = {
+      orgId,
+      userId: { in: Array.from(userIdSet) },
+      platform: { in: ["ios", "android"] },
+    };
+    // Keep a carers-only broadcast on the carer app and a clients-only
+    // broadcast on the client app, even when one person has both apps.
+    if (audience === "carers") tokenWhere.carerId = { not: null };
+    else if (audience === "clients") tokenWhere.clientId = { not: null };
+
+    const deviceTokens = await prisma.deviceToken.findMany({ where: tokenWhere });
 
     if (deviceTokens.length === 0) {
       return { sent: 0, failed: 0, total: 0 };

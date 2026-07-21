@@ -340,6 +340,9 @@ export class CarersService {
           data: {
             token: dto.token,
             carerId,
+            // This device is now the carer app for this user; a token belongs
+            // to exactly one app so push routing can't cross the two apps.
+            clientId: null,
           },
         })
       : await prisma.deviceToken.create({

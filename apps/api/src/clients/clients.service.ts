@@ -247,7 +247,9 @@ export class ClientsService {
     if (existing) {
       return prisma.deviceToken.update({
         where: { id: existing.id },
-        data: { token: dto.token, clientId: client.id },
+        // This device is now the client app for this user; a token belongs to
+        // exactly one app so push routing can't cross the two apps.
+        data: { token: dto.token, clientId: client.id, carerId: null },
       });
     }
     return prisma.deviceToken.create({

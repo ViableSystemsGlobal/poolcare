@@ -58,7 +58,7 @@ export class NotificationsService {
    * Accepts a notification record (with an optional `to` override for address).
    */
   async deliverNotification(notification: any): Promise<string | undefined> {
-    const { orgId, channel, body, subject, template, recipientId, metadata } = notification;
+    const { orgId, channel, body, subject, template, recipientId, recipientType, metadata } = notification;
     // `to` may be passed directly or stored in metadata._to (for scheduled notifications)
     const to: string | undefined = notification.to ?? (metadata as any)?._to;
 
@@ -83,12 +83,17 @@ export class NotificationsService {
         return this.pushAdapter.send(to, subject || template || "PoolCare Notification", body, metadata);
       }
       if (recipientId) {
+        // Scope to the right app so a client-typed push can't land on the
+        // carer app (and vice versa) when one person has both apps.
+        const appRole =
+          recipientType === "carer" ? "carer" : recipientType === "client" ? "client" : undefined;
         const results = await this.pushAdapter.sendToUser(
           recipientId,
           orgId,
           subject || template || "PoolCare Notification",
           body,
-          metadata
+          metadata,
+          appRole
         );
         return results.length > 0 ? results[0] : undefined;
       }
