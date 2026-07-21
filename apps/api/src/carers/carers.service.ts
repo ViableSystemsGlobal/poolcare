@@ -222,8 +222,12 @@ export class CarersService {
     const where: any = {
       orgId,
       OR: [
-        // Anything addressed to this carer (by user id or carer record id)
-        { recipientId: { in: [userId, carer.id] } },
+        // Carer-role notifications addressed to this carer (by user id or carer
+        // record id). The recipientType filter is essential: one person can be
+        // BOTH a carer and a client (same User), so an unfiltered recipientId
+        // match would surface their client notifications (e.g. "how did X do?"
+        // review reminders) in the carer app.
+        { recipientId: { in: [userId, carer.id] }, recipientType: "carer" },
         // Broadcasts aimed at carers (or everyone). NOTE: do not include the
         // generic "org" / client bucket here — that surfaces client-facing
         // broadcasts (e.g. pool tips) in every carer's feed.

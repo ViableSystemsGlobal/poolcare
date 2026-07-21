@@ -1000,7 +1000,7 @@ export class VisitsService {
           channel: "email",
           to: client.email,
           recipientId: client.userId || client.id, // Use userId if available, fallback to client.id
-          recipientType: client.userId ? "user" : "client",
+          recipientType: "client",
           subject: `Service Report - ${poolName}`,
           body: `Your pool service report is ready. Please find the detailed PDF report attached.`,
           metadata: {
@@ -1258,7 +1258,7 @@ export class VisitsService {
           channel: "sms",
           to: client.phone,
           recipientId: client.userId || client.id, // Use userId if available, fallback to client.id
-          recipientType: client.userId ? "user" : "client",
+          recipientType: "client",
           subject: "Service Completed",
           body: message,
           metadata: {
@@ -1276,7 +1276,7 @@ export class VisitsService {
           channel: "email",
           to: client.email,
           recipientId: client.userId || client.id, // Use userId if available, fallback to client.id
-          recipientType: client.userId ? "user" : "client",
+          recipientType: "client",
           subject: `Service Completed - ${poolName}`,
           body: message,
           metadata: {
@@ -1295,7 +1295,7 @@ export class VisitsService {
           channel: "push",
           to: "", // Will use recipientId
           recipientId: client.userId,
-          recipientType: "user",
+          recipientType: "client",
           subject: `Service completed — how did ${carerName} do?`,
           body: `${poolName} has been serviced. Tap to see the report and leave a rating.`,
           metadata: {
@@ -1383,7 +1383,7 @@ export class VisitsService {
           channel: "push",
           to: "",
           recipientId: carerUserId,
-          recipientType: "user",
+          recipientType: "carer",
           subject: `Visit approved — ${amount}`,
           body: `${poolName} · ${clientName}. ${earningsLine}`,
           metadata: {
@@ -1406,7 +1406,7 @@ export class VisitsService {
           channel: "sms",
           to: carerPhone,
           recipientId: carerUserId,
-          recipientType: "user",
+          recipientType: "carer",
           subject: "Visit Approved",
           body: message,
           metadata: {
@@ -1450,7 +1450,7 @@ export class VisitsService {
           channel: "email",
           to: carerEmail,
           recipientId: carerUserId,
-          recipientType: "user",
+          recipientType: "carer",
           subject: emailSubject,
           body: emailBody,
           metadata: {
@@ -1682,7 +1682,7 @@ export class VisitsService {
           channel: "push",
           to: "",
           recipientId: carerUserId,
-          recipientType: "user",
+          recipientType: "carer",
           subject: `Payment sent — ${amount}`,
           body: `Your payment for the visit to ${poolName} has been made.`,
           metadata: { visitId: updated.id, jobId: updated.jobId, type: "visit_paid", url: "/earnings" },
@@ -1694,7 +1694,7 @@ export class VisitsService {
           channel: "sms",
           to: carerPhone,
           recipientId: carerUserId || undefined,
-          recipientType: "user",
+          recipientType: "carer",
           subject: "Payment Sent",
           body: `Payment sent: ${amount} for your visit to ${poolName}. Thank you!`,
           metadata: { visitId: updated.id, type: "visit_paid" },

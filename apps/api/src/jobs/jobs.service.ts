@@ -599,7 +599,7 @@ export class JobsService {
             channel: "push",
             to: "", // Push notifications use recipientId instead
             recipientId: carer.userId,
-            recipientType: "user",
+            recipientType: "carer",
             subject: "New Job Assigned",
             body: `You've been assigned a job at ${poolName} on ${dateStr} at ${timeStr}${etaMinutes ? ` (ETA: ${etaMinutes} min)` : ""}`,
             template: "job_assigned",

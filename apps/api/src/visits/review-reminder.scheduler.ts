@@ -74,7 +74,7 @@ export class ReviewReminderScheduler {
           channel: "push",
           to: "",
           recipientId: client.userId,
-          recipientType: "user",
+          recipientType: "client",
           subject: "How was your pool service?",
           body: `Rate ${carerName}'s visit to ${poolName} — it takes 10 seconds and helps us keep quality high.`,
           metadata: {

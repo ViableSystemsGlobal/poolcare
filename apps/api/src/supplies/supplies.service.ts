@@ -283,7 +283,7 @@ export class SuppliesService {
             try {
               await this.notificationsService.send(orgId, {
                 recipientId: carer.userId,
-                recipientType: "user",
+                recipientType: "carer",
                 channel: "email",
                 to: carer.user.email,
                 subject: `Supply Request ${dto.status.toUpperCase()}`,
@@ -303,7 +303,7 @@ export class SuppliesService {
             try {
               await this.notificationsService.send(orgId, {
                 recipientId: carer.userId,
-                recipientType: "user",
+                recipientType: "carer",
                 channel: "sms",
                 to: carer.user.phone,
                 body: message,
