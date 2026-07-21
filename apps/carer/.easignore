@@ -15,6 +15,14 @@ apps/api/dist/
 # Dependencies are reinstalled on the build server
 **/node_modules/
 
+# Native build artifacts — regenerated on the build server (pod install / gradle).
+# ios/Pods alone is ~900 MB; uploading it wastes space and overflowed local disk.
+**/ios/Pods/
+**/ios/build/
+**/android/.gradle/
+**/android/app/build/
+**/android/build/
+
 # Local env / tooling noise
 **/.env.local
 **/*.log
