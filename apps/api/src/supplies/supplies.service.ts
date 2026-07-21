@@ -316,6 +316,26 @@ export class SuppliesService {
               console.error("Failed to send SMS notification:", error);
             }
           }
+
+          // Push the carer app too (recipientType "carer" scopes it to carer devices).
+          if (carer.userId) {
+            try {
+              await this.notificationsService.send(orgId, {
+                recipientId: carer.userId,
+                recipientType: "carer",
+                channel: "push",
+                to: "",
+                subject: `Supply Request ${dto.status.toUpperCase()}`,
+                body: message,
+                metadata: {
+                  type: `supply_request_${dto.status}`,
+                  requestId: id,
+                },
+              } as any);
+            } catch (error) {
+              console.error("Failed to send push notification:", error);
+            }
+          }
         }
       }
     } catch (error) {

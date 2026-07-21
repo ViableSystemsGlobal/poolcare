@@ -209,6 +209,15 @@ export class JobsService {
         // Don't fail the creation if SMS fails
         this.logger.error(`Failed to send SMS notification for job creation ${job.id}:`, error);
       }
+
+      // Also push the carer app (assign() does this; create() previously only SMS'd).
+      await this.pushCarer(
+        orgId,
+        carerForNotification.userId,
+        "New Job Assigned",
+        `You've been assigned a job at ${job.pool.name || "a pool"} on ${this.formatJobWhen(job.windowStart)}.`,
+        { jobId: job.id, carerId: carerForNotification.id, poolId: job.poolId, type: "job_assigned" }
+      );
     }
 
     return job;
@@ -709,10 +718,20 @@ export class JobsService {
         notes: dto.reason ? `${job.notes || ""}\nRescheduled: ${dto.reason}`.trim() : job.notes,
       },
       include: {
-        pool: true,
+        pool: { include: { client: { select: { userId: true } } } },
         assignedCarer: true,
       },
     });
+
+    // Keep both apps in sync on the new time.
+    const when = this.formatJobWhen(updated.windowStart);
+    const poolName = updated.pool.name || "your pool";
+    await this.pushCarer(orgId, updated.assignedCarer?.userId, "Job Rescheduled",
+      `A job at ${poolName} was moved to ${when}.`,
+      { jobId, poolId: updated.poolId, type: "job_rescheduled" });
+    await this.pushClient(orgId, updated.pool.client?.userId, "Visit Rescheduled",
+      `Your pool service at ${poolName} was moved to ${when}.`,
+      { jobId, poolId: updated.poolId, type: "job_rescheduled" });
 
     return updated;
   }
@@ -720,6 +739,10 @@ export class JobsService {
   async cancel(orgId: string, jobId: string, dto: CancelJobDto) {
     const job = await prisma.job.findFirst({
       where: { id: jobId, orgId },
+      include: {
+        pool: { include: { client: { select: { userId: true } } } },
+        assignedCarer: { select: { userId: true } },
+      },
     });
 
     if (!job) {
@@ -739,6 +762,13 @@ export class JobsService {
       },
     });
 
+    // Notify both apps that the job is off.
+    const poolName = job.pool?.name || "your pool";
+    await this.pushCarer(orgId, job.assignedCarer?.userId, "Job Cancelled",
+      `A job at ${poolName} was cancelled.`, { jobId, type: "job_cancelled" });
+    await this.pushClient(orgId, job.pool?.client?.userId, "Visit Cancelled",
+      `Your pool service at ${poolName} was cancelled.`, { jobId, type: "job_cancelled" });
+
     return updated;
   }
 
@@ -751,6 +781,7 @@ export class JobsService {
             client: { select: { userId: true } },
           },
         },
+        assignedCarer: { select: { userId: true } },
       },
     });
 
@@ -766,7 +797,7 @@ export class JobsService {
       throw new BadRequestException(`Cannot cancel a ${job.status} job`);
     }
 
-    return prisma.job.update({
+    const updated = await prisma.job.update({
       where: { id: jobId },
       data: {
         status: "cancelled",
@@ -774,6 +805,13 @@ export class JobsService {
         notes: dto.reason ? `${job.notes || ""}\nClient cancelled: ${dto.reason}`.trim() : job.notes,
       },
     });
+
+    // Tell the assigned carer their job was cancelled by the client.
+    await this.pushCarer(orgId, job.assignedCarer?.userId, "Job Cancelled by Client",
+      `The client cancelled the job at ${job.pool.name || "a pool"} on ${this.formatJobWhen(job.windowStart)}.`,
+      { jobId, type: "job_cancelled" });
+
+    return updated;
   }
 
   async clientReschedule(
@@ -790,6 +828,7 @@ export class JobsService {
             client: { select: { userId: true } },
           },
         },
+        assignedCarer: { select: { userId: true } },
       },
     });
 
@@ -812,7 +851,7 @@ export class JobsService {
       throw new BadRequestException("windowEnd must be after windowStart");
     }
 
-    return prisma.job.update({
+    const updated = await prisma.job.update({
       where: { id: jobId },
       data: {
         windowStart,
@@ -820,6 +859,13 @@ export class JobsService {
         notes: dto.reason ? `${job.notes || ""}\nClient reschedule request: ${dto.reason}`.trim() : job.notes,
       },
     });
+
+    // Tell the assigned carer about the new time the client requested.
+    await this.pushCarer(orgId, job.assignedCarer?.userId, "Job Rescheduled by Client",
+      `The client moved the job at ${job.pool.name || "a pool"} to ${this.formatJobWhen(windowStart)}.`,
+      { jobId, type: "job_rescheduled" });
+
+    return updated;
   }
 
   /**
@@ -849,6 +895,64 @@ export class JobsService {
     return degrees * (Math.PI / 180);
   }
 
+  /** "Tue, Jul 22 at 3:00 PM" */
+  private formatJobWhen(d: Date | string): string {
+    const date = new Date(d);
+    const dateStr = date.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+    const timeStr = date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
+    return `${dateStr} at ${timeStr}`;
+  }
+
+  /** Fire-and-forget push to a carer's CARER app. Never blocks or throws. */
+  private async pushCarer(
+    orgId: string,
+    carerUserId: string | null | undefined,
+    subject: string,
+    body: string,
+    metadata: Record<string, any>
+  ): Promise<void> {
+    if (!carerUserId) return;
+    try {
+      await this.notificationsService.send(orgId, {
+        channel: "push",
+        to: "",
+        recipientId: carerUserId,
+        recipientType: "carer",
+        subject,
+        body,
+        template: (metadata?.type as string) || "job_update",
+        metadata,
+      } as any);
+    } catch (err) {
+      this.logger.error(`Failed to push carer (${metadata?.type}):`, err as any);
+    }
+  }
+
+  /** Fire-and-forget push to a client's CLIENT app. Never blocks or throws. */
+  private async pushClient(
+    orgId: string,
+    clientUserId: string | null | undefined,
+    subject: string,
+    body: string,
+    metadata: Record<string, any>
+  ): Promise<void> {
+    if (!clientUserId) return;
+    try {
+      await this.notificationsService.send(orgId, {
+        channel: "push",
+        to: "",
+        recipientId: clientUserId,
+        recipientType: "client",
+        subject,
+        body,
+        template: (metadata?.type as string) || "job_update",
+        metadata,
+      } as any);
+    } catch (err) {
+      this.logger.error(`Failed to push client (${metadata?.type}):`, err as any);
+    }
+  }
+
   async start(orgId: string, userId: string, jobId: string, dto: StartJobDto) {
     const carer = await prisma.carer.findFirst({
       where: { orgId, userId },
@@ -865,7 +969,7 @@ export class JobsService {
         orgId,
       },
       include: {
-        pool: true,
+        pool: { include: { client: { select: { userId: true } } } },
         assignedCarer: {
           select: {
             id: true,
@@ -973,6 +1077,11 @@ export class JobsService {
         distanceMeters: distanceMeters || null,
       },
     });
+
+    // Let the client know their carer is on the way.
+    await this.pushClient(orgId, job.pool.client?.userId, "Your carer is on the way",
+      `${carer.name || "Your carer"} is heading to ${job.pool.name || "your pool"}${etaMinutes ? ` — ETA ~${etaMinutes} min` : ""}.`,
+      { jobId, poolId: job.poolId, type: "carer_en_route" });
 
     return updated;
   }
