@@ -1556,6 +1556,15 @@ export class VisitsService {
       throw new ForbiddenException("Only admins or managers can approve visits");
     }
 
+    // Idempotency: if this visit is already approved (e.g. an impatient
+    // double-click), skip re-sending the carer notification below so they
+    // aren't notified twice. Any amount edit still goes through.
+    const existingStatus = await prisma.visitEntry.findUnique({
+      where: { id: visitId },
+      select: { paymentStatus: true },
+    });
+    const alreadyApproved = existingStatus?.paymentStatus === "approved";
+
     // Fetch full visit with carer and plan details
     const visitWithDetails = await prisma.visitEntry.findUnique({
       where: { id: visitId },
@@ -1625,12 +1634,15 @@ export class VisitsService {
       },
     });
 
-    // Send notification to carer about approval
-    try {
-      await this.sendVisitApprovalNotification(orgId, updated);
-    } catch (error) {
-      console.error(`Failed to send approval notification for visit ${visitId}:`, error);
-      // Don't fail the approval if notification fails
+    // Send notification to carer about approval — only the first time, so a
+    // double-click can't notify the carer twice.
+    if (!alreadyApproved) {
+      try {
+        await this.sendVisitApprovalNotification(orgId, updated);
+      } catch (error) {
+        console.error(`Failed to send approval notification for visit ${visitId}:`, error);
+        // Don't fail the approval if notification fails
+      }
     }
 
     return updated;

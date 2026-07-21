@@ -131,6 +131,7 @@ export default function VisitDetailPage() {
   const { toast } = useToast();
   const confirm = useConfirm();
   const [markingPaid, setMarkingPaid] = useState(false);
+  const [approving, setApproving] = useState(false);
   const visitId = params.id as string;
 
   const [loading, setLoading] = useState(true);
@@ -199,10 +200,11 @@ export default function VisitDetailPage() {
   };
 
   const handleApprove = async () => {
-    if (!visit) {
+    if (!visit || approving) {
       return;
     }
 
+    setApproving(true);
     try {
       const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
       const paymentAmountCents = paymentAmount ? parseFloat(paymentAmount) * 100 : undefined;
@@ -240,6 +242,8 @@ export default function VisitDetailPage() {
         description: "Please try again.",
         variant: "destructive",
       });
+    } finally {
+      setApproving(false);
     }
   };
 
@@ -773,10 +777,12 @@ export default function VisitDetailPage() {
               </div>
             </div>
             <div className="flex justify-end gap-2 mt-4">
-              <Button variant="outline" onClick={() => setIsApproveDialogOpen(false)}>
+              <Button variant="outline" onClick={() => setIsApproveDialogOpen(false)} disabled={approving}>
                 Cancel
               </Button>
-              <Button onClick={handleApprove}>Approve Visit</Button>
+              <Button onClick={handleApprove} disabled={approving}>
+                {approving ? "Approving…" : "Approve Visit"}
+              </Button>
             </div>
           </div>
         </DialogContent>
