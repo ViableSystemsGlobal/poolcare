@@ -822,7 +822,7 @@ model Invoice {
   visitId       String?   @unique @db.Uuid
   quoteId       String?   @unique @db.Uuid
   planId        String?   @db.Uuid // Reference to ServicePlan for subscription billing
-  invoiceNumber String    @unique
+  invoiceNumber String
   status        String    @default("draft") // draft, sent, paid, overdue, cancelled
   currency      String    @default("GHS")
   items         Json // Array of {sku?, label, qty, unitPriceCents, taxPct}
@@ -849,6 +849,10 @@ model Invoice {
   creditNotes         CreditNote[]
   subscriptionBilling SubscriptionBilling?
 
+  // Invoice numbers are a per-org sequence (nextInvoiceNumber counts within an
+  // org), so uniqueness must be scoped the same way. A global unique made the
+  // second org to invoice in a given year collide on INV-<year>-0001.
+  @@unique([orgId, invoiceNumber])
   @@index([orgId, clientId, status])
   @@index([orgId, status, dueDate])
   @@index([invoiceNumber])

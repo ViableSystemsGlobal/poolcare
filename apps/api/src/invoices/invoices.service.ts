@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from "@nestjs/common";
+import PDFDocument from "pdfkit";
 import { prisma } from "@poolcare/db";
 import { CreateInvoiceDto, UpdateInvoiceDto, SendInvoiceDto, CreateCreditNoteDto } from "./dto";
 import { NotificationsService } from "../notifications/notifications.service";
@@ -14,16 +15,23 @@ export class InvoicesService {
     const year = new Date().getFullYear();
     const prefix = `INV-${year}-`;
 
-    const lastInvoice = await tx.invoice.findFirst({
+    const existing = await tx.invoice.findMany({
       where: { orgId, invoiceNumber: { startsWith: prefix } },
-      orderBy: { invoiceNumber: "desc" },
+      select: { invoiceNumber: true },
     });
 
-    const nextNum = lastInvoice
-      ? parseInt(lastInvoice.invoiceNumber.replace(prefix, ""), 10) + 1
-      : 1;
+    // Take the true numeric max rather than the lexical one: ordering by string
+    // breaks as soon as we pass 9999 (INV-2026-10000 < INV-2026-9999), and legacy
+    // rows carry suffixes (INV-2025-171594-2) that must not be read as the max.
+    let maxNum = 0;
+    for (const { invoiceNumber } of existing) {
+      const parsed = parseInt(invoiceNumber.slice(prefix.length).split("-")[0], 10);
+      if (Number.isFinite(parsed) && parsed > maxNum) {
+        maxNum = parsed;
+      }
+    }
 
-    return `${prefix}${String(nextNum).padStart(4, "0")}`;
+    return `${prefix}${String(maxNum + 1).padStart(4, "0")}`;
   }
 
   private calculateTotals(items: any[]): { subtotalCents: number; taxCents: number; totalCents: number } {
@@ -224,6 +232,324 @@ export class InvoicesService {
     }
 
     return invoice;
+  }
+
+  /**
+   * Renders an invoice as a PDF. Access rules are the same as getOne(), so a
+   * CLIENT can only ever download their own invoices.
+   */
+  async generatePdf(
+    orgId: string,
+    role: string,
+    userId: string,
+    invoiceId: string
+  ): Promise<{ buffer: Buffer; filename: string }> {
+    const invoice = await this.getOne(orgId, role, userId, invoiceId);
+    const branding = await this.getInvoiceBranding(orgId);
+
+    // bufferPages lets us stamp the footer onto every page once the body is laid out
+    const doc = new PDFDocument({ margin: 50, size: "A4", bufferPages: true });
+    const buffers: Buffer[] = [];
+    doc.on("data", buffers.push.bind(buffers));
+
+    const currency = invoice.currency || "GHS";
+    // Currency codes rather than symbols: pdfkit's built-in fonts are WinAnsi
+    // and cannot encode the cedi sign (₵).
+    const money = (cents: number) =>
+      `${currency} ${(cents / 100).toLocaleString("en-US", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      })}`;
+    const date = (value: Date | string | null | undefined) =>
+      value
+        ? new Date(value).toLocaleDateString("en-GB", {
+            day: "2-digit",
+            month: "short",
+            year: "numeric",
+          })
+        : "-";
+
+    const left = doc.page.margins.left;
+    const right = doc.page.width - doc.page.margins.right;
+    const contentWidth = right - left;
+
+    // ---- Header: org identity on the left, invoice identity on the right
+    let headerBottom = doc.y;
+    let logoDrawn = false;
+    if (branding.logo) {
+      try {
+        doc.image(branding.logo, left, doc.y, { fit: [130, 48] });
+        headerBottom = doc.y + 48;
+        logoDrawn = true;
+      } catch {
+        // An unreadable logo shouldn't fail the whole download
+      }
+    }
+    if (!logoDrawn) {
+      doc.fontSize(18).fillColor("#111111").text(branding.name, left, doc.y, { width: 280 });
+      headerBottom = doc.y;
+    }
+
+    doc.fontSize(10).fillColor("#666666");
+    if (branding.address) {
+      doc.text(branding.address, left, headerBottom + 8, { width: 260 });
+      headerBottom = doc.y;
+    }
+    if (branding.supportEmail) {
+      doc.text(branding.supportEmail, left, doc.y, { width: 260 });
+      headerBottom = doc.y;
+    }
+    if (branding.supportPhone) {
+      doc.text(branding.supportPhone, left, doc.y, { width: 260 });
+      headerBottom = doc.y;
+    }
+
+    doc.fontSize(26).fillColor(branding.primaryColor).text("INVOICE", left, 50, {
+      width: contentWidth,
+      align: "right",
+    });
+    doc.fontSize(11).fillColor("#111111").text(invoice.invoiceNumber, left, doc.y + 2, {
+      width: contentWidth,
+      align: "right",
+    });
+    doc
+      .fontSize(10)
+      .fillColor("#666666")
+      .text(invoice.status.toUpperCase(), left, doc.y + 2, {
+        width: contentWidth,
+        align: "right",
+      });
+
+    let y = Math.max(headerBottom, doc.y) + 24;
+    doc.moveTo(left, y).lineTo(right, y).lineWidth(1).strokeColor("#e5e7eb").stroke();
+    y += 20;
+
+    // ---- Bill to / invoice meta
+    const metaX = left + contentWidth / 2;
+    doc.fontSize(9).fillColor("#6b7280").text("BILL TO", left, y);
+    doc.fontSize(11).fillColor("#111111").text(invoice.client?.name || "-", left, doc.y + 4, {
+      width: contentWidth / 2 - 20,
+    });
+    doc.fontSize(10).fillColor("#4b5563");
+    for (const line of [
+      invoice.client?.billingAddress,
+      invoice.client?.email,
+      invoice.client?.phone,
+    ]) {
+      if (line) doc.text(line, left, doc.y + 2, { width: contentWidth / 2 - 20 });
+    }
+    const billToBottom = doc.y;
+
+    doc.fontSize(9).fillColor("#6b7280").text("INVOICE DATE", metaX, y, {
+      width: contentWidth / 2,
+    });
+    doc.fontSize(10).fillColor("#111111").text(date(invoice.issuedAt || invoice.createdAt), metaX, doc.y + 2, {
+      width: contentWidth / 2,
+    });
+    doc.fontSize(9).fillColor("#6b7280").text("DUE DATE", metaX, doc.y + 8, {
+      width: contentWidth / 2,
+    });
+    doc.fontSize(10).fillColor("#111111").text(date(invoice.dueDate), metaX, doc.y + 2, {
+      width: contentWidth / 2,
+    });
+    if (invoice.pool?.name) {
+      doc.fontSize(9).fillColor("#6b7280").text("POOL", metaX, doc.y + 8, {
+        width: contentWidth / 2,
+      });
+      doc.fontSize(10).fillColor("#111111").text(invoice.pool.name, metaX, doc.y + 2, {
+        width: contentWidth / 2,
+      });
+    }
+
+    y = Math.max(billToBottom, doc.y) + 28;
+
+    // ---- Line items
+    const cols = {
+      label: { x: left, width: 215, align: "left" as const },
+      qty: { x: left + 225, width: 45, align: "right" as const },
+      unit: { x: left + 280, width: 90, align: "right" as const },
+      tax: { x: left + 378, width: 45, align: "right" as const },
+      total: { x: left + 430, width: contentWidth - 430, align: "right" as const },
+    };
+
+    const drawItemsHeader = (top: number) => {
+      doc.fontSize(9).fillColor("#6b7280");
+      doc.text("DESCRIPTION", cols.label.x, top, cols.label);
+      doc.text("QTY", cols.qty.x, top, cols.qty);
+      doc.text("UNIT PRICE", cols.unit.x, top, cols.unit);
+      doc.text("TAX", cols.tax.x, top, cols.tax);
+      doc.text("AMOUNT", cols.total.x, top, cols.total);
+      const bottom = top + 16;
+      doc.moveTo(left, bottom).lineTo(right, bottom).strokeColor("#e5e7eb").stroke();
+      return bottom + 10;
+    };
+
+    // pdfkit silently starts a new page when you write past the bottom margin,
+    // which desyncs our manual `y`. Every block below reserves its space first.
+    const ensureSpace = (needed: number) => {
+      if (y + needed > doc.page.height - doc.page.margins.bottom) {
+        doc.addPage();
+        y = doc.page.margins.top;
+        return true;
+      }
+      return false;
+    };
+
+    y = drawItemsHeader(y);
+
+    const items = (invoice.items as any[]) || [];
+    for (const item of items) {
+      const lineSubtotal = (item.qty || 0) * (item.unitPriceCents || 0);
+      const lineTotal = Math.round(lineSubtotal * (1 + (item.taxPct || 0) / 100));
+
+      const labelHeight = doc.fontSize(10).heightOfString(item.label || "-", {
+        width: cols.label.width,
+      });
+
+      if (ensureSpace(labelHeight + 20)) {
+        y = drawItemsHeader(y);
+      }
+
+      doc.fontSize(10).fillColor("#111111");
+      doc.text(item.label || "-", cols.label.x, y, cols.label);
+      doc.text(String(item.qty ?? 0), cols.qty.x, y, cols.qty);
+      doc.text(money(item.unitPriceCents || 0), cols.unit.x, y, cols.unit);
+      doc.text(item.taxPct ? `${item.taxPct}%` : "-", cols.tax.x, y, cols.tax);
+      doc.text(money(lineTotal), cols.total.x, y, cols.total);
+
+      y += Math.max(labelHeight, 12) + 10;
+      doc.moveTo(left, y - 5).lineTo(right, y - 5).strokeColor("#f3f4f6").stroke();
+    }
+
+    // ---- Totals (kept together on one page)
+    y += 10;
+    ensureSpace(invoice.paidCents > 0 ? 116 : 100);
+    const balanceCents = invoice.totalCents - invoice.paidCents;
+    const totalsLabelX = left + contentWidth - 260;
+    const totalRow = (label: string, value: string, opts?: { bold?: boolean; color?: string }) => {
+      doc.font(opts?.bold ? "Helvetica-Bold" : "Helvetica");
+      doc.fontSize(opts?.bold ? 12 : 10).fillColor(opts?.color || "#4b5563");
+      doc.text(label, totalsLabelX, y, { width: 140, align: "right" });
+      doc.fillColor(opts?.color || "#111111");
+      doc.text(value, totalsLabelX + 150, y, { width: 110, align: "right" });
+      doc.font("Helvetica");
+      y += opts?.bold ? 20 : 16;
+    };
+
+    totalRow("Subtotal", money(invoice.subtotalCents));
+    totalRow("Tax", money(invoice.taxCents));
+    doc.moveTo(totalsLabelX, y).lineTo(right, y).strokeColor("#e5e7eb").stroke();
+    y += 8;
+    totalRow("Total", money(invoice.totalCents), { bold: true });
+    if (invoice.paidCents > 0) {
+      totalRow("Paid", `- ${money(invoice.paidCents)}`);
+    }
+    totalRow("Balance Due", money(balanceCents), {
+      bold: true,
+      color: balanceCents > 0 ? "#b91c1c" : "#15803d",
+    });
+
+    // ---- Payment history
+    const payments = (invoice as any).payments || [];
+    if (payments.length > 0) {
+      y += 16;
+      ensureSpace(50);
+      doc.fontSize(9).fillColor("#6b7280").text("PAYMENTS RECEIVED", left, y);
+      y = doc.y + 8;
+      for (const payment of payments) {
+        ensureSpace(24);
+        doc.fontSize(10).fillColor("#4b5563");
+        doc.text(
+          `${date(payment.processedAt || payment.createdAt)} — ${String(payment.method || "").replace(/_/g, " ")}${
+            payment.reference ? ` (${payment.reference})` : ""
+          }`,
+          left,
+          y,
+          { width: contentWidth - 120 }
+        );
+        doc.fillColor("#111111").text(money(payment.amountCents), left + contentWidth - 110, y, {
+          width: 110,
+          align: "right",
+        });
+        y = doc.y + 6;
+      }
+    }
+
+    // ---- Notes
+    if (invoice.notes) {
+      y += 16;
+      ensureSpace(
+        30 + doc.fontSize(10).heightOfString(invoice.notes, { width: contentWidth })
+      );
+      doc.fontSize(9).fillColor("#6b7280").text("NOTES", left, y);
+      doc.fontSize(10).fillColor("#4b5563").text(invoice.notes, left, doc.y + 4, {
+        width: contentWidth,
+      });
+    }
+
+    // ---- Footer on every page
+    const range = doc.bufferedPageRange();
+    for (let i = range.start; i < range.start + range.count; i++) {
+      doc.switchToPage(i);
+      // Writing into the bottom margin would make pdfkit spill onto a fresh
+      // page, so drop the margin for the duration of the footer.
+      const bottomMargin = doc.page.margins.bottom;
+      doc.page.margins.bottom = 0;
+      doc
+        .fontSize(8)
+        .fillColor("#9ca3af")
+        .text(
+          `${branding.name} · ${invoice.invoiceNumber} · Page ${i - range.start + 1} of ${range.count}`,
+          left,
+          doc.page.height - bottomMargin + 12,
+          { width: contentWidth, align: "center" }
+        );
+      doc.page.margins.bottom = bottomMargin;
+    }
+
+    doc.end();
+
+    const buffer = await new Promise<Buffer>((resolve, reject) => {
+      doc.on("end", () => resolve(Buffer.concat(buffers)));
+      doc.on("error", reject);
+    });
+
+    return { buffer, filename: `${invoice.invoiceNumber}.pdf` };
+  }
+
+  private async getInvoiceBranding(orgId: string) {
+    const [org, orgSetting] = await Promise.all([
+      prisma.organization.findUnique({ where: { id: orgId } }),
+      prisma.orgSetting.findUnique({ where: { orgId } }),
+    ]);
+
+    const profile = (orgSetting?.profile as any) || {};
+
+    return {
+      name: org?.name || "PoolCare",
+      address: profile.address || null,
+      supportEmail: profile.supportEmail || null,
+      supportPhone: profile.supportPhone || null,
+      primaryColor: "#0d9488",
+      logo: await this.fetchLogoBuffer(profile.logoUrl),
+    };
+  }
+
+  private async fetchLogoBuffer(logoUrl?: string | null): Promise<Buffer | null> {
+    if (!logoUrl) return null;
+    try {
+      if (logoUrl.startsWith("data:")) {
+        const base64 = logoUrl.split(",")[1];
+        return base64 ? Buffer.from(base64, "base64") : null;
+      }
+      if (!/^https?:\/\//i.test(logoUrl)) return null;
+      const response = await fetch(logoUrl);
+      if (!response.ok) return null;
+      return Buffer.from(await response.arrayBuffer());
+    } catch (error) {
+      console.error("Failed to load org logo for invoice PDF:", error);
+      return null;
+    }
   }
 
   async update(orgId: string, invoiceId: string, dto: UpdateInvoiceDto) {

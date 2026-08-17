@@ -17,6 +17,10 @@ import {
   Clock,
   XCircle,
   Users,
+  Edit,
+  Plus,
+  Trash2,
+  Loader2,
 } from "lucide-react";
 import {
   Table,
@@ -40,6 +44,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { useTheme } from "@/contexts/theme-context";
 import { SkeletonMetricCard } from "@/components/ui/skeleton";
 import { FileAttachments } from "@/components/files/file-attachments";
@@ -111,6 +118,12 @@ export default function InvoiceDetailPage() {
   const [paymentAmount, setPaymentAmount] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("cash");
   const [paymentReference, setPaymentReference] = useState("");
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [editItems, setEditItems] = useState<InvoiceItem[]>([]);
+  const [editDueDate, setEditDueDate] = useState("");
+  const [editNotes, setEditNotes] = useState("");
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
 
   useEffect(() => {
     if (invoiceId) {
@@ -132,6 +145,25 @@ export default function InvoiceDetailPage() {
       if (response.ok) {
         const data = await response.json();
         setInvoice(data);
+
+        // Deep link from the invoices list: /invoices/:id?edit=1 opens the editor
+        if (
+          data.status === "draft" &&
+          typeof window !== "undefined" &&
+          new URLSearchParams(window.location.search).get("edit") === "1"
+        ) {
+          setEditItems(
+            (data.items || []).map((item: InvoiceItem) => ({
+              label: item.label,
+              qty: item.qty,
+              unitPriceCents: item.unitPriceCents,
+              taxPct: item.taxPct || 0,
+            }))
+          );
+          setEditDueDate(data.dueDate ? new Date(data.dueDate).toISOString().split("T")[0] : "");
+          setEditNotes(data.notes || "");
+          setIsEditDialogOpen(true);
+        }
       }
     } catch (error) {
       console.error("Failed to fetch invoice:", error);
@@ -262,6 +294,112 @@ export default function InvoiceDetailPage() {
     }
   };
 
+  const handleDownloadPdf = async () => {
+    try {
+      setIsDownloading(true);
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+
+      // The endpoint is auth-guarded, so we can't just point window.open at it —
+      // fetch the bytes with the bearer token and save the blob.
+      const response = await fetch(`${API_URL}/invoices/${invoiceId}/pdf`, {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Server responded ${response.status}`);
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${invoice?.invoiceNumber || "invoice"}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (error: any) {
+      console.error("Failed to download invoice PDF:", error);
+      toast({
+        title: "Failed to download PDF",
+        description: error.message || "An unexpected error occurred",
+        variant: "destructive",
+      });
+    } finally {
+      setIsDownloading(false);
+    }
+  };
+
+  const openEditDialog = () => {
+    if (!invoice) return;
+    setEditItems(
+      invoice.items.map((item) => ({
+        label: item.label,
+        qty: item.qty,
+        unitPriceCents: item.unitPriceCents,
+        taxPct: item.taxPct || 0,
+      }))
+    );
+    setEditDueDate(invoice.dueDate ? new Date(invoice.dueDate).toISOString().split("T")[0] : "");
+    setEditNotes(invoice.notes || "");
+    setIsEditDialogOpen(true);
+  };
+
+  const handleSaveEdit = async () => {
+    try {
+      setIsSavingEdit(true);
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+
+      const response = await fetch(`${API_URL}/invoices/${invoiceId}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
+        },
+        body: JSON.stringify({
+          items: editItems
+            .filter((item) => item.label.trim())
+            .map((item) => ({
+              label: item.label.trim(),
+              qty: item.qty,
+              unitPriceCents: item.unitPriceCents,
+              taxPct: item.taxPct || 0,
+            })),
+          dueDate: editDueDate ? new Date(editDueDate).toISOString() : undefined,
+          notes: editNotes || undefined,
+        }),
+      });
+
+      if (response.ok) {
+        setIsEditDialogOpen(false);
+        await fetchInvoice();
+        toast({
+          title: "Invoice updated",
+          description: "Your changes have been saved",
+          variant: "success",
+        });
+      } else {
+        const error = await response.json();
+        toast({
+          title: "Failed to update invoice",
+          description: error.message || error.error || "Unknown error",
+          variant: "destructive",
+        });
+      }
+    } catch (error: any) {
+      console.error("Failed to update invoice:", error);
+      toast({
+        title: "Failed to update invoice",
+        description: error.message || "An unexpected error occurred",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
+
   const formatCurrency = (cents: number, currency: string) => {
     return `${formatCurrencyForDisplay(currency)}${(cents / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
@@ -344,11 +482,27 @@ export default function InvoiceDetailPage() {
           </div>
         </div>
         <div className="flex gap-2">
-          {invoice.status === "draft" && (
-            <Button variant="outline" onClick={() => setIsSendDialogOpen(true)}>
-              <Send className="h-4 w-4 mr-2" />
-              Send Invoice
-            </Button>
+          {invoice.status === "draft" ? (
+            <>
+              <Button variant="outline" onClick={openEditDialog}>
+                <Edit className="h-4 w-4 mr-2" />
+                Edit
+              </Button>
+              <Button variant="outline" onClick={() => setIsSendDialogOpen(true)}>
+                <Send className="h-4 w-4 mr-2" />
+                Send Invoice
+              </Button>
+            </>
+          ) : (
+            <span
+              title="Only draft invoices can be edited. Issue a credit note or a replacement invoice instead."
+              className="inline-flex"
+            >
+              <Button variant="outline" disabled>
+                <Edit className="h-4 w-4 mr-2" />
+                Edit
+              </Button>
+            </span>
           )}
           {invoice.status !== "draft" && !isFullyPaid && (
             <>
@@ -362,9 +516,13 @@ export default function InvoiceDetailPage() {
               </Button>
             </>
           )}
-          <Button variant="outline">
-            <Download className="h-4 w-4 mr-2" />
-            Download PDF
+          <Button variant="outline" onClick={handleDownloadPdf} disabled={isDownloading}>
+            {isDownloading ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <Download className="h-4 w-4 mr-2" />
+            )}
+            {isDownloading ? "Preparing..." : "Download PDF"}
           </Button>
         </div>
       </div>
@@ -702,6 +860,154 @@ export default function InvoiceDetailPage() {
           <FileAttachments scope="invoice" refId={invoiceId} title="Attachments" />
         </div>
       </div>
+
+      {/* Edit Invoice Dialog */}
+      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+        <DialogContent className="sm:max-w-3xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Edit Invoice</DialogTitle>
+            <DialogDescription>
+              Update line items, due date and notes for {invoice.invoiceNumber}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4 space-y-4">
+            <div className="grid gap-2">
+              <Label htmlFor="editDueDate">Due Date</Label>
+              <Input
+                id="editDueDate"
+                type="date"
+                value={editDueDate}
+                onChange={(e) => setEditDueDate(e.target.value)}
+              />
+            </div>
+
+            <div className="grid gap-2">
+              <Label>Invoice Items *</Label>
+              <div className="space-y-2">
+                {editItems.map((item, index) => (
+                  <div key={index} className="grid grid-cols-12 gap-2 items-end">
+                    <div className="col-span-5">
+                      <Input
+                        placeholder="Item description"
+                        value={item.label}
+                        onChange={(e) => {
+                          const newItems = [...editItems];
+                          newItems[index] = { ...newItems[index], label: e.target.value };
+                          setEditItems(newItems);
+                        }}
+                      />
+                    </div>
+                    <div className="col-span-2">
+                      <Input
+                        type="number"
+                        placeholder="Qty"
+                        value={item.qty}
+                        min={1}
+                        step={1}
+                        onChange={(e) => {
+                          const newItems = [...editItems];
+                          // The API requires whole quantities of at least 1
+                          newItems[index] = { ...newItems[index], qty: parseInt(e.target.value, 10) || 1 };
+                          setEditItems(newItems);
+                        }}
+                      />
+                    </div>
+                    <div className="col-span-2">
+                      <Input
+                        type="number"
+                        placeholder="Price"
+                        value={item.unitPriceCents / 100}
+                        onChange={(e) => {
+                          const newItems = [...editItems];
+                          newItems[index] = {
+                            ...newItems[index],
+                            unitPriceCents: Math.round((parseFloat(e.target.value) || 0) * 100),
+                          };
+                          setEditItems(newItems);
+                        }}
+                      />
+                    </div>
+                    <div className="col-span-2">
+                      <Input
+                        type="number"
+                        placeholder="Tax %"
+                        value={item.taxPct ?? 0}
+                        onChange={(e) => {
+                          const newItems = [...editItems];
+                          newItems[index] = { ...newItems[index], taxPct: parseFloat(e.target.value) || 0 };
+                          setEditItems(newItems);
+                        }}
+                      />
+                    </div>
+                    <div className="col-span-1">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          const newItems = editItems.filter((_, i) => i !== index);
+                          setEditItems(
+                            newItems.length > 0
+                              ? newItems
+                              : [{ label: "", qty: 1, unitPriceCents: 0, taxPct: 0 }]
+                          );
+                        }}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    setEditItems([...editItems, { label: "", qty: 1, unitPriceCents: 0, taxPct: 0 }])
+                  }
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Item
+                </Button>
+              </div>
+            </div>
+
+            <div className="grid gap-2">
+              <Label htmlFor="editNotes">Notes</Label>
+              <Textarea
+                id="editNotes"
+                placeholder="Additional notes for the invoice..."
+                value={editNotes}
+                onChange={(e) => setEditNotes(e.target.value)}
+                rows={3}
+              />
+            </div>
+
+            <div className="flex justify-between items-center border-t pt-4">
+              <span className="text-sm text-gray-600">New total</span>
+              <span className="text-lg font-bold">
+                {formatCurrency(
+                  editItems.reduce((sum, item) => {
+                    const lineSubtotal = item.qty * item.unitPriceCents;
+                    return sum + lineSubtotal + Math.round((lineSubtotal * (item.taxPct || 0)) / 100);
+                  }, 0),
+                  invoice.currency
+                )}
+              </span>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                onClick={handleSaveEdit}
+                disabled={isSavingEdit || editItems.every((item) => !item.label.trim())}
+              >
+                {isSavingEdit ? "Saving..." : "Save Changes"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Send Invoice Dialog */}
       <Dialog open={isSendDialogOpen} onOpenChange={setIsSendDialogOpen}>

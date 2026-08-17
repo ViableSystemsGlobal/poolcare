@@ -998,6 +998,14 @@ export default function InvoicesPage() {
                                 <Button
                                   variant="ghost"
                                   size="sm"
+                                  onClick={() => router.push(`/invoices/${invoice.id}?edit=1`)}
+                                  title="Edit invoice"
+                                >
+                                  <Edit className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
                                   onClick={() => handleSendClick(invoice.id)}
                                   title="Send invoice"
                                   className="text-blue-600"

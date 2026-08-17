@@ -8,7 +8,9 @@ import {
   Body,
   UseGuards,
   Headers,
+  Res,
 } from "@nestjs/common";
+import { Response } from "express";
 import { InvoicesService } from "./invoices.service";
 import { PaymentsService } from "./payments.service";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
@@ -58,12 +60,44 @@ export class InvoicesController {
     });
   }
 
+  // Must stay ABOVE @Get(":id") — Nest matches in declaration order, so a
+  // single-segment wildcard declared first swallows /invoices/credit-notes.
+  @Get("credit-notes")
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "MANAGER")
+  async listCreditNotes(
+    @CurrentUser() user: { org_id: string },
+    @Query("clientId") clientId?: string,
+    @Query("invoiceId") invoiceId?: string
+  ) {
+    return this.invoicesService.listCreditNotes(user.org_id, clientId, invoiceId);
+  }
+
   @Get(":id")
   async getOne(
     @CurrentUser() user: { org_id: string; role: string; sub: string },
     @Param("id") id: string
   ) {
     return this.invoicesService.getOne(user.org_id, user.role, user.sub, id);
+  }
+
+  @Get(":id/pdf")
+  async getPdf(
+    @CurrentUser() user: { org_id: string; role: string; sub: string },
+    @Param("id") id: string,
+    @Res() res: Response
+  ) {
+    const { buffer, filename } = await this.invoicesService.generatePdf(
+      user.org_id,
+      user.role,
+      user.sub,
+      id
+    );
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.setHeader("Content-Length", buffer.length);
+    res.send(buffer);
   }
 
   @Patch(":id")
@@ -121,17 +155,6 @@ export class InvoicesController {
     @Body() dto: CreateCreditNoteDto
   ) {
     return this.invoicesService.createCreditNote(user.org_id, dto);
-  }
-
-  @Get("credit-notes")
-  @UseGuards(RolesGuard)
-  @Roles("ADMIN", "MANAGER")
-  async listCreditNotes(
-    @CurrentUser() user: { org_id: string },
-    @Query("clientId") clientId?: string,
-    @Query("invoiceId") invoiceId?: string
-  ) {
-    return this.invoicesService.listCreditNotes(user.org_id, clientId, invoiceId);
   }
 
   @Post("credit-notes/:id/apply")
