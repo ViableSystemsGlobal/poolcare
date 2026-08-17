@@ -100,6 +100,8 @@ interface OrgProfile {
   appDownloadImageUrl?: string | null;
   appStoreUrl?: string | null;
   googlePlayUrl?: string | null;
+  pdfHeaderImageUrl?: string | null;
+  pdfFooterImageUrl?: string | null;
   onboardingImageUrls?: (string | null)[];
 }
 
@@ -202,6 +204,12 @@ export default function SettingsPage() {
   const [requestCardImagePreview, setRequestCardImagePreview] = useState<string | null>(null);
   const [chatCardImageFile, setChatCardImageFile] = useState<File | null>(null);
   const [chatCardImagePreview, setChatCardImagePreview] = useState<string | null>(null);
+  const [pdfHeaderImageFile, setPdfHeaderImageFile] = useState<File | null>(null);
+  const [pdfHeaderImagePreview, setPdfHeaderImagePreview] = useState<string | null>(null);
+  const [pdfFooterImageFile, setPdfFooterImageFile] = useState<File | null>(null);
+  const [pdfFooterImagePreview, setPdfFooterImagePreview] = useState<string | null>(null);
+  const [uploadingPdfHeaderImage, setUploadingPdfHeaderImage] = useState(false);
+  const [uploadingPdfFooterImage, setUploadingPdfFooterImage] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [uploadingLoaderLogo, setUploadingLoaderLogo] = useState(false);
   const [uploadingFavicon, setUploadingFavicon] = useState(false);
@@ -439,6 +447,8 @@ export default function SettingsPage() {
           setSplashImagePreview(orgData.profile.splashImageUrl || null);
           setLoginBgPreview(orgData.profile.loginBackgroundUrl || null);
           setHelpAssistantImagePreview(orgData.profile.helpAssistantImageUrl || null);
+          setPdfHeaderImagePreview(orgData.profile.pdfHeaderImageUrl || null);
+          setPdfFooterImagePreview(orgData.profile.pdfFooterImageUrl || null);
           if (orgData.profile.loginBackgroundType) {
             setLoginBgMode(orgData.profile.loginBackgroundType);
           }
@@ -793,6 +803,80 @@ export default function SettingsPage() {
     }
   };
 
+  const handlePdfHeaderImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setPdfHeaderImageFile(file);
+      const reader = new FileReader();
+      reader.onloadend = () => setPdfHeaderImagePreview(reader.result as string);
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handlePdfFooterImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setPdfFooterImageFile(file);
+      const reader = new FileReader();
+      reader.onloadend = () => setPdfFooterImagePreview(reader.result as string);
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const uploadPdfBandImage = async (
+    kind: "header" | "footer"
+  ): Promise<string | null> => {
+    const file = kind === "header" ? pdfHeaderImageFile : pdfFooterImageFile;
+    if (!file) return null;
+
+    const setUploading =
+      kind === "header" ? setUploadingPdfHeaderImage : setUploadingPdfFooterImage;
+    const field = kind === "header" ? "pdfHeaderImage" : "pdfFooterImage";
+    const urlKey = kind === "header" ? "pdfHeaderImageUrl" : "pdfFooterImageUrl";
+
+    try {
+      setUploading(true);
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+      const uploadFormData = new FormData();
+      uploadFormData.append(field, file);
+
+      const response = await fetch(`${API_URL}/settings/upload-pdf-${kind}-image`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
+        },
+        body: uploadFormData,
+      });
+
+      if (!response.ok) {
+        let errorMessage = `Failed to upload PDF ${kind} image`;
+        try {
+          const error = await response.json();
+          errorMessage = error.error || error.message || errorMessage;
+        } catch (e) {
+          errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+        }
+        throw new Error(errorMessage);
+      }
+
+      const data = await response.json();
+      setOrgProfile((prev) => ({ ...prev, [urlKey]: data[urlKey] }));
+      if (kind === "header") setPdfHeaderImageFile(null);
+      else setPdfFooterImageFile(null);
+      return data[urlKey];
+    } catch (error: any) {
+      console.error(`Failed to upload PDF ${kind} image:`, error);
+      toast({
+        title: "Upload failed",
+        description: error.message || `Failed to upload PDF ${kind} image`,
+        variant: "destructive",
+      });
+      return null;
+    } finally {
+      setUploading(false);
+    }
+  };
+
   const handleHomeCardImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -1137,6 +1221,16 @@ export default function SettingsPage() {
         uploadedHelpAssistantImageUrl = await uploadHelpAssistantImage();
         if (!uploadedHelpAssistantImageUrl) return;
       }
+      let uploadedPdfHeaderImageUrl: string | null = null;
+      if (pdfHeaderImageFile) {
+        uploadedPdfHeaderImageUrl = await uploadPdfBandImage("header");
+        if (!uploadedPdfHeaderImageUrl) return;
+      }
+      let uploadedPdfFooterImageUrl: string | null = null;
+      if (pdfFooterImageFile) {
+        uploadedPdfFooterImageUrl = await uploadPdfBandImage("footer");
+        if (!uploadedPdfFooterImageUrl) return;
+      }
 
       // Handle YouTube URL mode for login background
       let loginBgUpdates: Record<string, any> = {};
@@ -1168,6 +1262,8 @@ export default function SettingsPage() {
         ...(uploadedChatCardImageUrl != null && { chatCardImageUrl: uploadedChatCardImageUrl }),
         ...(uploadedSplashImageUrl != null && { splashImageUrl: uploadedSplashImageUrl }),
         ...(uploadedHelpAssistantImageUrl != null && { helpAssistantImageUrl: uploadedHelpAssistantImageUrl }),
+        ...(uploadedPdfHeaderImageUrl != null && { pdfHeaderImageUrl: uploadedPdfHeaderImageUrl }),
+        ...(uploadedPdfFooterImageUrl != null && { pdfFooterImageUrl: uploadedPdfFooterImageUrl }),
         ...loginBgUpdates,
       };
 
@@ -1757,6 +1853,67 @@ export default function SettingsPage() {
                         )}
                       </div>
                       {uploadingChatCardImage && <p className="text-sm text-gray-500">Uploading...</p>}
+                    </div>
+
+                    {/* Document letterhead bands (invoice PDFs) */}
+                    <div className="space-y-4 md:col-span-2 p-4 rounded-lg border border-dashed border-gray-200 bg-gray-50">
+                      <div>
+                        <Label className="flex items-center gap-2 text-sm font-semibold">
+                          <Image className="h-4 w-4" />
+                          Document Letterhead
+                        </Label>
+                        <p className="text-xs text-gray-500 mt-1">
+                          Header and footer strips printed across every page of generated invoice PDFs. Each image spans the full page width and its height follows its own proportions, so a wide, short image gives a slim band. Use PNG or JPEG, around 1200px wide. Leave empty for no letterhead.
+                        </p>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="pdfHeaderImage" className="text-xs text-gray-600">
+                          Header Image
+                        </Label>
+                        {(pdfHeaderImagePreview || orgProfile.pdfHeaderImageUrl) && (
+                          <img
+                            src={pdfHeaderImagePreview || orgProfile.pdfHeaderImageUrl || ""}
+                            alt="PDF header band preview"
+                            className="w-full max-h-24 object-contain rounded border border-gray-200 bg-white"
+                            onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                          />
+                        )}
+                        <Input
+                          id="pdfHeaderImage"
+                          type="file"
+                          accept="image/png,image/jpeg"
+                          onChange={handlePdfHeaderImageChange}
+                          className="cursor-pointer"
+                        />
+                        {uploadingPdfHeaderImage && (
+                          <p className="text-sm text-gray-500">Uploading header image...</p>
+                        )}
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="pdfFooterImage" className="text-xs text-gray-600">
+                          Footer Image
+                        </Label>
+                        {(pdfFooterImagePreview || orgProfile.pdfFooterImageUrl) && (
+                          <img
+                            src={pdfFooterImagePreview || orgProfile.pdfFooterImageUrl || ""}
+                            alt="PDF footer band preview"
+                            className="w-full max-h-24 object-contain rounded border border-gray-200 bg-white"
+                            onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                          />
+                        )}
+                        <Input
+                          id="pdfFooterImage"
+                          type="file"
+                          accept="image/png,image/jpeg"
+                          onChange={handlePdfFooterImageChange}
+                          className="cursor-pointer"
+                        />
+                        {uploadingPdfFooterImage && (
+                          <p className="text-sm text-gray-500">Uploading footer image...</p>
+                        )}
+                      </div>
                     </div>
 
                     {/* App Download (newsletter & email footer) */}

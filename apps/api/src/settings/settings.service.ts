@@ -199,6 +199,8 @@ export class SettingsService {
         googlePlayUrl: profile.googlePlayUrl || null,
         splashImageUrl: profile.splashImageUrl || null,
         splashBackgroundColor: profile.splashBackgroundColor || null,
+        pdfHeaderImageUrl: profile.pdfHeaderImageUrl || null,
+        pdfFooterImageUrl: profile.pdfFooterImageUrl || null,
         onboardingImageUrls: Array.isArray(profile.onboardingImageUrls) ? profile.onboardingImageUrls : [],
       },
     };
@@ -260,6 +262,8 @@ export class SettingsService {
           googlePlayUrl: profile.googlePlayUrl !== undefined ? (profile.googlePlayUrl || null) : (currentProfile.googlePlayUrl || null),
           splashImageUrl: profile.splashImageUrl !== undefined ? (profile.splashImageUrl || null) : (currentProfile.splashImageUrl || null),
           splashBackgroundColor: profile.splashBackgroundColor !== undefined ? (profile.splashBackgroundColor || null) : (currentProfile.splashBackgroundColor || null),
+          pdfHeaderImageUrl: profile.pdfHeaderImageUrl !== undefined ? (profile.pdfHeaderImageUrl || null) : (currentProfile.pdfHeaderImageUrl || null),
+          pdfFooterImageUrl: profile.pdfFooterImageUrl !== undefined ? (profile.pdfFooterImageUrl || null) : (currentProfile.pdfFooterImageUrl || null),
           onboardingImageUrls: profile.onboardingImageUrls !== undefined
             ? (Array.isArray(profile.onboardingImageUrls) ? profile.onboardingImageUrls : [])
             : (Array.isArray(currentProfile.onboardingImageUrls) ? currentProfile.onboardingImageUrls : []),
@@ -296,6 +300,8 @@ export class SettingsService {
         googlePlayUrl: savedProfile.googlePlayUrl || null,
         splashImageUrl: savedProfile.splashImageUrl || null,
         splashBackgroundColor: savedProfile.splashBackgroundColor || null,
+        pdfHeaderImageUrl: savedProfile.pdfHeaderImageUrl || null,
+        pdfFooterImageUrl: savedProfile.pdfFooterImageUrl || null,
         onboardingImageUrls: Array.isArray(savedProfile.onboardingImageUrls) ? savedProfile.onboardingImageUrls : [],
       },
     };

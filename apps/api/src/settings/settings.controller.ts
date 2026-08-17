@@ -265,6 +265,90 @@ export class SettingsController {
     }
   }
 
+  // Letterhead bands drawn across the top/bottom of every page of generated
+  // documents (invoices today; quotes/receipts as they adopt the same helper).
+  // PNG/JPEG only — pdfkit cannot embed SVG or WebP, so accepting them here
+  // would store an image the PDF silently drops.
+  @Post("upload-pdf-header-image")
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "MANAGER")
+  @UseInterceptors(FileInterceptor("pdfHeaderImage"))
+  async uploadPdfHeaderImage(
+    @CurrentUser() user: { org_id: string },
+    @UploadedFile(
+      new ParseFilePipe({
+        fileIsRequired: true,
+        validators: [
+          new MaxFileSizeValidator({ maxSize: 2 * 1024 * 1024 }), // 2MB
+          new FileTypeValidator({ fileType: /(jpeg|jpg|png)$/ }),
+        ],
+      })
+    )
+    file: Express.Multer.File
+  ) {
+    if (!file) {
+      throw new BadRequestException("No file uploaded");
+    }
+
+    try {
+      const pdfHeaderImageUrl = await this.filesService.uploadImage(
+        user.org_id,
+        file,
+        "pdf_header_image",
+        user.org_id
+      );
+
+      await this.settingsService.updateOrgSettings(user.org_id, {
+        profile: { pdfHeaderImageUrl },
+      });
+
+      return { pdfHeaderImageUrl };
+    } catch (error: any) {
+      console.error("PDF header image upload error:", error);
+      throw new BadRequestException(error.message || "Failed to upload PDF header image");
+    }
+  }
+
+  @Post("upload-pdf-footer-image")
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "MANAGER")
+  @UseInterceptors(FileInterceptor("pdfFooterImage"))
+  async uploadPdfFooterImage(
+    @CurrentUser() user: { org_id: string },
+    @UploadedFile(
+      new ParseFilePipe({
+        fileIsRequired: true,
+        validators: [
+          new MaxFileSizeValidator({ maxSize: 2 * 1024 * 1024 }), // 2MB
+          new FileTypeValidator({ fileType: /(jpeg|jpg|png)$/ }),
+        ],
+      })
+    )
+    file: Express.Multer.File
+  ) {
+    if (!file) {
+      throw new BadRequestException("No file uploaded");
+    }
+
+    try {
+      const pdfFooterImageUrl = await this.filesService.uploadImage(
+        user.org_id,
+        file,
+        "pdf_footer_image",
+        user.org_id
+      );
+
+      await this.settingsService.updateOrgSettings(user.org_id, {
+        profile: { pdfFooterImageUrl },
+      });
+
+      return { pdfFooterImageUrl };
+    } catch (error: any) {
+      console.error("PDF footer image upload error:", error);
+      throw new BadRequestException(error.message || "Failed to upload PDF footer image");
+    }
+  }
+
   @Post("upload-home-card-image")
   @UseGuards(RolesGuard)
   @Roles("ADMIN", "MANAGER")

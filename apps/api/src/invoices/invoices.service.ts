@@ -1,4 +1,6 @@
 import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from "@nestjs/common";
+import * as fs from "fs";
+import * as path from "path";
 import PDFDocument from "pdfkit";
 import { prisma } from "@poolcare/db";
 import { CreateInvoiceDto, UpdateInvoiceDto, SendInvoiceDto, CreateCreditNoteDto } from "./dto";
@@ -251,8 +253,36 @@ export class InvoicesService {
     const invoice = await this.getOne(orgId, role, userId, invoiceId);
     const branding = await this.getInvoiceBranding(orgId);
 
-    // bufferPages lets us stamp the footer onto every page once the body is laid out
-    const doc = new PDFDocument({ margin: 50, size: "A4", bufferPages: true });
+    const A4_WIDTH = 595.28; // points
+    const SIDE_MARGIN = 50;
+    const BAND_GAP = 18; // breathing room between a letterhead band and content
+    const DEFAULT_MARGIN = 50;
+
+    // A letterhead band spans the full page width, so its height follows from
+    // the image's own aspect ratio — the org controls the band depth purely by
+    // the image it uploads, with no separate height setting to keep in sync.
+    const bandHeight = (band: Buffer | null): number => {
+      if (!band) return 0;
+      const size = this.readImageSize(band);
+      return size?.width ? (A4_WIDTH * size.height) / size.width : 0;
+    };
+
+    const headerBandH = bandHeight(branding.headerBand);
+    const footerBandH = bandHeight(branding.footerBand);
+
+    // Reserve the bands as page margins so body content can never run under
+    // them, then paint the bands into that reserved space at the end.
+    // bufferPages also lets us stamp them onto every page once laid out.
+    const doc = new PDFDocument({
+      size: "A4",
+      bufferPages: true,
+      margins: {
+        top: headerBandH ? headerBandH + BAND_GAP : DEFAULT_MARGIN,
+        bottom: footerBandH ? footerBandH + BAND_GAP : DEFAULT_MARGIN,
+        left: SIDE_MARGIN,
+        right: SIDE_MARGIN,
+      },
+    });
     const buffers: Buffer[] = [];
     doc.on("data", buffers.push.bind(buffers));
 
@@ -308,7 +338,7 @@ export class InvoicesService {
       headerBottom = doc.y;
     }
 
-    doc.fontSize(26).fillColor(branding.primaryColor).text("INVOICE", left, 50, {
+    doc.fontSize(26).fillColor(branding.primaryColor).text("INVOICE", left, doc.page.margins.top, {
       width: contentWidth,
       align: "right",
     });
@@ -499,13 +529,31 @@ export class InvoicesService {
       // page, so drop the margin for the duration of the footer.
       const bottomMargin = doc.page.margins.bottom;
       doc.page.margins.bottom = 0;
+
+      // Letterhead bands: full page width, flush against the physical edge, on
+      // every page. Drawn last so they sit over the reserved margin strips.
+      if (branding.headerBand && headerBandH) {
+        doc.image(branding.headerBand, 0, 0, {
+          width: doc.page.width,
+          height: headerBandH,
+        });
+      }
+      if (branding.footerBand && footerBandH) {
+        doc.image(branding.footerBand, 0, doc.page.height - footerBandH, {
+          width: doc.page.width,
+          height: footerBandH,
+        });
+      }
+
       doc
         .fontSize(8)
         .fillColor("#9ca3af")
         .text(
           `${branding.name} · ${invoice.invoiceNumber} · Page ${i - range.start + 1} of ${range.count}`,
           left,
-          doc.page.height - bottomMargin + 12,
+          footerBandH
+            ? doc.page.height - footerBandH - 13 // sits just above the band
+            : doc.page.height - bottomMargin + 12,
           { width: contentWidth, align: "center" }
         );
       doc.page.margins.bottom = bottomMargin;
@@ -529,31 +577,99 @@ export class InvoicesService {
 
     const profile = (orgSetting?.profile as any) || {};
 
+    const [logo, headerBand, footerBand] = await Promise.all([
+      this.fetchImageBuffer(profile.logoUrl),
+      this.fetchImageBuffer(profile.pdfHeaderImageUrl),
+      this.fetchImageBuffer(profile.pdfFooterImageUrl),
+    ]);
+
     return {
       name: org?.name || "PoolCare",
       address: profile.address || null,
       supportEmail: profile.supportEmail || null,
       supportPhone: profile.supportPhone || null,
       primaryColor: resolveOrgPrimaryColor(profile),
-      logo: await this.fetchLogoBuffer(profile.logoUrl),
+      logo,
+      headerBand,
+      footerBand,
     };
   }
 
-  private async fetchLogoBuffer(logoUrl?: string | null): Promise<Buffer | null> {
-    if (!logoUrl) return null;
+  private async fetchImageBuffer(imageUrl?: string | null): Promise<Buffer | null> {
+    if (!imageUrl) return null;
     try {
-      if (logoUrl.startsWith("data:")) {
-        const base64 = logoUrl.split(",")[1];
+      if (imageUrl.startsWith("data:")) {
+        const base64 = imageUrl.split(",")[1];
         return base64 ? Buffer.from(base64, "base64") : null;
       }
-      if (!/^https?:\/\//i.test(logoUrl)) return null;
-      const response = await fetch(logoUrl);
+
+      // Branding images are our own uploads, so read them off disk rather than
+      // making the API fetch its own public URL — that round trip goes out
+      // through nginx and back, and any blip silently drops the letterhead.
+      const fromDisk = this.readLocalUpload(imageUrl);
+      if (fromDisk) return fromDisk;
+
+      if (!/^https?:\/\//i.test(imageUrl)) return null;
+      const response = await fetch(imageUrl);
       if (!response.ok) return null;
       return Buffer.from(await response.arrayBuffer());
     } catch (error) {
-      console.error("Failed to load org logo for invoice PDF:", error);
+      console.error(`Failed to load branding image for invoice PDF (${imageUrl}):`, error);
       return null;
     }
+  }
+
+  /** Resolve a `/api/files/local/<scope>/<file>` URL to the file on disk. */
+  private readLocalUpload(imageUrl: string): Buffer | null {
+    const match = imageUrl.match(/\/api\/files\/local\/([^/?#]+)\/([^/?#]+)/);
+    if (!match) return null;
+
+    // basename both segments so a crafted URL cannot escape the upload dir
+    const scope = path.basename(decodeURIComponent(match[1]));
+    const fileName = path.basename(decodeURIComponent(match[2]));
+    const baseUploadDir = process.env.UPLOAD_DIR || path.join(process.cwd(), "uploads");
+    const filePath = path.join(baseUploadDir, scope, fileName);
+
+    try {
+      return fs.existsSync(filePath) ? fs.readFileSync(filePath) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Intrinsic pixel size of a PNG or JPEG, read straight from the file header.
+   * Only the ratio matters here — it is what turns a full-width letterhead band
+   * into a height. Returns null for anything unrecognised, which callers treat
+   * as "no band".
+   */
+  private readImageSize(buf: Buffer): { width: number; height: number } | null {
+    if (buf.length < 24) return null;
+
+    // PNG: IHDR width/height are the two big-endian u32s at offset 16.
+    if (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) {
+      return { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20) };
+    }
+
+    // JPEG: walk the segment markers to the start-of-frame, which carries the size.
+    if (buf[0] === 0xff && buf[1] === 0xd8) {
+      let i = 2;
+      while (i < buf.length - 9) {
+        if (buf[i] !== 0xff) return null;
+        const marker = buf[i + 1];
+        const isStartOfFrame =
+          (marker >= 0xc0 && marker <= 0xc3) ||
+          (marker >= 0xc5 && marker <= 0xc7) ||
+          (marker >= 0xc9 && marker <= 0xcb) ||
+          (marker >= 0xcd && marker <= 0xcf);
+        if (isStartOfFrame) {
+          return { height: buf.readUInt16BE(i + 5), width: buf.readUInt16BE(i + 7) };
+        }
+        i += 2 + buf.readUInt16BE(i + 2);
+      }
+    }
+
+    return null;
   }
 
   async update(orgId: string, invoiceId: string, dto: UpdateInvoiceDto) {
