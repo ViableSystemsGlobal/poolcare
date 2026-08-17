@@ -3,7 +3,11 @@ import PDFDocument from "pdfkit";
 import { prisma } from "@poolcare/db";
 import { CreateInvoiceDto, UpdateInvoiceDto, SendInvoiceDto, CreateCreditNoteDto } from "./dto";
 import { NotificationsService } from "../notifications/notifications.service";
-import { createEmailTemplate, getOrgEmailSettings } from "../email/email-template.util";
+import {
+  createEmailTemplate,
+  getOrgEmailSettings,
+  resolveOrgPrimaryColor,
+} from "../email/email-template.util";
 
 @Injectable()
 export class InvoicesService {
@@ -530,7 +534,7 @@ export class InvoicesService {
       address: profile.address || null,
       supportEmail: profile.supportEmail || null,
       supportPhone: profile.supportPhone || null,
-      primaryColor: "#0d9488",
+      primaryColor: resolveOrgPrimaryColor(profile),
       logo: await this.fetchLogoBuffer(profile.logoUrl),
     };
   }

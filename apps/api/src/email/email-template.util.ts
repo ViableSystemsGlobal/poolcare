@@ -104,6 +104,22 @@ function getThemeColorHex(themeColor: string): string {
   return colorMap[themeColor] || "#0d9488";
 }
 
+/**
+ * Resolve an org's primary brand colour from its `OrgSetting.profile`, matching
+ * what the admin console renders: an explicit `customColorHex` wins, then the
+ * named theme, then teal. Use this anywhere org branding is drawn (emails,
+ * invoice PDFs) so one setting drives them all.
+ */
+export function resolveOrgPrimaryColor(
+  profile: { themeColor?: string; customColorHex?: string } | null | undefined
+): string {
+  const customHex = profile?.customColorHex && String(profile.customColorHex).trim();
+  if (customHex) {
+    return customHex.startsWith("#") ? customHex : `#${customHex}`;
+  }
+  return getThemeColorHex(profile?.themeColor || "");
+}
+
 export function createEmailTemplate(
   content: string,
   options: EmailTemplateOptions = {}
