@@ -38,6 +38,7 @@ import { SkeletonMetricCard } from "@/components/ui/skeleton";
 import { formatCurrencyForDisplay } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { PlanAgreementPanel } from "@/components/plans/plan-agreement-panel";
+import { TermSettlement } from "@/components/plans/term-settlement";
 
 interface ServicePlan {
   id: string;
@@ -56,7 +57,9 @@ interface ServicePlan {
   visitsPerTerm?: number | null;
   emergencyVisitsPerMonth?: number | null;
   emergencyUsedThisMonth?: number;
+  missedVisits30d?: number;
   chemicalAllowanceCents?: number | null;
+  standardRateCents?: number | null;
   authorisedUsers?: Array<{ name: string; contact?: string; role?: string }> | null;
   specialConditions?: string | null;
   chemicalUsage?: { month: string; allowanceCents: number; usedCents: number; overageCents: number; unpriced: number } | null;
@@ -168,6 +171,7 @@ export default function ServicePlanDetailPage() {
         setVisitsOverride(planData.visitsPerTerm != null ? String(planData.visitsPerTerm) : "");
         setEmergencyAllowance(planData.emergencyVisitsPerMonth != null ? String(planData.emergencyVisitsPerMonth) : "");
         setChemicalAllowance(planData.chemicalAllowanceCents != null ? (planData.chemicalAllowanceCents / 100).toFixed(2) : "");
+        setStandardRate(planData.standardRateCents != null ? (planData.standardRateCents / 100).toFixed(2) : "");
         if (planData.billingType === "prepaid") {
           const termsRes = await fetch(`${API_URL}/service-plans/${planId}/terms`, {
             headers: { Authorization: `Bearer ${localStorage.getItem("auth_token")}` },
@@ -261,6 +265,7 @@ export default function ServicePlanDetailPage() {
   const [visitsOverride, setVisitsOverride] = useState("");
   const [emergencyAllowance, setEmergencyAllowance] = useState("");
   const [chemicalAllowance, setChemicalAllowance] = useState("");
+  const [standardRate, setStandardRate] = useState("");
   const [raisingOverage, setRaisingOverage] = useState(false);
 
   // Charge routine chemicals used above this month's allowance (cl. 7.3).
@@ -286,7 +291,7 @@ export default function ServicePlanDetailPage() {
 
   // Save a Schedule B number on the plan (blank clears it).
   const saveScheduleB = async (
-    field: "visitsPerTerm" | "emergencyVisitsPerMonth" | "chemicalAllowanceCents",
+    field: "visitsPerTerm" | "emergencyVisitsPerMonth" | "chemicalAllowanceCents" | "standardRateCents",
     raw: string,
     note: string,
     scale = 1
@@ -544,6 +549,24 @@ export default function ServicePlanDetailPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left Column - Plan Info */}
         <div className="lg:col-span-1 space-y-6">
+          {/* Missed visits — 3+ in 30 days is a repeated service failure (contract cl. 19.3) */}
+          {(plan.missedVisits30d || 0) > 0 && (
+            <div
+              className={`rounded-xl p-4 text-sm ${
+                (plan.missedVisits30d || 0) >= 3 ? "bg-red-50 text-red-800" : "bg-amber-50 text-amber-900"
+              }`}
+            >
+              <p className="font-medium">
+                {plan.missedVisits30d} missed visit{plan.missedVisits30d === 1 ? "" : "s"} in the last 30 days
+              </p>
+              <p className="text-xs mt-1">
+                {(plan.missedVisits30d || 0) >= 3
+                  ? "This meets the agreement's repeated service failure threshold — the client may terminate. Reschedule and contact them."
+                  : "Visits whose window passed without being carried out or recorded. Three in 30 days is a repeated service failure."}
+              </p>
+            </div>
+          )}
+
           {/* Prepaid term — visits only run inside a paid term */}
           {plan.billingType === "prepaid" && (
             <div className="bg-white rounded-xl shadow-sm p-5">
@@ -672,6 +695,16 @@ export default function ServicePlanDetailPage() {
                     note: "The client can request these from the app.",
                   },
                   {
+                    field: "standardRateCents" as const,
+                    label: "Standard Rate per month (GHS)",
+                    placeholder: "Undiscounted rate",
+                    value: standardRate,
+                    set: setStandardRate,
+                    saved: plan.standardRateCents != null ? (plan.standardRateCents / 100).toFixed(2) : null,
+                    note: "Used to value delivered visits on refunds.",
+                    scale: 100,
+                  },
+                  {
                     field: "chemicalAllowanceCents" as const,
                     label: "Chemical allowance per month (GHS)",
                     placeholder: "None",
@@ -706,6 +739,11 @@ export default function ServicePlanDetailPage() {
                   </div>
                 ))}
               </div>
+              {currentTerm && plan.status === "active" && (
+                <div className="mt-3">
+                  <TermSettlement planId={plan.id} termId={currentTerm.id} onDone={fetchPlanData} />
+                </div>
+              )}
               {plan.status !== "cancelled" && (
                 <Button variant="outline" size="sm" className="w-full mt-3" onClick={handleRenew} disabled={renewing}>
                   <FileText className="h-4 w-4 mr-2" />

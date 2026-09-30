@@ -162,3 +162,20 @@ export async function emergencyVisitsUsedThisMonth(planId: string): Promise<numb
     where: { planId, kind: "emergency", createdAt: { gte: monthStart }, status: { not: "cancelled" } },
   });
 }
+
+/** Contract cl. 19.3: three or more unjustified missed visits in 30 days is a repeated service failure. */
+export const REPEATED_FAILURE_THRESHOLD = 3;
+
+/**
+ * Routine visits in the last 30 days whose window passed without the visit
+ * being carried out or accounted for (still scheduled / en route). Client
+ * cancellations, weather and access failures are recorded outcomes, so they
+ * don't count.
+ */
+export async function missedVisitsLast30Days(planId: string): Promise<number> {
+  const now = new Date();
+  const since = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+  return prisma.job.count({
+    where: { planId, kind: "routine", windowEnd: { gte: since, lt: now }, status: { in: ["scheduled", "en_route"] } },
+  });
+}

@@ -28,6 +28,12 @@ export class UpdatePlanDto {
   @Min(0)
   chemicalAllowanceCents?: number | null;
 
+  // Schedule B Standard Rate (minor units): values delivered visits on refunds.
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  standardRateCents?: number | null;
+
   // Schedule B: authorised app users [{ name, contact, role }] (cl. 12.1(h)).
   @IsOptional()
   @IsArray()

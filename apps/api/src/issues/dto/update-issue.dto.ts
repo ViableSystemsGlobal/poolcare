@@ -12,5 +12,10 @@ export class UpdateIssueDto {
   @IsOptional()
   @IsBoolean()
   requiresQuote?: boolean;
+
+  // How the concern was resolved; sent to the client for complaints.
+  @IsOptional()
+  @IsString()
+  resolution?: string;
 }
 

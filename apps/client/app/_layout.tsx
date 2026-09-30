@@ -224,6 +224,7 @@ function LayoutInner() {
         <Stack.Screen name="settings" options={{ headerShown: false }} />
         <Stack.Screen name="family" options={{ headerShown: false }} />
         <Stack.Screen name="agreements/[id]" options={{ headerShown: false }} />
+        <Stack.Screen name="reports/[planId]" options={{ headerShown: false }} />
         <Stack.Screen name="payment-methods" options={{ headerShown: false }} />
         <Stack.Screen name="subscriptions" options={{ headerShown: false }} />
         <Stack.Screen name="my-subscriptions" options={{ headerShown: false }} />

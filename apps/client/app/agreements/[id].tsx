@@ -75,6 +75,9 @@ export default function AgreementScreen() {
         ["Service package", b.servicePackage || "—"],
         ["Payment", b.termMonths ? `${b.paymentMode}, ${b.termMonths} months in advance` : b.paymentMode || "—"],
         ["Monthly rate", money(b.monthlyRateCents, cur)],
+        ...(b.standardRateCents != null
+          ? ([["Standard Rate (for refunds)", money(b.standardRateCents, cur)]] as Array<[string, string]>)
+          : []),
         ...(b.termAmountCents != null ? ([["Amount per term", money(b.termAmountCents, cur)]] as Array<[string, string]>) : []),
         [
           "Service",

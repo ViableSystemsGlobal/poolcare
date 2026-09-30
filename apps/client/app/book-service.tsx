@@ -221,7 +221,9 @@ export default function BookServiceScreen() {
         });
         Alert.alert(
           "Report submitted",
-          "We've received your report and will get back to you shortly.",
+          requestType === "complaint"
+            ? "We've received your complaint. Under your service agreement we'll investigate and put it right within 14 days, and let you know in the app."
+            : "We've received your report and will get back to you shortly.",
           [{ text: "OK", onPress: () => (router.canGoBack() ? router.back() : router.replace("/")) }]
         );
       }

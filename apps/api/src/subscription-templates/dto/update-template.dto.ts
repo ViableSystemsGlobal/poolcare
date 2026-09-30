@@ -79,5 +79,10 @@ export class UpdateTemplateDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  // Package includes the monthly performance summary (Schedule A: Premium, Luxury).
+  @IsOptional()
+  @IsBoolean()
+  includesMonthlyReport?: boolean;
 }
 

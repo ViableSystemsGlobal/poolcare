@@ -406,6 +406,12 @@ function PlanCard({ plan, themeColor, fmt, fmtDate, statusMeta, onCancel, onRene
             </Text>
           </TouchableOpacity>
         )}
+        {plan.status === "active" && (
+          <TouchableOpacity style={styles.planDetailRow} onPress={() => router.push(`/reports/${plan.id}`)}>
+            <Ionicons name="bar-chart-outline" size={15} color={themeColor} />
+            <Text style={[styles.planDetailText, { color: themeColor, fontWeight: "600" }]}>Pool reports</Text>
+          </TouchableOpacity>
+        )}
         {plan.autoRenew && plan.status === "active" && (
           <View style={styles.planDetailRow}>
             <Ionicons name="refresh-outline" size={15} color="#16a34a" />

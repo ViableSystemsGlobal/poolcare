@@ -82,5 +82,10 @@ export class CreateTemplateDto {
   @IsOptional()
   @IsObject()
   features?: Record<string, any>;
+
+  // Package includes the monthly performance summary (Schedule A: Premium, Luxury).
+  @IsOptional()
+  @IsBoolean()
+  includesMonthlyReport?: boolean;
 }
 

@@ -67,6 +67,7 @@ export default function SubscriptionTemplatesPage() {
     serviceDurationMin: "45",
     visitTemplateId: "",
     includesChemicals: false,
+    includesMonthlyReport: false,
     maxVisitsPerMonth: "",
     trialDays: "0",
     displayOrder: "0",
@@ -117,6 +118,7 @@ export default function SubscriptionTemplatesPage() {
       serviceDurationMin: "45",
       visitTemplateId: "",
       includesChemicals: false,
+    includesMonthlyReport: false,
       maxVisitsPerMonth: "",
       trialDays: "0",
       displayOrder: "0",
@@ -160,6 +162,7 @@ export default function SubscriptionTemplatesPage() {
         discountPct: parseFloat(formData.discountPct) || 0,
         serviceDurationMin: parseInt(formData.serviceDurationMin) || 45,
         includesChemicals: formData.includesChemicals,
+        includesMonthlyReport: formData.includesMonthlyReport,
         trialDays: parseInt(formData.trialDays) || 0,
         displayOrder: parseInt(formData.displayOrder) || 0,
       };
@@ -219,6 +222,7 @@ export default function SubscriptionTemplatesPage() {
       serviceDurationMin: template.serviceDurationMin?.toString() || "45",
       visitTemplateId: template.visitTemplateId || "",
       includesChemicals: template.includesChemicals || false,
+      includesMonthlyReport: template.includesMonthlyReport || false,
       maxVisitsPerMonth: template.maxVisitsPerMonth?.toString() || "",
       trialDays: template.trialDays?.toString() || "0",
       displayOrder: template.displayOrder?.toString() || "0",
@@ -241,6 +245,7 @@ export default function SubscriptionTemplatesPage() {
         discountPct: parseFloat(formData.discountPct) || 0,
         serviceDurationMin: parseInt(formData.serviceDurationMin) || 45,
         includesChemicals: formData.includesChemicals,
+        includesMonthlyReport: formData.includesMonthlyReport,
         trialDays: parseInt(formData.trialDays) || 0,
         displayOrder: parseInt(formData.displayOrder) || 0,
       };
@@ -611,6 +616,17 @@ export default function SubscriptionTemplatesPage() {
         />
         <Label htmlFor="includesChemicals" className="cursor-pointer">
           Includes chemicals in the price
+        </Label>
+      </div>
+
+      <div className="flex items-center space-x-2">
+        <Checkbox
+          id="includesMonthlyReport"
+          checked={formData.includesMonthlyReport}
+          onCheckedChange={(checked) => setFormData({ ...formData, includesMonthlyReport: checked === true })}
+        />
+        <Label htmlFor="includesMonthlyReport" className="cursor-pointer">
+          Includes a monthly performance report
         </Label>
       </div>
     </div>

@@ -235,6 +235,99 @@ export class PrepaidTermsService {
     return term ? summarizeTerm(term) : null;
   }
 
+  /**
+   * Refund/credit calculation for a paid term ended early (contract cl. 22.3,
+   * 26.3): delivered visits are valued at the Standard Rate, documented
+   * non-refundable third-party costs are deducted, and the rest is refundable.
+   * No deduction is made for a prepaid benefit (cl. 26.3), which is why the
+   * Standard Rate — not the discounted prepaid rate — prices each visit.
+   */
+  async settlementQuote(orgId: string, planId: string, termId: string, thirdPartyCents = 0) {
+    const term = await prisma.subscriptionBilling.findFirst({
+      where: { id: termId, planId, orgId, status: "paid" },
+      include: { plan: true, invoice: { select: { paidCents: true } } },
+    });
+    if (!term) throw new NotFoundException("Paid term not found");
+    const summary = await summarizeTerm(term);
+    const months = term.plan.termMonths || 3;
+    const standardRateCents = term.plan.standardRateCents ?? term.plan.priceCents;
+    const perVisitCents = summary.contracted > 0 ? Math.round((standardRateCents * months) / summary.contracted) : 0;
+    const paidCents = term.invoice?.paidCents ?? term.amountCents;
+    const deliveredValueCents = summary.delivered * perVisitCents;
+    const thirdParty = Math.max(0, Math.round(thirdPartyCents));
+    return {
+      termId: term.id,
+      termStart: term.billingPeriodStart,
+      termEnd: term.billingPeriodEnd,
+      currency: term.currency,
+      paidCents,
+      contractedVisits: summary.contracted,
+      deliveredVisits: summary.delivered,
+      standardRateCents,
+      standardRateIsSet: term.plan.standardRateCents != null,
+      perVisitCents,
+      deliveredValueCents,
+      thirdPartyCents: thirdParty,
+      refundableCents: Math.max(0, paidCents - deliveredValueCents - thirdParty),
+    };
+  }
+
+  /**
+   * Settle a term: issue a credit note for the refundable amount (a cash refund
+   * is then made against the payment from the invoice screen) and, optionally,
+   * end the term today — future visits in it are cancelled.
+   */
+  async settleTerm(
+    orgId: string,
+    planId: string,
+    termId: string,
+    opts: { thirdPartyCents?: number; reason?: string; endTerm?: boolean },
+    userId: string
+  ) {
+    const quote = await this.settlementQuote(orgId, planId, termId, opts.thirdPartyCents || 0);
+    const plan = await prisma.servicePlan.findFirst({ where: { id: planId, orgId }, include: { pool: true } });
+    if (!plan) throw new NotFoundException("Service plan not found");
+    const reason = (opts.reason || "").trim() || "Prepaid term settled";
+
+    let creditNote = null;
+    if (quote.refundableCents > 0) {
+      creditNote = await prisma.creditNote.create({
+        data: {
+          orgId,
+          clientId: plan.pool.clientId,
+          reason: `${reason} (${quote.deliveredVisits} of ${quote.contractedVisits} visits delivered)`,
+          items: [
+            {
+              label: `Unused prepaid term ${fmtDate(quote.termStart)} – ${fmtDate(quote.termEnd)}`,
+              qty: 1,
+              unitPriceCents: quote.refundableCents,
+            },
+          ],
+          amountCents: quote.refundableCents,
+        },
+      });
+    }
+
+    if (opts.endTerm) {
+      const today = dateOnly(new Date());
+      await prisma.$transaction([
+        prisma.job.updateMany({
+          where: { planId, kind: "routine", status: "scheduled", windowStart: { gte: new Date() } },
+          data: { status: "cancelled", cancelCode: "TERM_SETTLED", cancelledAt: new Date() },
+        }),
+        prisma.subscriptionBilling.update({ where: { id: termId }, data: { billingPeriodEnd: today } }),
+        prisma.servicePlan.update({
+          where: { id: planId },
+          data: { paidThrough: today, status: "cancelled", cancelledAt: new Date(), cancellationReason: reason },
+        }),
+      ]);
+      await this.voidOpenTerms(planId, "Plan ended on settlement");
+    }
+
+    this.logger.log(`Settled term ${termId} for plan ${planId} by ${userId}: refundable ${quote.refundableCents}`);
+    return { ...quote, creditNoteId: creditNote?.id || null, ended: !!opts.endTerm };
+  }
+
   /** Void any unpaid term invoices for a plan (cancellation, expiry). */
   async voidOpenTerms(planId: string, reason: string) {
     const open = await prisma.subscriptionBilling.findMany({

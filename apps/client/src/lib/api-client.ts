@@ -529,6 +529,11 @@ class ApiClient {
     });
   }
 
+  /** Monthly (YYYY-MM) or annual (YYYY) water-performance report for a plan. */
+  async getPerformanceReport(planId: string, period: string) {
+    return this.request(`/service-plans/${planId}/performance?period=${encodeURIComponent(period)}`);
+  }
+
   // Service agreement + Schedule B acceptance (contract cl. 11.4, 30.7)
   async getMyAgreements() {
     return this.request(`/agreements/mine`);

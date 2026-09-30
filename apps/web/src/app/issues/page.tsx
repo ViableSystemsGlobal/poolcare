@@ -44,6 +44,7 @@ interface Issue {
   severity: string;
   description: string;
   status: string;
+  dueAt?: string | null;
   requiresQuote: boolean;
   createdAt: string;
   pool?: {
@@ -667,6 +668,16 @@ export default function IssuesPage() {
                       </TableCell>
                       <TableCell>
                         <span className="text-sm capitalize">{issue.type}</span>
+                        {issue.dueAt && !["resolved", "dismissed"].includes(issue.status) && (
+                          <span
+                            className={`block text-xs ${
+                              new Date(issue.dueAt).getTime() < Date.now() ? "text-red-600 font-medium" : "text-gray-500"
+                            }`}
+                          >
+                            {new Date(issue.dueAt).getTime() < Date.now() ? "Overdue" : "Correct by"}{" "}
+                            {new Date(issue.dueAt).toLocaleDateString()}
+                          </span>
+                        )}
                       </TableCell>
                       <TableCell>
                         <span

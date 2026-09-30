@@ -136,6 +136,31 @@ export class PlansController {
     return this.plansService.generateJobsForPlan(user.org_id, id);
   }
 
+  /** Refund/credit breakdown for ending a paid term early (cl. 22.3, 26.3). */
+  @Get(":id/terms/:termId/settlement")
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "MANAGER")
+  async settlementQuote(
+    @CurrentUser() user: { org_id: string },
+    @Param("id") id: string,
+    @Param("termId") termId: string,
+    @Query("thirdPartyCents") thirdPartyCents?: string
+  ) {
+    return this.prepaidTerms.settlementQuote(user.org_id, id, termId, parseInt(thirdPartyCents || "0", 10) || 0);
+  }
+
+  @Post(":id/terms/:termId/settle")
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "MANAGER")
+  async settleTerm(
+    @CurrentUser() user: { org_id: string; sub: string },
+    @Param("id") id: string,
+    @Param("termId") termId: string,
+    @Body() body: { thirdPartyCents?: number; reason?: string; endTerm?: boolean }
+  ) {
+    return this.prepaidTerms.settleTerm(user.org_id, id, termId, body || {}, user.sub);
+  }
+
   @Post(":id/chemical-overage-quote")
   @UseGuards(RolesGuard)
   @Roles("ADMIN", "MANAGER")
@@ -150,6 +175,15 @@ export class PlansController {
     @Body() body: { note?: string }
   ) {
     return this.plansService.requestEmergencyVisit(user.org_id, id, user.sub, user.role, body?.note);
+  }
+
+  @Get(":id/performance")
+  async performance(
+    @CurrentUser() user: { org_id: string; role: string; sub: string },
+    @Param("id") id: string,
+    @Query("period") period: string
+  ) {
+    return this.plansService.performanceReport(user.org_id, id, user.sub, user.role, period || "");
   }
 
   @Get(":id/terms")

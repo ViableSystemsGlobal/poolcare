@@ -53,6 +53,7 @@ export class AgreementsService {
       paymentMode: plan.billingType === "prepaid" ? "Prepaid" : plan.billingType,
       termMonths: plan.billingType === "prepaid" ? months : null,
       monthlyRateCents: plan.priceCents,
+      standardRateCents: plan.standardRateCents ?? null,
       termAmountCents: plan.billingType === "prepaid" ? plan.priceCents * months : null,
       currency: plan.currency || "GHS",
       frequency: plan.frequency,

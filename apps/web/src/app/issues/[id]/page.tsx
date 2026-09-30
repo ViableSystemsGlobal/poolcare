@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/table";
 import { useTheme } from "@/contexts/theme-context";
 import { SkeletonMetricCard } from "@/components/ui/skeleton";
+import { IssueResolutionPanel } from "@/components/issues/issue-resolution-panel";
 
 interface Issue {
   id: string;
@@ -36,6 +37,9 @@ interface Issue {
   severity: string;
   description: string;
   status: string;
+  dueAt?: string | null;
+  resolvedAt?: string | null;
+  resolution?: string | null;
   createdAt: string;
   updatedAt: string;
   pool?: {
@@ -291,6 +295,8 @@ export default function IssueDetailPage() {
               </div>
             </CardContent>
           </Card>
+
+          <IssueResolutionPanel issue={issue} onUpdated={fetchIssueData} />
 
           {/* Pool Information */}
           {issue.pool && (

@@ -3,6 +3,7 @@ import { PlansController } from "./plans.controller";
 import { PlansService } from "./plans.service";
 import { PlansSchedulerService } from "./scheduler.service";
 import { PrepaidTermsService } from "./prepaid-terms.service";
+import { MonthlyReportScheduler } from "./monthly-report.scheduler";
 import { AuthModule } from "../auth/auth.module";
 import { SubscriptionTemplatesModule } from "../subscription-templates/subscription-templates.module";
 import { NotificationsModule } from "../notifications/notifications.module";
@@ -14,7 +15,7 @@ import { NotificationsModule } from "../notifications/notifications.module";
     forwardRef(() => NotificationsModule),
   ],
   controllers: [PlansController],
-  providers: [PlansService, PlansSchedulerService, PrepaidTermsService],
+  providers: [PlansService, PlansSchedulerService, PrepaidTermsService, MonthlyReportScheduler],
   exports: [PlansService, PlansSchedulerService, PrepaidTermsService],
 })
 export class PlansModule {}

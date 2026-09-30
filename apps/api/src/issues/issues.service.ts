@@ -1,11 +1,18 @@
 import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from "@nestjs/common";
 import { prisma } from "@poolcare/db";
+import { NotificationsService } from "../notifications/notifications.service";
 import { CreateIssueDto, UpdateIssueDto } from "./dto";
 import { FilesService } from "../files/files.service";
 
+/** Days PoolCare has to investigate and correct a client service concern (contract cl. 19.2). */
+const SERVICE_CONCERN_DAYS = 14;
+
 @Injectable()
 export class IssuesService {
-  constructor(private readonly filesService: FilesService) {}
+  constructor(
+    private readonly filesService: FilesService,
+    private readonly notificationsService: NotificationsService
+  ) {}
 
   async uploadPhoto(orgId: string, userId: string, file: Express.Multer.File) {
     const url = await this.filesService.uploadImage(orgId, file, "issue_photos", "pending");
@@ -43,6 +50,18 @@ export class IssuesService {
       throw new NotFoundException("Pool not found");
     }
 
+    // CLIENT can only report on their own pools.
+    if (role === "CLIENT") {
+      const client = await prisma.client.findFirst({ where: { orgId, userId }, select: { id: true } });
+      if (!client || pool.clientId !== client.id) {
+        throw new ForbiddenException("Access denied");
+      }
+    }
+
+    // A client complaint is a service concern: 14 days to investigate and correct (contract cl. 19.2).
+    const isServiceConcern = dto.type === "complaint";
+    const dueAt = isServiceConcern ? new Date(Date.now() + SERVICE_CONCERN_DAYS * 24 * 60 * 60 * 1000) : null;
+
     // CARER can only create issues for visits assigned to them
     if (role === "CARER" && dto.visitId) {
       const carer = await prisma.carer.findFirst({
@@ -73,6 +92,7 @@ export class IssuesService {
         severity: dto.severity as any,
         description: dto.description,
         requiresQuote: dto.requiresQuote || false,
+        dueAt,
         createdBy: userId,
       },
       include: {
@@ -101,6 +121,28 @@ export class IssuesService {
           label: "issue",
         },
       });
+    }
+
+    if (isServiceConcern) {
+      const managers = await prisma.orgMember.findMany({
+        where: { orgId, role: { in: ["ADMIN", "MANAGER"] } },
+        include: { user: true },
+      });
+      for (const m of managers) {
+        if (!m.user?.email) continue;
+        await this.notificationsService
+          .send(orgId, {
+            recipientId: m.user.id,
+            recipientType: "user",
+            channel: "email",
+            to: m.user.email,
+            subject: `Service complaint — ${pool.name || "pool"} (correct by ${dueAt!.toDateString()})`,
+            body: `${issue.pool?.client?.name || "A client"} reported a service problem at ${pool.name || "a pool"}:\n\n"${dto.description}"\n\nUnder the service agreement we have until ${dueAt!.toDateString()} to investigate and correct it.`,
+            template: "service_concern",
+            metadata: { type: "service_concern", issueId: issue.id },
+          })
+          .catch(() => undefined);
+      }
     }
 
     return issue;
@@ -304,12 +346,16 @@ export class IssuesService {
       throw new ForbiddenException("Access denied");
     }
 
+    const closing = (dto.status === "resolved" || dto.status === "dismissed") && !issue.resolvedAt;
     const updated = await prisma.issue.update({
       where: { id: issueId },
       data: {
         status: dto.status,
         description: dto.description,
         requiresQuote: dto.requiresQuote,
+        ...(dto.resolution !== undefined ? { resolution: dto.resolution || null } : {}),
+        ...(closing ? { resolvedAt: new Date() } : {}),
+        ...(dto.status && !closing && !["resolved", "dismissed"].includes(dto.status) ? { resolvedAt: null } : {}),
       },
       include: {
         pool: true,
@@ -317,6 +363,27 @@ export class IssuesService {
         photos: true,
       },
     });
+
+    // Tell the client how their complaint was resolved.
+    if (closing && issue.type === "complaint" && dto.resolution) {
+      const client = updated.pool?.clientId
+        ? await prisma.client.findUnique({ where: { id: updated.pool.clientId }, select: { userId: true } })
+        : null;
+      if (client?.userId) {
+        await this.notificationsService
+          .send(orgId, {
+            channel: "push",
+            to: client.userId,
+            recipientId: client.userId,
+            recipientType: "client",
+            subject: "Update on your complaint",
+            body: dto.resolution,
+            template: "service_concern_resolved",
+            metadata: { type: "service_concern_resolved", issueId },
+          })
+          .catch(() => undefined);
+      }
+    }
 
     return updated;
   }

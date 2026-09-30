@@ -5,8 +5,9 @@ import { SubscriptionTemplatesService } from "../subscription-templates/subscrip
 import { NotificationsService } from "../notifications/notifications.service";
 import { createEmailTemplate, getOrgEmailSettings } from "../email/email-template.util";
 import { PrepaidTermsService } from "./prepaid-terms.service";
-import { DEFAULT_DAYS, WEEKLY_DAY_COUNT, emergencyVisitsUsedThisMonth } from "./visit-entitlement";
+import { DEFAULT_DAYS, WEEKLY_DAY_COUNT, emergencyVisitsUsedThisMonth, missedVisitsLast30Days } from "./visit-entitlement";
 import { chemicalUsageThisMonth } from "../settings/chemical-rates";
+import { buildPerformanceReport } from "./performance-report";
 
 @Injectable()
 export class PlansService {
@@ -449,6 +450,16 @@ export class PlansService {
     return quote;
   }
 
+  /** Performance report for a month (YYYY-MM) or year (YYYY); clients see their own plans only. */
+  async performanceReport(orgId: string, id: string, userId: string, role: string, period: string) {
+    const plan = await this.getOne(orgId, id, userId, role);
+    try {
+      return { plan: { id: plan.id, poolName: plan.pool?.name || null }, ...(await buildPerformanceReport(orgId, plan.id, period)) };
+    } catch (err: any) {
+      throw new BadRequestException(err.message);
+    }
+  }
+
   /** Issue the invoice for a prepaid plan's next term (manual renewal or reactivation). */
   async renew(orgId: string, id: string, userId?: string, role?: string) {
     const plan = await this.getOne(orgId, id, userId, role);
@@ -710,6 +721,7 @@ Thank you for choosing PoolCare!`;
     return {
       ...plan,
       emergencyUsedThisMonth: await emergencyVisitsUsedThisMonth(plan.id),
+      missedVisits30d: await missedVisitsLast30Days(plan.id),
       chemicalUsage:
         plan.chemicalAllowanceCents != null ? await chemicalUsageThisMonth(orgId, plan.id, plan.chemicalAllowanceCents) : null,
     };
@@ -747,6 +759,7 @@ Thank you for choosing PoolCare!`;
         ...(dto.visitsPerTerm !== undefined ? { visitsPerTerm: dto.visitsPerTerm } : {}),
         ...(dto.emergencyVisitsPerMonth !== undefined ? { emergencyVisitsPerMonth: dto.emergencyVisitsPerMonth } : {}),
         ...(dto.chemicalAllowanceCents !== undefined ? { chemicalAllowanceCents: dto.chemicalAllowanceCents } : {}),
+        ...(dto.standardRateCents !== undefined ? { standardRateCents: dto.standardRateCents } : {}),
         ...(dto.authorisedUsers !== undefined ? { authorisedUsers: dto.authorisedUsers as any } : {}),
         ...(dto.specialConditions !== undefined ? { specialConditions: dto.specialConditions || null } : {}),
         ...(dto.preferredCarerId !== undefined

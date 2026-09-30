@@ -527,6 +527,7 @@ model SubscriptionTemplate {
   serviceDurationMin Int      @default(45)
   visitTemplateId    String?  @db.Uuid
   includesChemicals  Boolean  @default(false)
+  includesMonthlyReport Boolean @default(false) // monthly performance summary to the client (Premium/Luxury, Schedule A)
   maxVisitsPerMonth  Int? // For capped plans
   trialDays          Int      @default(0)
   isActive           Boolean  @default(true)
@@ -611,6 +612,7 @@ model ServicePlan {
   visitsPerTerm        Int? // Schedule B "Contracted Visits" override; null = derived from frequency
   emergencyVisitsPerMonth Int? // Schedule B: included Emergency Cleaning Visits per calendar month
   chemicalAllowanceCents  Int? // Schedule B: monthly routine-chemical allowance (priced via the org chemical rate card)
+  standardRateCents       Int? // Schedule B "Standard Rate": undiscounted monthly rate used to value delivered visits on refunds (cl. 22.3, 26.3)
   authorisedUsers         Json? // Schedule B: [{ name, contact, role }] — client's authorised app users (cl. 12.1(h))
   specialConditions       String? // Schedule B B7: special conditions / approved variations
   nextBillingDate      DateTime? @db.Date
@@ -810,6 +812,11 @@ model Issue {
   description   String
   status        String        @default("open") // open, quoted, scheduled, resolved, dismissed
   requiresQuote Boolean       @default(false)
+  // Client complaints are service concerns (contract cl. 19): PoolCare has 14
+  // days to investigate and correct.
+  dueAt         DateTime?     @db.Timestamptz(6)
+  resolvedAt    DateTime?     @db.Timestamptz(6)
+  resolution    String?
   createdBy     String?       @db.Uuid
   createdAt     DateTime      @default(now()) @db.Timestamptz(6)
   updatedAt     DateTime      @updatedAt @db.Timestamptz(6)
