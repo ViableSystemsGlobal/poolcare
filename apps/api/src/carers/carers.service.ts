@@ -22,6 +22,18 @@ export class CarersService {
       throw new ForbiddenException("Use /carers/me/carer to view your profile");
     }
 
+    // Clients only pick a preferred carer: name and photo, never contact
+    // details, home or live location, or pay rate.
+    if (role === "CLIENT") {
+      const items = await prisma.carer.findMany({
+        where: { orgId, active: true },
+        select: { id: true, name: true, imageUrl: true },
+        orderBy: { name: "asc" },
+        take: filters.limit,
+      });
+      return { items, total: items.length, page: 1, limit: filters.limit };
+    }
+
     const where: any = {
       orgId,
     };
