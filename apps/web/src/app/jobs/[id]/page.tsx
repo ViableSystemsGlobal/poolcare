@@ -42,6 +42,19 @@ import { Input } from "@/components/ui/input";
 import { useTheme } from "@/contexts/theme-context";
 import { SkeletonMetricCard } from "@/components/ui/skeleton";
 
+// Contract cl. 13: these outcomes count against the client's contracted visits.
+const COUNTS_AS_DELIVERED = ["NO_ACCESS", "CLIENT_ABSENT", "LATE_CLIENT_CANCEL"];
+const OUTCOME_LABELS: Record<string, string> = {
+  NO_ACCESS: "No access to the property",
+  CLIENT_ABSENT: "Access contact not available",
+  EQUIP_FAILURE: "Equipment failure",
+  OTHER: "Other",
+  CLIENT_REQUEST: "Cancelled by client (24h+ notice)",
+  LATE_CLIENT_CANCEL: "Cancelled by client (under 24h notice)",
+  TERM_EXPIRED: "Prepaid term ended",
+  weather: "Weather",
+};
+
 interface Job {
   id: string;
   status: string;
@@ -56,6 +69,10 @@ interface Job {
   sequence?: number;
   slaMinutes?: number;
   notes?: string;
+  failCode?: string | null;
+  cancelCode?: string | null;
+  cancelledAt?: string | null;
+  failEvidence?: { lat?: number; lng?: number; accuracyM?: number; at?: string; photoUrl?: string } | null;
   createdAt: string;
   pool?: {
     id: string;
@@ -548,6 +565,47 @@ export default function JobDetailPage() {
                 <div>
                   <p className="text-sm font-medium text-gray-900">SLA</p>
                   <p className="text-sm text-gray-600">{job.slaMinutes} minutes</p>
+                </div>
+              )}
+              {(job.status === "failed" || job.status === "cancelled") && (job.failCode || job.cancelCode) && (
+                <div>
+                  <p className="text-sm font-medium text-gray-900">
+                    {job.status === "failed" ? "Outcome" : "Cancellation"}
+                  </p>
+                  <p className="text-sm text-gray-600">
+                    {OUTCOME_LABELS[(job.failCode || job.cancelCode) as string] || job.failCode || job.cancelCode}
+                    {COUNTS_AS_DELIVERED.includes((job.failCode || job.cancelCode) as string) && (
+                      <span className="text-gray-500"> · counts as a delivered visit</span>
+                    )}
+                  </p>
+                  {job.cancelledAt && (
+                    <p className="text-xs text-gray-500">Cancelled {new Date(job.cancelledAt).toLocaleString()}</p>
+                  )}
+                  {job.failEvidence && (
+                    <div className="mt-2 space-y-1 text-xs text-gray-500">
+                      {job.failEvidence.at && <p>Recorded {new Date(job.failEvidence.at).toLocaleString()}</p>}
+                      {job.failEvidence.lat != null && job.failEvidence.lng != null && (
+                        <a
+                          href={`https://www.google.com/maps?q=${job.failEvidence.lat},${job.failEvidence.lng}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-blue-600 hover:underline block"
+                        >
+                          Carer location
+                          {job.failEvidence.accuracyM ? ` (±${Math.round(job.failEvidence.accuracyM)} m)` : ""}
+                        </a>
+                      )}
+                      {job.failEvidence.photoUrl && (
+                        <a href={job.failEvidence.photoUrl} target="_blank" rel="noreferrer">
+                          <img
+                            src={job.failEvidence.photoUrl}
+                            alt="Access evidence"
+                            className="mt-1 h-28 w-full rounded-lg object-cover"
+                          />
+                        </a>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
               {job.notes && (

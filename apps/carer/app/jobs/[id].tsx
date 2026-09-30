@@ -9,6 +9,7 @@ import * as FileSystem from "expo-file-system/legacy";
 import * as Sharing from "expo-sharing";
 import * as Location from "expo-location";
 import SwipeButton from "../../src/components/SwipeButton";
+import AccessFailureSheet from "../../src/components/AccessFailureSheet";
 import { useTheme } from "../../src/contexts/ThemeContext";
 // Conditionally import react-native-maps (requires development build, not Expo Go)
 let MapView: any = null;
@@ -56,6 +57,7 @@ export default function JobDetailScreen() {
   const [job, setJob] = useState<any>(null);
   const [visitStarted, setVisitStarted] = useState(false);
   const [arrived, setArrived] = useState(false);
+  const [showAccessFailure, setShowAccessFailure] = useState(false);
   const [checklist, setChecklist] = useState<ChecklistItem[]>([]);
   const [readings, setReadings] = useState<Reading>({});
   const [showReadingsModal, setShowReadingsModal] = useState(false);
@@ -2031,6 +2033,24 @@ export default function JobDetailScreen() {
           )}
         </>
       )}
+          {carerLocation && (job.status === "scheduled" || job.status === "en_route") && (
+            <TouchableOpacity style={styles.accessFailureLink} onPress={() => setShowAccessFailure(true)}>
+              <Ionicons name="lock-closed-outline" size={16} color="#6b7280" />
+              <Text style={styles.accessFailureLinkText}>Couldn't get access?</Text>
+            </TouchableOpacity>
+          )}
+          <AccessFailureSheet
+            visible={showAccessFailure}
+            jobId={id as string}
+            themeColor={themeColor}
+            onClose={() => setShowAccessFailure(false)}
+            onRecorded={() => {
+              setShowAccessFailure(false);
+              Alert.alert("Recorded", "The office and client have the report. You can leave this site.", [
+                { text: "OK", onPress: () => router.back() },
+              ]);
+            }}
+          />
                   </View>
       )}
       
@@ -2927,6 +2947,18 @@ const styles = StyleSheet.create({
   },
   swipeActionContainer: {
     marginBottom: 20,
+  },
+  accessFailureLink: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 12,
+  },
+  accessFailureLinkText: {
+    fontSize: 14,
+    color: "#6b7280",
+    fontWeight: "600",
   },
   locationLoadingContainer: {
     flexDirection: "row",

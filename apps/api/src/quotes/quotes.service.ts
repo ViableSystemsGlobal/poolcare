@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, ForbiddenException, BadRequestException 
 import { prisma } from "@poolcare/db";
 import { JobsService } from "../jobs/jobs.service";
 import { NotificationsService } from "../notifications/notifications.service";
+import { nextInvoiceNumber } from "../invoices/invoice-number.util";
 import {
   CreateQuoteDto,
   UpdateQuoteDto,
@@ -319,45 +320,20 @@ export class QuotesService {
       },
     });
 
-    // Auto-create job from approved quote
-    try {
-      // Calculate default window: 2 days from now, 4-hour window (9 AM - 1 PM)
-      const windowStart = new Date();
-      windowStart.setDate(windowStart.getDate() + 2);
-      windowStart.setHours(9, 0, 0, 0);
-
-      const windowEnd = new Date(windowStart);
-      windowEnd.setHours(13, 0, 0, 0);
-
-      const job = await this.jobsService.create(orgId, {
-        poolId: updated.poolId,
-        quoteId: updated.id,
-        windowStart: windowStart.toISOString(),
-        windowEnd: windowEnd.toISOString(),
-        notes: `Repair job from approved quote ${quoteId}${updated.issueId ? ` (Issue: ${updated.issue?.type || 'N/A'})` : ''}`,
-      });
-
-      // Update issue status if linked
-      if (updated.issueId) {
-        await prisma.issue.update({
-          where: { id: updated.issueId },
-          data: { status: "scheduled" },
-        });
+    // Contract cl. 16.2: extra work is paid for before it starts. Approval
+    // issues the quote invoice; paying it books the job (see scheduleQuoteJob).
+    // Admins can skip that when a different arrangement is agreed in writing.
+    const prepay = !(dto.skipPrepayment && role !== "CLIENT");
+    let invoiceNumber: string | null = null;
+    if (prepay && updated.totalCents > 0) {
+      try {
+        const invoice = await this.issueQuoteInvoice(orgId, updated);
+        invoiceNumber = invoice.invoiceNumber;
+      } catch (error) {
+        console.error(`Failed to issue invoice for quote ${quoteId}:`, error);
       }
-
-      // Audit job creation
-      await prisma.quoteAudit.create({
-        data: {
-          orgId,
-          quoteId: updated.id,
-          userId: approvedBy,
-          action: "create_job",
-          payload: { jobId: job.id, autoCreated: true },
-        },
-      });
-    } catch (error) {
-      // Log error but don't fail the approval
-      console.error(`Failed to auto-create job for quote ${quoteId}:`, error);
+    } else if (updated.schedulesWork) {
+      await this.scheduleQuoteJob(orgId, quoteId, approvedBy);
     }
 
     // Send notification to managers about quote approval
@@ -384,7 +360,7 @@ export class QuotesService {
             channel: "email",
             to: manager.user.email,
             subject: `Quote Approved - ${poolName}`,
-            body: `Quote ${quoteId} has been approved by the client.\n\nPool: ${poolName}\nAmount: ${currency} ${totalAmount}\n\nA job has been automatically created.`,
+            body: `Quote ${quoteId} has been approved by the client.\n\nPool: ${poolName}\nAmount: ${currency} ${totalAmount}\n\n${invoiceNumber ? `Invoice ${invoiceNumber} has been issued; the job is booked automatically once it is paid.` : "A job has been created."}`,
             template: "quote_approved",
             metadata: {
               quoteId: updated.id,
@@ -405,7 +381,7 @@ export class QuotesService {
               recipientId: manager.user.id,
               recipientType: "user",
               subject: "Quote Approved",
-              body: `Quote for ${poolName} (${currency} ${totalAmount}) has been approved. Job created.`,
+              body: `Quote for ${poolName} (${currency} ${totalAmount}) has been approved. ${invoiceNumber ? "Awaiting payment before scheduling." : "Job created."}`,
               template: "quote_approved",
               metadata: {
                 quoteId: updated.id,
@@ -425,6 +401,107 @@ export class QuotesService {
     }
 
     return updated;
+  }
+
+  /** Invoice for an approved quote (reuses one already raised for it). */
+  private async issueQuoteInvoice(orgId: string, quote: any) {
+    const existing = await prisma.invoice.findFirst({ where: { quoteId: quote.id } });
+    if (existing) return existing;
+    const invoice = await prisma.$transaction(async (tx) => {
+      const invoiceNumber = await nextInvoiceNumber(orgId, tx);
+      return tx.invoice.create({
+        data: {
+          orgId,
+          clientId: quote.clientId,
+          poolId: quote.poolId,
+          quoteId: quote.id,
+          invoiceNumber,
+          status: "sent",
+          currency: quote.currency || "GHS",
+          items: quote.items,
+          subtotalCents: quote.subtotalCents,
+          taxCents: quote.taxCents,
+          totalCents: quote.totalCents,
+          dueDate: new Date(),
+          issuedAt: new Date(),
+          notes: quote.schedulesWork === false
+            ? "Charge approved in the PoolCare app."
+            : "Payment for approved additional work. The work is scheduled as soon as this invoice is paid.",
+          metadata: { kind: "quote", quoteId: quote.id },
+        },
+      });
+    });
+
+    const client = await prisma.client.findUnique({ where: { id: quote.clientId } });
+    if (client?.userId) {
+      const amount = `${invoice.currency} ${(invoice.totalCents / 100).toLocaleString("en-US", { minimumFractionDigits: 2 })}`;
+      await this.notificationsService
+        .send(orgId, {
+          channel: "push",
+          to: client.userId,
+          recipientId: client.userId,
+          recipientType: "client",
+          subject: "Quote approved — payment needed",
+          body: quote.schedulesWork === false
+            ? `Invoice ${invoice.invoiceNumber} (${amount}) is ready in the app.`
+            : `Invoice ${invoice.invoiceNumber} (${amount}) is ready in the app. We'll book the work as soon as it's paid.`,
+          template: "quote_invoice",
+          metadata: { type: "quote_invoice", invoiceId: invoice.id, quoteId: quote.id },
+        })
+        .catch((err) => console.error(`Failed to notify client of quote invoice ${invoice.id}:`, err));
+    }
+    return invoice;
+  }
+
+  /**
+   * Book the job for an approved quote: 2 days out, 9am–1pm, as before.
+   * Idempotent — a quote that already has a job is left alone. Called on
+   * approval (prepayment skipped) or when the quote invoice is paid.
+   */
+  async scheduleQuoteJob(orgId: string, quoteId: string, userId?: string) {
+    const quote = await prisma.quote.findFirst({
+      where: { id: quoteId, orgId, status: "approved" },
+      include: { issue: true, jobs: { select: { id: true } } },
+    });
+    if (!quote || !quote.schedulesWork || quote.jobs.length > 0) return null;
+
+    try {
+      // First free morning slot from 2 days out: the pool may already have a
+      // routine visit starting at 9am that day, which the jobs service rejects
+      // as a duplicate.
+      let job: any = null;
+      for (let offset = 2; offset < 9 && !job; offset++) {
+        const windowStart = new Date();
+        windowStart.setDate(windowStart.getDate() + offset);
+        windowStart.setHours(9, 0, 0, 0);
+        const windowEnd = new Date(windowStart);
+        windowEnd.setHours(13, 0, 0, 0);
+        const clash = await prisma.job.findFirst({
+          where: { orgId, poolId: quote.poolId, windowStart, status: { not: "cancelled" } },
+          select: { id: true },
+        });
+        if (clash) continue;
+        job = await this.jobsService.create(orgId, {
+          poolId: quote.poolId,
+          quoteId: quote.id,
+          windowStart: windowStart.toISOString(),
+          windowEnd: windowEnd.toISOString(),
+          notes: `Repair job from approved quote ${quoteId}${quote.issueId ? ` (Issue: ${quote.issue?.type || "N/A"})` : ""}`,
+        });
+      }
+      if (!job) throw new Error("No free slot in the next week");
+
+      if (quote.issueId) {
+        await prisma.issue.update({ where: { id: quote.issueId }, data: { status: "scheduled" } });
+      }
+      await prisma.quoteAudit.create({
+        data: { orgId, quoteId: quote.id, userId, action: "create_job", payload: { jobId: job.id, autoCreated: true } },
+      });
+      return job;
+    } catch (error) {
+      console.error(`Failed to auto-create job for quote ${quoteId}:`, error);
+      return null;
+    }
   }
 
   async reject(orgId: string, role: string, userId: string, quoteId: string, dto: RejectQuoteDto) {

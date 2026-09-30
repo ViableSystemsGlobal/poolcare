@@ -71,7 +71,7 @@ export class CreatePlanDto {
   // Subscription fields
   @IsOptional()
   @IsString()
-  @IsEnum(["per_visit", "monthly", "quarterly", "annually"])
+  @IsEnum(["per_visit", "monthly", "quarterly", "annually", "prepaid"])
   billingType?: string;
 
   @IsOptional()

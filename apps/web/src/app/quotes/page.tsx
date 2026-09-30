@@ -120,6 +120,7 @@ export default function QuotesPage() {
   const [selectedQuotes, setSelectedQuotes] = useState<Set<string>>(new Set());
   const [editingQuote, setEditingQuote] = useState<Quote | null>(null);
   const [quoteToApprove, setQuoteToApprove] = useState<string | null>(null);
+  const [skipPrepayment, setSkipPrepayment] = useState(false);
 
   // Metrics state
   const [metrics, setMetrics] = useState({
@@ -404,6 +405,7 @@ export default function QuotesPage() {
   };
 
   const handleApprove = async (quoteId: string) => {
+    setSkipPrepayment(false);
     setQuoteToApprove(quoteId);
   };
 
@@ -418,6 +420,7 @@ export default function QuotesPage() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
         },
+        body: JSON.stringify({ skipPrepayment }),
       });
 
       if (response.ok) {
@@ -425,7 +428,9 @@ export default function QuotesPage() {
         await fetchQuotes();
         toast({
           title: "Success",
-          description: "Quote approved successfully! A job has been automatically created.",
+          description: skipPrepayment
+            ? "Quote approved and the job has been scheduled."
+            : "Quote approved. The client has been invoiced; the job is booked once it's paid.",
           variant: "success",
         });
       } else {
@@ -1041,8 +1046,23 @@ export default function QuotesPage() {
           <div className="space-y-4">
             <DialogTitle className="text-lg font-semibold text-black">Approve Quote</DialogTitle>
             <DialogDescription className="text-sm text-gray-700">
-              Approve this quote? This will mark it as approved and automatically create a repair job.
+              Approving invoices the client for this work. The repair job is booked automatically once the
+              invoice is paid.
             </DialogDescription>
+            <label className="flex items-start gap-2 rounded-lg bg-gray-50 p-3 text-sm">
+              <input
+                type="checkbox"
+                className="mt-0.5"
+                checked={skipPrepayment}
+                onChange={(e) => setSkipPrepayment(e.target.checked)}
+              />
+              <span>
+                <span className="font-medium text-gray-900">Schedule now, invoice later</span>
+                <span className="block text-xs text-gray-500">
+                  Only when a different payment arrangement is agreed in writing (contract cl. 16.2).
+                </span>
+              </span>
+            </label>
             <div className="flex justify-end gap-2 mt-6">
               <Button
                 variant="outline"

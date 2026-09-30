@@ -163,6 +163,10 @@ export default function VisitsPage() {
     setCancelModalVisible(true);
   };
 
+  // Contract cl. 13.2: under 24 hours' notice, a cancelled visit counts as delivered.
+  const isLateCancel = (visit: Visit | null) =>
+    !!visit?.windowStartIso && new Date(visit.windowStartIso).getTime() - Date.now() < 24 * 60 * 60 * 1000;
+
   const confirmCancel = async () => {
     if (!selectedVisit) return;
 
@@ -171,7 +175,12 @@ export default function VisitsPage() {
       setUpcomingVisits((prev) => prev.filter((v) => v.id !== selectedVisit.id));
       setCancelModalVisible(false);
       setSelectedVisit(null);
-      Alert.alert("Cancelled", "Your visit has been cancelled.");
+      Alert.alert(
+        "Cancelled",
+        isLateCancel(selectedVisit)
+          ? "Your visit has been cancelled and counts toward this term's visits."
+          : "Your visit has been cancelled. We'll be in touch to arrange a replacement."
+      );
     } catch (error: any) {
       setCancelModalVisible(false);
       Alert.alert("Error", error.message || "Failed to cancel visit. Please try again.");
@@ -483,7 +492,9 @@ export default function VisitsPage() {
 
             <View style={styles.modalBody}>
               <Text style={styles.modalMessage}>
-                Are you sure you want to cancel this visit?
+                {isLateCancel(selectedVisit)
+                  ? "This visit is less than 24 hours away. Under your service agreement, a cancellation this late still counts as one of your plan's visits."
+                  : "With 24 hours' notice this visit isn't lost — PoolCare will arrange a replacement within your current term."}
               </Text>
             </View>
 

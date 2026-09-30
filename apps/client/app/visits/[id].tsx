@@ -66,6 +66,13 @@ export default function VisitDetailPage() {
   const [showComplaintModal, setShowComplaintModal] = useState(false);
   const [complaintText, setComplaintText] = useState("");
   const [complaints, setComplaints] = useState<string[]>([]);
+  // Report review (contract cl. 10.3): 7 days to flag an inaccuracy.
+  const [report, setReport] = useState<{
+    status: "in_review" | "accepted" | "disputed" | "resolved" | null;
+    reviewUntil: string | null;
+    note: string | null;
+    resolution: string | null;
+  }>({ status: null, reviewUntil: null, note: null, resolution: null });
 
   useEffect(() => {
     loadVisitDetail();
@@ -181,6 +188,12 @@ export default function VisitDetailPage() {
       setVisit(transformedVisit);
       setRating(transformedVisit.rating || null);
       setComplaints(transformedVisit.complaints || []);
+      setReport({
+        status: visitData.reportStatus ?? null,
+        reviewUntil: visitData.reportReviewUntil ?? null,
+        note: visitData.reportDisputeNote ?? null,
+        resolution: visitData.reportDisputeResolution ?? null,
+      });
     } catch (error: any) {
       // Only set visit to null if it's a "not found" error
       if (error.message?.includes("not found") || error.message?.includes("Not found")) {
@@ -224,18 +237,15 @@ export default function VisitDetailPage() {
     if (!visit) return;
 
     const text = complaintText.trim();
-    const newComplaints = [...complaints, text];
-    setComplaints(newComplaints);
-    setComplaintText("");
-    setShowComplaintModal(false);
-
     try {
-      await api.reviewVisit(visit.id, { comments: text });
-    } catch (error) {
-      // Non-blocking: complaint saved locally even if API fails
+      await api.disputeVisitReport(visit.id, text);
+      setReport((r) => ({ ...r, status: "disputed", note: text }));
+      setComplaintText("");
+      setShowComplaintModal(false);
+      Alert.alert("Sent to PoolCare", "Thanks — we'll look into it and get back to you in the app.");
+    } catch (error: any) {
+      Alert.alert("Couldn't send", error?.message || "Please try again.");
     }
-
-    Alert.alert("Complaint Submitted", "Your complaint has been recorded and will be reviewed.");
   };
 
   const getStatusColor = (status: VisitDetail["status"]) => {
@@ -628,34 +638,47 @@ export default function VisitDetailPage() {
           </View>
         )}
 
-        {/* ── Complaints ── */}
-        {visit.status === "completed" && (
+        {/* ── Report review (contract cl. 10.3) ── */}
+        {visit.status === "completed" && report.status && (
           <View style={[styles.section, { marginBottom: 40 }]}>
-            <View style={styles.sectionRow}>
-              <Text style={styles.sectionTitle}>Complaints</Text>
-              <TouchableOpacity
-                style={[styles.addBtn, { borderColor: themeColor }]}
-                onPress={() => setShowComplaintModal(true)}
-              >
-                <Ionicons name="add" size={16} color={themeColor} />
-                <Text style={[styles.addBtnText, { color: themeColor }]}>Add</Text>
-              </TouchableOpacity>
-            </View>
-            {complaints.length > 0 ? (
-              <View style={styles.card}>
-                {complaints.map((c, i) => (
-                  <View key={i} style={[styles.complaintRow, i < complaints.length - 1 && styles.taskRowBorder]}>
+            <Text style={styles.sectionTitle}>Visit Report</Text>
+            <View style={styles.card}>
+              {report.status === "in_review" && (
+                <>
+                  <Text style={styles.complaintText}>
+                    Check the readings, photos and notes above. If anything is materially wrong, let us know by{" "}
+                    {report.reviewUntil
+                      ? new Date(report.reviewUntil).toLocaleDateString("en-GB", { day: "numeric", month: "short" })
+                      : "7 days after the visit"}
+                    . After that the report is treated as accepted.
+                  </Text>
+                  <TouchableOpacity
+                    style={[styles.addBtn, { borderColor: themeColor, alignSelf: "flex-start", marginTop: 12 }]}
+                    onPress={() => setShowComplaintModal(true)}
+                  >
+                    <Ionicons name="flag-outline" size={16} color={themeColor} />
+                    <Text style={[styles.addBtnText, { color: themeColor }]}>Report an inaccuracy</Text>
+                  </TouchableOpacity>
+                </>
+              )}
+              {report.status === "accepted" && (
+                <View style={styles.emptyComplaints}>
+                  <Ionicons name="shield-checkmark-outline" size={32} color="#d1d5db" />
+                  <Text style={styles.emptyComplaintsText}>Report accepted</Text>
+                </View>
+              )}
+              {(report.status === "disputed" || report.status === "resolved") && (
+                <>
+                  <View style={styles.complaintRow}>
                     <View style={styles.complaintDot} />
-                    <Text style={styles.complaintText}>{c}</Text>
+                    <Text style={styles.complaintText}>You flagged: {report.note}</Text>
                   </View>
-                ))}
-              </View>
-            ) : (
-              <View style={styles.emptyComplaints}>
-                <Ionicons name="shield-checkmark-outline" size={32} color="#d1d5db" />
-                <Text style={styles.emptyComplaintsText}>No complaints — great visit!</Text>
-              </View>
-            )}
+                  <Text style={[styles.complaintText, { marginTop: 8, color: "#6b7280" }]}>
+                    {report.status === "resolved" ? `PoolCare: ${report.resolution}` : "PoolCare is looking into this."}
+                  </Text>
+                </>
+              )}
+            </View>
           </View>
         )}
       </ScrollView>
@@ -698,15 +721,15 @@ export default function VisitDetailPage() {
           <View style={styles.modalSheet}>
             <View style={styles.modalHandle} />
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Add Complaint</Text>
+              <Text style={styles.modalTitle}>Report an inaccuracy</Text>
               <TouchableOpacity onPress={() => { setComplaintText(""); setShowComplaintModal(false); }}>
                 <Ionicons name="close" size={22} color="#6b7280" />
               </TouchableOpacity>
             </View>
-            <Text style={styles.modalSub}>Describe your concern about this visit.</Text>
+            <Text style={styles.modalSub}>What in this visit report is wrong?</Text>
             <TextInput
               style={styles.complaintInput}
-              placeholder="E.g. technician arrived late, pool not fully cleaned…"
+              placeholder="E.g. the pH reading doesn't match my test, the photos are from another day…"
               placeholderTextColor="#9ca3af"
               multiline
               value={complaintText}

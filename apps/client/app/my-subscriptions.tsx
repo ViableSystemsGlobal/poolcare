@@ -26,6 +26,10 @@ interface ServicePlan {
   currency: string;
   nextVisitAt?: string;
   nextBillingDate?: string;
+  paidThrough?: string | null;
+  currentTerm?: { delivered: number; entitled: number; upcoming: number } | null;
+  emergencyVisitsPerMonth?: number | null;
+  emergencyUsedThisMonth?: number;
   autoRenew: boolean;
   cancelledAt?: string;
   pool: { id: string; name: string; address?: string };
@@ -47,6 +51,7 @@ const BILLING_LABEL: Record<string, string> = {
   quarterly: "/ quarter",
   annually: "/ year",
   per_visit: "/ visit",
+  prepaid: "/ month, paid 3 months ahead",
 };
 
 export default function MySubscriptionsScreen() {
@@ -64,7 +69,7 @@ export default function MySubscriptionsScreen() {
   const fetchPlans = async () => {
     try {
       setLoading(true);
-      const res = await api.getServicePlans({ active: true }) as any;
+      const res = await api.getServicePlans() as any;
       setPlans(res.items || res || []);
     } catch {
       Alert.alert("Error", "Failed to load subscriptions.");
@@ -105,8 +110,47 @@ export default function MySubscriptionsScreen() {
       case "active": return { color: "#16a34a", bg: "#f0fdf4", label: "Active" };
       case "paused": return { color: "#d97706", bg: "#fef3c7", label: "Paused" };
       case "cancelled": return { color: "#ef4444", bg: "#fee2e2", label: "Cancelled" };
+      case "pending_payment": return { color: "#d97706", bg: "#fef3c7", label: "Awaiting payment" };
+      case "expired": return { color: "#6b7280", bg: "#f3f4f6", label: "Term ended" };
       default: return { color: "#6b7280", bg: "#f3f4f6", label: status };
     }
+  };
+
+  const handleRenew = async (plan: ServicePlan) => {
+    try {
+      const billing = await api.renewServicePlan(plan.id) as any;
+      Alert.alert(
+        "Renewal invoice ready",
+        `Invoice ${billing.invoice?.invoiceNumber || ""} is in Billing. Your visits continue as soon as it is paid.`,
+        [{ text: "Later" }, { text: "Pay now", onPress: () => router.push("/billing") }]
+      );
+    } catch (e: any) {
+      Alert.alert("Error", e?.message || "Could not start the renewal.");
+    }
+  };
+
+  const handleEmergency = (plan: ServicePlan) => {
+    const left = (plan.emergencyVisitsPerMonth || 0) - (plan.emergencyUsedThisMonth || 0);
+    Alert.alert(
+      "Request emergency clean?",
+      `A carer will come by the next business day for an extra cleaning visit (labour only). You have ${left} left this month.`,
+      [
+        { text: "Not now", style: "cancel" },
+        {
+          text: "Request",
+          onPress: async () => {
+            try {
+              const res = (await api.requestEmergencyVisit(plan.id)) as any;
+              const when = new Date(res.job.windowStart).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "short" });
+              Alert.alert("Requested", `We've booked your emergency clean for ${when}. You'll get a notification when the carer is on the way.`);
+              fetchPlans();
+            } catch (e: any) {
+              Alert.alert("Couldn't request", e?.message || "Please contact PoolCare.");
+            }
+          },
+        },
+      ]
+    );
   };
 
   const activePlans = plans.filter((p) => p.status === "active");
@@ -191,7 +235,7 @@ export default function MySubscriptionsScreen() {
             {activePlans.length > 0 && (
               <>
                 <Text style={styles.groupTitle}>Active</Text>
-                {activePlans.map((plan) => <PlanCard key={plan.id} plan={plan} themeColor={themeColor} fmt={fmt} fmtDate={fmtDate} statusMeta={statusMeta} onCancel={() => { setSelectedPlan(plan); setShowCancelModal(true); }} />)}
+                {activePlans.map((plan) => <PlanCard key={plan.id} plan={plan} themeColor={themeColor} fmt={fmt} fmtDate={fmtDate} statusMeta={statusMeta} onCancel={() => { setSelectedPlan(plan); setShowCancelModal(true); }} onRenew={() => handleRenew(plan)} onEmergency={() => handleEmergency(plan)} />)}
               </>
             )}
 
@@ -199,7 +243,7 @@ export default function MySubscriptionsScreen() {
             {otherPlans.length > 0 && (
               <>
                 <Text style={[styles.groupTitle, { marginTop: 8 }]}>Inactive</Text>
-                {otherPlans.map((plan) => <PlanCard key={plan.id} plan={plan} themeColor={themeColor} fmt={fmt} fmtDate={fmtDate} statusMeta={statusMeta} />)}
+                {otherPlans.map((plan) => <PlanCard key={plan.id} plan={plan} themeColor={themeColor} fmt={fmt} fmtDate={fmtDate} statusMeta={statusMeta} onRenew={() => handleRenew(plan)} />)}
               </>
             )}
 
@@ -262,17 +306,22 @@ export default function MySubscriptionsScreen() {
   );
 }
 
-function PlanCard({ plan, themeColor, fmt, fmtDate, statusMeta, onCancel }: {
+function PlanCard({ plan, themeColor, fmt, fmtDate, statusMeta, onCancel, onRenew, onEmergency }: {
   plan: ServicePlan;
   themeColor: string;
   fmt: (c: number, cur: string) => string;
   fmtDate: (d?: string) => string | null;
   statusMeta: (s: string) => { color: string; bg: string; label: string };
   onCancel?: () => void;
+  onRenew?: () => void;
+  onEmergency?: () => void;
 }) {
   const meta = statusMeta(plan.status);
   const nextVisit = fmtDate(plan.nextVisitAt);
   const nextBilling = fmtDate(plan.nextBillingDate);
+  const isPrepaid = plan.billingType === "prepaid";
+  const paidThrough = fmtDate(plan.paidThrough || undefined);
+  const canRenew = isPrepaid && onRenew && ["active", "expired", "pending_payment"].includes(plan.status);
 
   return (
     <View style={styles.planCard}>
@@ -306,11 +355,37 @@ function PlanCard({ plan, themeColor, fmt, fmtDate, statusMeta, onCancel }: {
             <Text style={styles.planDetailText}>Next visit: <Text style={{ fontWeight: "600", color: "#111827" }}>{nextVisit}</Text></Text>
           </View>
         )}
-        {nextBilling && plan.billingType !== "per_visit" && (
+        {isPrepaid && (
+          <View style={styles.planDetailRow}>
+            <Ionicons name="card-outline" size={15} color="#9ca3af" />
+            <Text style={styles.planDetailText}>
+              {paidThrough
+                ? <>Paid through: <Text style={{ fontWeight: "600", color: "#111827" }}>{paidThrough}</Text></>
+                : "Visits start once your first invoice is paid"}
+            </Text>
+          </View>
+        )}
+        {isPrepaid && plan.currentTerm && (
+          <View style={styles.planDetailRow}>
+            <Ionicons name="checkmark-done-outline" size={15} color="#9ca3af" />
+            <Text style={styles.planDetailText}>
+              Visits this term: <Text style={{ fontWeight: "600", color: "#111827" }}>{plan.currentTerm.delivered} of {plan.currentTerm.entitled}</Text> done · {plan.currentTerm.upcoming} scheduled
+            </Text>
+          </View>
+        )}
+        {!isPrepaid && nextBilling && plan.billingType !== "per_visit" && (
           <View style={styles.planDetailRow}>
             <Ionicons name="card-outline" size={15} color="#9ca3af" />
             <Text style={styles.planDetailText}>Next billing: <Text style={{ fontWeight: "600", color: "#111827" }}>{nextBilling}</Text></Text>
           </View>
+        )}
+        {plan.status === "active" && (plan.emergencyVisitsPerMonth || 0) > 0 && onEmergency && (
+          <TouchableOpacity style={styles.planDetailRow} onPress={onEmergency}>
+            <Ionicons name="flash-outline" size={15} color={themeColor} />
+            <Text style={[styles.planDetailText, { color: themeColor, fontWeight: "600" }]}>
+              Request emergency clean ({Math.max(0, (plan.emergencyVisitsPerMonth || 0) - (plan.emergencyUsedThisMonth || 0))} left this month)
+            </Text>
+          </TouchableOpacity>
         )}
         {plan.autoRenew && plan.status === "active" && (
           <View style={styles.planDetailRow}>
@@ -326,6 +401,13 @@ function PlanCard({ plan, themeColor, fmt, fmtDate, statusMeta, onCancel }: {
           <View style={[styles.statusDot, { backgroundColor: meta.color }]} />
           <Text style={[styles.statusText, { color: meta.color }]}>{meta.label}</Text>
         </View>
+        {canRenew && (
+          <TouchableOpacity onPress={onRenew} style={styles.cancelPlanBtn}>
+            <Text style={[styles.cancelPlanBtnText, { color: themeColor }]}>
+              {plan.status === "pending_payment" ? "Pay" : "Renew"}
+            </Text>
+          </TouchableOpacity>
+        )}
         {plan.status === "active" && onCancel && (
           <TouchableOpacity onPress={onCancel} style={styles.cancelPlanBtn}>
             <Text style={styles.cancelPlanBtnText}>Cancel</Text>

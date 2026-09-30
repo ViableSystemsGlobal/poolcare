@@ -404,6 +404,11 @@ class ApiClient {
     return this.request(`/visits/${id}`);
   }
 
+  /** Flag a material inaccuracy in a visit report (within 7 days of the visit). */
+  async disputeVisitReport(id: string, note: string) {
+    return this.request(`/visits/${id}/report/dispute`, { method: "POST", body: JSON.stringify({ note }) });
+  }
+
   async reviewVisit(visitId: string, dto: { rating?: number; comments?: string }) {
     return this.request(`/visits/${visitId}/review`, {
       method: "POST",
@@ -517,6 +522,16 @@ class ApiClient {
       method: "POST",
       body: JSON.stringify({ reason }),
     });
+  }
+
+  /** Request an Emergency Cleaning Visit within the plan's monthly allowance. */
+  async requestEmergencyVisit(planId: string, note?: string) {
+    return this.request(`/service-plans/${planId}/emergency`, { method: "POST", body: JSON.stringify({ note }) });
+  }
+
+  /** Issue the invoice for a prepaid plan's next term. */
+  async renewServicePlan(id: string) {
+    return this.request(`/service-plans/${id}/renew`, { method: "POST" });
   }
 
   // Mobile Sync (for offline support)

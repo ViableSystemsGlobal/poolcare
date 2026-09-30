@@ -561,13 +561,22 @@ model ServicePlan {
   discountPct          Float     @default(0)
   startsOn             DateTime? @db.Date
   endsOn               DateTime? @db.Date
-  status               String    @default("active") // active, paused, ended, trial, cancelled, expired
+  status               String    @default("active") // active, paused, ended, trial, cancelled, expired, pending_payment
   nextVisitAt          DateTime? @db.Timestamptz(6)
   lastVisitAt          DateTime? @db.Timestamptz(6)
   notes                String?
   // NEW: Subscription billing fields
-  billingType          String    @default("per_visit") // per_visit, monthly, quarterly, annually
+  billingType          String    @default("per_visit") // per_visit, monthly, quarterly, annually, prepaid
   autoRenew            Boolean   @default(false)
+  // Prepaid terms (client contract cl. 4/16/17): service is bought in fixed
+  // terms paid in full up front. Jobs are only generated up to paidThrough, so
+  // an unpaid term never schedules visits.
+  termMonths           Int       @default(3)
+  paidThrough          DateTime? @db.Date
+  renewalReminderAt    DateTime? @db.Timestamptz(6) // manual-renewal expiry reminder sent for the current term
+  visitsPerTerm        Int? // Schedule B "Contracted Visits" override; null = derived from frequency
+  emergencyVisitsPerMonth Int? // Schedule B: included Emergency Cleaning Visits per calendar month
+  chemicalAllowanceCents  Int? // Schedule B: monthly routine-chemical allowance (priced via the org chemical rate card)
   nextBillingDate      DateTime? @db.Date
   lastBilledDate       DateTime? @db.Date
   trialEndsAt          DateTime? @db.Date
@@ -628,6 +637,10 @@ model Job {
   slaBreachedAt   DateTime? @db.Timestamptz(6)
   cancelCode      String?
   failCode        String?
+  cancelledAt     DateTime? @db.Timestamptz(6)
+  kind            String    @default("routine") // routine, emergency — emergency visits sit outside contracted visits
+  // Access-failure evidence (contract cl. 13.3): { lat, lng, accuracyM, at, photoFileId }
+  failEvidence    Json?
   notes           String?
   templateId      String?   @db.Uuid
   templateVersion Int?
@@ -659,6 +672,12 @@ model VisitEntry {
   clientSignatureUrl String?
   rating             Int? // 1-5
   feedback           String?
+  // Report acceptance (contract cl. 10.3): the client has 7 days after
+  // completion to flag a material inaccuracy; otherwise the report is accepted.
+  reportDisputedAt        DateTime? @db.Timestamptz(6)
+  reportDisputeNote       String?
+  reportDisputeResolvedAt DateTime? @db.Timestamptz(6)
+  reportDisputeResolution String?
   templateId         String?   @db.Uuid
   templateVersion    Int?
   checklist          Json? // Stores checklist completion state: [{id, task, completed, required}]
@@ -714,6 +733,7 @@ model ChemicalsUsed {
   chemical  String
   qty       Float?
   unit      String?
+  rateKey   String? // chemical rate card entry this was priced against (settings → chemical rates)
   lotNo     String?
   costCents Int?
   createdAt DateTime @default(now()) @db.Timestamptz(6)
@@ -774,6 +794,9 @@ model Quote {
   clientId        String    @db.Uuid
   status          String    @default("pending") // pending, approved, rejected
   currency        String    @default("GHS")
+  // false for charge-only quotes (e.g. chemicals above allowance): paying the
+  // invoice settles it without booking a job.
+  schedulesWork   Boolean   @default(true)
   items           Json // Array of {sku?, label, qty, unitPriceCents, taxPct}
   subtotalCents   Int
   taxCents        Int       @default(0)
@@ -948,6 +971,12 @@ model SubscriptionBilling {
   amountCents        Int
   currency           String    @default("GHS")
   status             String    @default("pending") // pending, paid, failed, refunded
+  // Prepaid term visit entitlement (contract cl. 5, 26): contracted for this
+  // term, plus valid undelivered visits carried in from the previous term.
+  // carriedInVisits stays null until the previous term has ended and the
+  // carry can be settled.
+  contractedVisits   Int?
+  carriedInVisits    Int?
   paidAt             DateTime? @db.Timestamptz(6)
   failureReason      String?
   createdAt          DateTime  @default(now()) @db.Timestamptz(6)

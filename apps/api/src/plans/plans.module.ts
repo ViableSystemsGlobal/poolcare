@@ -2,6 +2,7 @@ import { Module, forwardRef } from "@nestjs/common";
 import { PlansController } from "./plans.controller";
 import { PlansService } from "./plans.service";
 import { PlansSchedulerService } from "./scheduler.service";
+import { PrepaidTermsService } from "./prepaid-terms.service";
 import { AuthModule } from "../auth/auth.module";
 import { SubscriptionTemplatesModule } from "../subscription-templates/subscription-templates.module";
 import { NotificationsModule } from "../notifications/notifications.module";
@@ -13,8 +14,8 @@ import { NotificationsModule } from "../notifications/notifications.module";
     forwardRef(() => NotificationsModule),
   ],
   controllers: [PlansController],
-  providers: [PlansService, PlansSchedulerService],
-  exports: [PlansService, PlansSchedulerService],
+  providers: [PlansService, PlansSchedulerService, PrepaidTermsService],
+  exports: [PlansService, PlansSchedulerService, PrepaidTermsService],
 })
 export class PlansModule {}
 

@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useRef, useEffect } from "react";
+import { api } from "../lib/api-client";
 import {
   View,
   Text,
@@ -147,6 +148,12 @@ export const ChecklistWizard: React.FC<ChecklistWizardProps> = ({
   const [afterReadings, setAfterReadings] = useState<ReadingsState>(initialAfterReadings);
   const [showReadingsPhase, setShowReadingsPhase] = useState<"before" | "after" | "chemicals" | null>("before");
   const [chemicals, setChemicals] = useState<Chemical[]>([]);
+  // Rate-card chemicals: picking one keeps names consistent so usage can be
+  // priced against the client's chemical allowance.
+  const [chemicalOptions, setChemicalOptions] = useState<Array<{ key: string; label: string; unit: "kg" | "L" }>>([]);
+  useEffect(() => {
+    api.getChemicalRates().then(setChemicalOptions).catch(() => setChemicalOptions([]));
+  }, []);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   
   const slideAnim = useRef(new Animated.Value(0)).current;
@@ -419,9 +426,29 @@ export const ChecklistWizard: React.FC<ChecklistWizardProps> = ({
                   <View style={styles.chemicalInputRow}>
                     <View style={styles.chemicalNameInput}>
                       <Text style={styles.inputLabel}>Chemical Name</Text>
+                      {chemicalOptions.length > 0 && (
+                        <View style={[styles.unitSelector, { flexWrap: "wrap", marginBottom: SPACING.sm }]}>
+                          {chemicalOptions.map((opt) => (
+                            <TouchableOpacity
+                              key={opt.key}
+                              style={[styles.unitOption, chemical.name === opt.label && styles.unitOptionActive]}
+                              onPress={() => {
+                                const updated = [...chemicals];
+                                updated[index] = { ...updated[index], name: opt.label, unit: opt.unit === "kg" ? "g" : "ml" };
+                                setChemicals(updated);
+                              }}
+                              disabled={disabled}
+                            >
+                              <Text style={[styles.unitOptionText, chemical.name === opt.label && styles.unitOptionTextActive]}>
+                                {opt.label}
+                              </Text>
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+                      )}
                       <TextInput
                         style={styles.textInput}
-                        placeholder="e.g., Chlorine, pH Plus"
+                        placeholder={chemicalOptions.length ? "Or type another chemical" : "e.g., Chlorine, pH Plus"}
                         value={chemical.name}
                         onChangeText={(text) => handleUpdateChemical(index, "name", text)}
                         editable={!disabled}

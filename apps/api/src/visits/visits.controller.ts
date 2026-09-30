@@ -143,6 +143,24 @@ export class VisitsController {
     return this.visitsService.review(user.org_id, user.role, user.sub, visitId, dto);
   }
 
+  @Post(":id/report/dispute")
+  async disputeReport(
+    @CurrentUser() user: { org_id: string; role: string; sub: string },
+    @Param("id") visitId: string,
+    @Body() body: { note: string }
+  ) {
+    return this.visitsService.disputeReport(user.org_id, user.role, user.sub, visitId, body?.note);
+  }
+
+  @Post(":id/report/resolve")
+  async resolveReportDispute(
+    @CurrentUser() user: { org_id: string; role: string; sub: string },
+    @Param("id") visitId: string,
+    @Body() body: { resolution: string }
+  ) {
+    return this.visitsService.resolveReportDispute(user.org_id, user.role, visitId, body?.resolution);
+  }
+
   @Post(":id/mark-paid")
   async markPaid(
     @CurrentUser() user: { org_id: string; role: string; sub: string },

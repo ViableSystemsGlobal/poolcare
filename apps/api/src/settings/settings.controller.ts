@@ -1,6 +1,8 @@
 import { Controller, Get, Patch, Body, UseGuards, Post, UseInterceptors, UploadedFile, BadRequestException } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
 import { SettingsService } from "./settings.service";
+import { loadChemicalRates, normalizeChemicalRates } from "./chemical-rates";
+import { prisma } from "@poolcare/db";
 import { FilesService } from "../files/files.service";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { RolesGuard } from "../auth/guards/roles.guard";
@@ -112,6 +114,32 @@ export class SettingsController {
   @Roles("ADMIN", "MANAGER")
   async updateDailyBriefingSettings(@CurrentUser() user: any, @Body() data: any) {
     return this.settingsService.updateDailyBriefingSettings(user.org_id, data);
+  }
+
+  /** Chemical rate card — readable by carers (they pick chemicals from it). */
+  @Get("chemical-rates")
+  async getChemicalRates(@CurrentUser() user: any) {
+    return loadChemicalRates(user.org_id);
+  }
+
+  @Patch("chemical-rates")
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "MANAGER")
+  async updateChemicalRates(@CurrentUser() user: any, @Body() body: { rates: any[] }) {
+    let rates;
+    try {
+      rates = normalizeChemicalRates(body?.rates);
+    } catch (err: any) {
+      throw new BadRequestException(err.message);
+    }
+    const existing = await prisma.orgSetting.findUnique({ where: { orgId: user.org_id } });
+    const policies = { ...((existing?.policies as any) || {}), chemicalRates: rates };
+    await prisma.orgSetting.upsert({
+      where: { orgId: user.org_id },
+      update: { policies },
+      create: { orgId: user.org_id, policies },
+    });
+    return rates;
   }
 
   @Get("job-generation")

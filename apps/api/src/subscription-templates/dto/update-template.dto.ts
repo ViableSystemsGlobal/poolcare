@@ -15,7 +15,7 @@ export class UpdateTemplateDto {
   frequency?: string;
 
   @IsOptional()
-  @IsEnum(["per_visit", "monthly", "quarterly", "annually"])
+  @IsEnum(["per_visit", "monthly", "quarterly", "annually", "prepaid"])
   billingType?: string;
 
   @IsOptional()

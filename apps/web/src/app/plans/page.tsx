@@ -128,6 +128,28 @@ export default function PlansPage() {
   const planFrequency: string = selectedTemplate?.frequency || "";
   const needsDayOfWeek = ["weekly", "biweekly", "once_week", "twice_week", "thrice_week"].includes(planFrequency);
   const needsDayOfMonth = ["monthly", "once_month", "twice_month", "thrice_month"].includes(planFrequency);
+  // Twice/thrice-weekly plans visit on that many fixed weekdays ("mon,thu").
+  const daysNeeded = planFrequency === "twice_week" ? 2 : planFrequency === "thrice_week" ? 3 : 1;
+  const selectedDays: string[] = formData.dow ? formData.dow.split(",").filter(Boolean) : [];
+  const WEEKDAYS = [
+    { value: "mon", label: "Mon" },
+    { value: "tue", label: "Tue" },
+    { value: "wed", label: "Wed" },
+    { value: "thu", label: "Thu" },
+    { value: "fri", label: "Fri" },
+    { value: "sat", label: "Sat" },
+    { value: "sun", label: "Sun" },
+  ];
+  const toggleDay = (day: string) => {
+    const next = selectedDays.includes(day)
+      ? selectedDays.filter((d) => d !== day)
+      : daysNeeded === 1
+      ? [day]
+      : [...selectedDays, day].slice(-daysNeeded);
+    const order = WEEKDAYS.map((d) => d.value);
+    next.sort((a, b) => order.indexOf(a) - order.indexOf(b));
+    setFormData({ ...formData, dow: next.join(",") });
+  };
 
   // Human-readable price for the selected plan (single figure or a range).
   const planPriceLabel = (t: any): string => {
@@ -395,8 +417,12 @@ export default function PlansPage() {
       const payload: any = { poolId: formData.poolId };
 
       if (needsDayOfWeek) {
-        if (!formData.dow) {
-          toast({ title: "Validation Error", description: "Day of week is required for this plan's frequency", variant: "destructive" });
+        if (selectedDays.length !== daysNeeded) {
+          toast({
+            title: "Validation Error",
+            description: daysNeeded === 1 ? "Pick the service day" : `Pick ${daysNeeded} service days for this plan`,
+            variant: "destructive",
+          });
           return;
         }
         payload.dow = formData.dow;
@@ -419,6 +445,7 @@ export default function PlansPage() {
       if (formData.endsOn) payload.endsOn = formData.endsOn;
       if (formData.notes) payload.notes = formData.notes;
       if (formData.preferredCarerId) payload.preferredCarerId = formData.preferredCarerId;
+      if (selectedTemplate?.billingType === "prepaid") payload.autoRenew = !!formData.autoRenew;
 
       const url = `${API_URL}/service-plans/from-template/${formData.templateId}`;
 
@@ -537,7 +564,9 @@ export default function PlansPage() {
                   </div>
                   <div className="flex justify-between">
                     <span className="text-gray-500">Billing</span>
-                    <span className="font-medium capitalize">{selectedTemplate.billingType}</span>
+                    <span className="font-medium capitalize">
+                      {selectedTemplate.billingType === "prepaid" ? "Prepaid, 3 months" : selectedTemplate.billingType}
+                    </span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-gray-500">Frequency</span>
@@ -547,6 +576,12 @@ export default function PlansPage() {
                     <span className="text-gray-500">Duration</span>
                     <span className="font-medium">{selectedTemplate.serviceDurationMin} min</span>
                   </div>
+                  {selectedTemplate.billingType === "prepaid" && (
+                    <p className="col-span-2 text-xs text-gray-500">
+                      Price is the monthly rate. The client is invoiced for the full 3-month term now, and visits
+                      are scheduled once that invoice is paid.
+                    </p>
+                  )}
                   {selectedTemplate.pricingType === "range" && (
                     <p className="col-span-2 text-xs text-gray-500">
                       Range plan — you invoice a figure within this range at billing time.
@@ -557,24 +592,31 @@ export default function PlansPage() {
 
               {needsDayOfWeek && (
                 <div className="grid gap-2">
-                  <Label htmlFor="dow">Day of Week *</Label>
-                  <Select
-                    value={formData.dow}
-                    onValueChange={(value) => setFormData({ ...formData, dow: value })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select day" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="mon">Monday</SelectItem>
-                      <SelectItem value="tue">Tuesday</SelectItem>
-                      <SelectItem value="wed">Wednesday</SelectItem>
-                      <SelectItem value="thu">Thursday</SelectItem>
-                      <SelectItem value="fri">Friday</SelectItem>
-                      <SelectItem value="sat">Saturday</SelectItem>
-                      <SelectItem value="sun">Sunday</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <Label>
+                    {daysNeeded === 1 ? "Service Day *" : `Service Days * (pick ${daysNeeded})`}
+                  </Label>
+                  <div className="flex flex-wrap gap-2">
+                    {WEEKDAYS.map((day) => {
+                      const on = selectedDays.includes(day.value);
+                      return (
+                        <button
+                          key={day.value}
+                          type="button"
+                          onClick={() => toggleDay(day.value)}
+                          className={`h-9 w-12 rounded-lg text-sm font-medium transition-colors ${
+                            on ? "bg-gray-900 text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                          }`}
+                        >
+                          {day.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {daysNeeded > 1 && (
+                    <p className="text-xs text-gray-500">
+                      {selectedDays.length}/{daysNeeded} selected — e.g. Mon &amp; Thu gives evenly spaced visits.
+                    </p>
+                  )}
                 </div>
               )}
 
@@ -634,6 +676,23 @@ export default function PlansPage() {
                   />
                 </div>
               </div>
+
+              {selectedTemplate?.billingType === "prepaid" && (
+                <div className="flex items-start gap-3 rounded-lg bg-gray-50 p-3">
+                  <Checkbox
+                    id="autoRenew"
+                    checked={!!formData.autoRenew}
+                    onCheckedChange={(checked) => setFormData({ ...formData, autoRenew: checked === true })}
+                  />
+                  <div className="grid gap-0.5">
+                    <Label htmlFor="autoRenew" className="font-medium">Automatic renewal</Label>
+                    <p className="text-xs text-gray-500">
+                      Only if the client chose it in Schedule B. The next term is invoiced 14 days before this one
+                      ends; otherwise the client just gets a reminder.
+                    </p>
+                  </div>
+                </div>
+              )}
 
               <div className="grid gap-2">
                 <Label htmlFor="notes">Notes</Label>
@@ -932,8 +991,16 @@ export default function PlansPage() {
                             <span className="text-gray-600">Per Visit</span>
                           ) : (
                             <div>
-                              <div className="font-medium capitalize">{plan.billingType}</div>
-                              {plan.nextBillingDate && (
+                              <div className="font-medium capitalize">
+                                {plan.billingType === "prepaid" ? "Prepaid, 3 months" : plan.billingType}
+                              </div>
+                              {plan.billingType === "prepaid" ? (
+                                plan.paidThrough && (
+                                  <div className="text-xs text-gray-500">
+                                    Paid to {new Date(plan.paidThrough).toLocaleDateString()}
+                                  </div>
+                                )
+                              ) : plan.nextBillingDate && (
                                 <div className="text-xs text-gray-500">
                                   Next: {new Date(plan.nextBillingDate).toLocaleDateString()}
                                 </div>
@@ -957,10 +1024,12 @@ export default function PlansPage() {
                               ? "bg-green-100 text-green-700"
                               : plan.status === "paused"
                               ? "bg-emerald-100 text-emerald-800"
+                              : plan.status === "pending_payment"
+                              ? "bg-amber-100 text-amber-800"
                               : "bg-gray-100 text-gray-700"
                           }`}
                         >
-                          {plan.status}
+                          {plan.status === "pending_payment" ? "awaiting payment" : plan.status}
                         </span>
                       </TableCell>
                       <TableCell>{plan._count?.jobs || 0}</TableCell>

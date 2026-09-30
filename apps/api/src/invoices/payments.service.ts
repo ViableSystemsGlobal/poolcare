@@ -1,7 +1,9 @@
-import { Injectable, NotFoundException, ForbiddenException, BadRequestException, Logger } from "@nestjs/common";
+import { Injectable, NotFoundException, ForbiddenException, BadRequestException, Logger, Inject, forwardRef } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { prisma } from "@poolcare/db";
 import { NotificationsService } from "../notifications/notifications.service";
+import { PrepaidTermsService } from "../plans/prepaid-terms.service";
+import { QuotesService } from "../quotes/quotes.service";
 import { InitPaymentDto, CreateRefundDto } from "./dto";
 import * as crypto from "crypto";
 import PDFDocument from "pdfkit";
@@ -17,6 +19,10 @@ export class PaymentsService {
   constructor(
     private readonly configService: ConfigService,
     private readonly notificationsService: NotificationsService,
+    @Inject(forwardRef(() => PrepaidTermsService))
+    private readonly prepaidTerms: PrepaidTermsService,
+    @Inject(forwardRef(() => QuotesService))
+    private readonly quotesService: QuotesService,
   ) {
     this.minioClient = new MinIO.Client({
       endPoint: this.configService.get<string>("MINIO_ENDPOINT") || "localhost",
@@ -289,6 +295,7 @@ export class PaymentsService {
       // Generate receipt if fully paid
       if (newStatus === "paid") {
         await this.generateReceipt(payment.orgId, payment.invoiceId, payment.id);
+        await this.onInvoicePaid(payment.invoiceId);
       }
 
       // Send notification to managers about payment received
@@ -574,9 +581,26 @@ export class PaymentsService {
 
     if (newStatus === "paid") {
       await this.generateReceipt(orgId, dto.invoiceId, payment.id);
+      await this.onInvoicePaid(dto.invoiceId);
     }
 
     return payment;
+  }
+
+  /**
+   * Follow-ups once an invoice is fully paid: a prepaid-term invoice starts that
+   * term; a quote invoice books the approved work. Never fails the payment.
+   */
+  private async onInvoicePaid(invoiceId: string) {
+    try {
+      await this.prepaidTerms.activateFromInvoice(invoiceId);
+      const invoice = await prisma.invoice.findUnique({ where: { id: invoiceId }, select: { orgId: true, quoteId: true } });
+      if (invoice?.quoteId) {
+        await this.quotesService.scheduleQuoteJob(invoice.orgId, invoice.quoteId);
+      }
+    } catch (err: any) {
+      this.logger.error(`Post-payment follow-up failed for invoice ${invoiceId}: ${err.message}`);
+    }
   }
 
   async createRefund(orgId: string, role: string, userId: string, dto: CreateRefundDto) {

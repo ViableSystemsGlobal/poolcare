@@ -11,7 +11,7 @@ export class CreateTemplateDto {
   @IsEnum(["weekly", "biweekly", "monthly", "once_week", "twice_week", "thrice_week", "once_month", "twice_month", "thrice_month"])
   frequency: string;
 
-  @IsEnum(["per_visit", "monthly", "quarterly", "annually"])
+  @IsEnum(["per_visit", "monthly", "quarterly", "annually", "prepaid"])
   @IsOptional()
   billingType?: string;
 

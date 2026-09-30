@@ -48,6 +48,15 @@ interface ServicePlan {
   priceCents: number;
   currency: string;
   status: string;
+  billingType?: string;
+  autoRenew?: boolean;
+  termMonths?: number;
+  paidThrough?: string | null;
+  visitsPerTerm?: number | null;
+  emergencyVisitsPerMonth?: number | null;
+  emergencyUsedThisMonth?: number;
+  chemicalAllowanceCents?: number | null;
+  chemicalUsage?: { month: string; allowanceCents: number; usedCents: number; overageCents: number; unpriced: number } | null;
   startsOn?: string;
   endsOn?: string;
   nextVisitAt?: string;
@@ -75,6 +84,29 @@ interface ServicePlan {
   _count?: {
     jobs: number;
   };
+}
+
+const WEEKDAYS = [
+  { value: "mon", label: "Mon" },
+  { value: "tue", label: "Tue" },
+  { value: "wed", label: "Wed" },
+  { value: "thu", label: "Thu" },
+  { value: "fri", label: "Fri" },
+  { value: "sat", label: "Sat" },
+  { value: "sun", label: "Sun" },
+];
+
+interface TermSummary {
+  id: string;
+  status: string;
+  start: string;
+  end: string;
+  contracted: number;
+  carriedIn: number;
+  entitled: number;
+  delivered: number;
+  upcoming: number;
+  unscheduled: number;
 }
 
 interface Job {
@@ -130,6 +162,15 @@ export default function ServicePlanDetailPage() {
       if (planRes.ok) {
         planData = await planRes.json();
         setPlan(planData);
+        setVisitsOverride(planData.visitsPerTerm != null ? String(planData.visitsPerTerm) : "");
+        setEmergencyAllowance(planData.emergencyVisitsPerMonth != null ? String(planData.emergencyVisitsPerMonth) : "");
+        setChemicalAllowance(planData.chemicalAllowanceCents != null ? (planData.chemicalAllowanceCents / 100).toFixed(2) : "");
+        if (planData.billingType === "prepaid") {
+          const termsRes = await fetch(`${API_URL}/service-plans/${planId}/terms`, {
+            headers: { Authorization: `Bearer ${localStorage.getItem("auth_token")}` },
+          });
+          if (termsRes.ok) setTerms(await termsRes.json());
+        }
       }
 
       // Fetch jobs for this plan
@@ -187,6 +228,109 @@ export default function ServicePlanDetailPage() {
     }
   };
 
+  const [renewing, setRenewing] = useState(false);
+  const [editingDays, setEditingDays] = useState(false);
+  const [draftDays, setDraftDays] = useState<string[]>([]);
+  const [savingDays, setSavingDays] = useState(false);
+
+  const handleSaveDays = async () => {
+    setSavingDays(true);
+    try {
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+      const order = WEEKDAYS.map((d) => d.value);
+      const dow = [...draftDays].sort((a, b) => order.indexOf(a) - order.indexOf(b)).join(",");
+      const res = await fetch(`${API_URL}/service-plans/${planId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("auth_token")}` },
+        body: JSON.stringify({ dow }),
+      });
+      if (!res.ok) throw new Error((await res.json()).message || "Failed to save days");
+      setEditingDays(false);
+      toast({ title: "Service days updated", description: "Upcoming visits have been rescheduled.", variant: "success" });
+      await fetchPlanData();
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } finally {
+      setSavingDays(false);
+    }
+  };
+  const [terms, setTerms] = useState<TermSummary[]>([]);
+  const [visitsOverride, setVisitsOverride] = useState("");
+  const [emergencyAllowance, setEmergencyAllowance] = useState("");
+  const [chemicalAllowance, setChemicalAllowance] = useState("");
+  const [raisingOverage, setRaisingOverage] = useState(false);
+
+  // Charge routine chemicals used above this month's allowance (cl. 7.3).
+  const handleRaiseOverage = async () => {
+    setRaisingOverage(true);
+    try {
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+      const res = await fetch(`${API_URL}/service-plans/${planId}/chemical-overage-quote`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${localStorage.getItem("auth_token")}` },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Failed to raise quote");
+      toast({ title: "Quote sent", description: "The client can approve it in the app.", variant: "success" });
+      router.push(`/quotes/${data.id}`);
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } finally {
+      setRaisingOverage(false);
+    }
+  };
+  const [savingOverride, setSavingOverride] = useState<string | null>(null);
+
+  // Save a Schedule B number on the plan (blank clears it).
+  const saveScheduleB = async (
+    field: "visitsPerTerm" | "emergencyVisitsPerMonth" | "chemicalAllowanceCents",
+    raw: string,
+    note: string,
+    scale = 1
+  ) => {
+    setSavingOverride(field);
+    try {
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+      const value = raw.trim() === "" ? null : Math.round(parseFloat(raw) * scale);
+      if (value !== null && (!Number.isFinite(value) || value < 0)) throw new Error("Enter a whole number");
+      const res = await fetch(`${API_URL}/service-plans/${planId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("auth_token")}` },
+        body: JSON.stringify({ [field]: value }),
+      });
+      if (!res.ok) throw new Error((await res.json()).message || "Failed to save");
+      setPlan((p) => (p ? { ...p, [field]: value } : p));
+      toast({ title: "Saved", description: note, variant: "success" });
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } finally {
+      setSavingOverride(null);
+    }
+  };
+
+  // Issue (or return the already-open) invoice for the next prepaid term.
+  const handleRenew = async () => {
+    setRenewing(true);
+    try {
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+      const res = await fetch(`${API_URL}/service-plans/${planId}/renew`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${localStorage.getItem("auth_token")}` },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Failed to issue renewal invoice");
+      toast({
+        title: "Renewal invoice ready",
+        description: `Invoice ${data.invoice?.invoiceNumber || ""} sent to the client. Visits are scheduled once it is paid.`,
+        variant: "success",
+      });
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } finally {
+      setRenewing(false);
+    }
+  };
+
   const fetchCalendarData = async (from?: string, to?: string) => {
     try {
       setCalendarLoading(true);
@@ -228,6 +372,8 @@ export default function ServicePlanDetailPage() {
         return "bg-green-100 text-green-700";
       case "paused":
         return "bg-yellow-100 text-yellow-700";
+      case "pending_payment":
+        return "bg-amber-100 text-amber-800";
       case "ended":
         return "bg-gray-100 text-gray-700";
       default:
@@ -292,7 +438,26 @@ export default function ServicePlanDetailPage() {
     );
   }
 
+  // Term covering today, else the next paid one.
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const currentTerm =
+    [...terms].reverse().find((t) => t.status === "paid" && t.end.slice(0, 10) >= todayIso) || null;
+  const fmtTermDate = (d: string) =>
+    new Date(d).toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
+
+  // Weekly-type plans visit on fixed weekdays; twice/thrice weekly need 2/3.
+  const daysNeeded =
+    { weekly: 1, once_week: 1, biweekly: 1, twice_week: 2, thrice_week: 3 }[plan.frequency as string] || 0;
+  const currentDays = (plan.dow || "").split(",").filter(Boolean);
+
   const upcomingJobs = jobs.filter((j) => j.status === "scheduled" || j.status === "en_route");
+  // plan.nextVisitAt is the generator's "resume after" marker (past everything
+  // already scheduled), so prefer the earliest visit actually on the calendar.
+  const nextVisit =
+    upcomingJobs
+      .map((j) => j.windowStart)
+      .filter((w) => new Date(w).getTime() > Date.now())
+      .sort()[0] || (plan.billingType === "prepaid" ? null : plan.nextVisitAt);
   const completedJobs = jobs.filter((j) => j.status === "completed");
 
   return (
@@ -314,7 +479,7 @@ export default function ServicePlanDetailPage() {
         <span
           className={`px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(plan.status)}`}
         >
-          {plan.status}
+          {plan.status === "pending_payment" ? "awaiting payment" : plan.status}
         </span>
       </div>
 
@@ -324,7 +489,9 @@ export default function ServicePlanDetailPage() {
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-600">Price per Visit</p>
+                <p className="text-sm font-medium text-gray-600">
+                  {plan.billingType === "prepaid" ? "Monthly Rate" : "Price per Visit"}
+                </p>
                 <p className="text-2xl font-bold text-gray-900">
                   {formatCurrency(plan.priceCents, plan.currency)}
                 </p>
@@ -374,6 +541,177 @@ export default function ServicePlanDetailPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left Column - Plan Info */}
         <div className="lg:col-span-1 space-y-6">
+          {/* Prepaid term — visits only run inside a paid term */}
+          {plan.billingType === "prepaid" && (
+            <div className="bg-white rounded-xl shadow-sm p-5">
+              <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wider mb-3">Prepaid Term</h3>
+              <div className="divide-y divide-gray-100 text-sm">
+                <div className="flex justify-between py-2">
+                  <span className="text-gray-500">Paid through</span>
+                  <span className="font-medium text-gray-900">
+                    {plan.paidThrough
+                      ? new Date(plan.paidThrough).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" })
+                      : "Not yet paid"}
+                  </span>
+                </div>
+                {currentTerm && (
+                  <>
+                    <div className="flex justify-between py-2">
+                      <span className="text-gray-500">Current term</span>
+                      <span className="font-medium text-gray-900">
+                        {fmtTermDate(currentTerm.start)} – {fmtTermDate(currentTerm.end)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between py-2">
+                      <span className="text-gray-500">Visits delivered</span>
+                      <span className="font-medium text-gray-900 tabular-nums">
+                        {currentTerm.delivered} of {currentTerm.entitled}
+                        {currentTerm.carriedIn > 0 && (
+                          <span className="text-gray-500 font-normal"> (incl. {currentTerm.carriedIn} carried)</span>
+                        )}
+                      </span>
+                    </div>
+                    <div className="flex justify-between py-2">
+                      <span className="text-gray-500">Scheduled</span>
+                      <span className="font-medium text-gray-900 tabular-nums">{currentTerm.upcoming}</span>
+                    </div>
+                    {currentTerm.unscheduled !== 0 && (
+                      <div className="flex justify-between py-2">
+                        <span className="text-gray-500">
+                          {currentTerm.unscheduled > 0 ? "Still to schedule" : "Scheduled beyond entitlement"}
+                        </span>
+                        <span className="font-medium text-amber-700 tabular-nums">{Math.abs(currentTerm.unscheduled)}</span>
+                      </div>
+                    )}
+                  </>
+                )}
+                <div className="flex justify-between py-2">
+                  <span className="text-gray-500">Emergency visits this month</span>
+                  <span className="font-medium text-gray-900 tabular-nums">
+                    {plan.emergencyUsedThisMonth || 0} of {plan.emergencyVisitsPerMonth || 0}
+                  </span>
+                </div>
+                {plan.chemicalUsage && (
+                  <div className="flex justify-between py-2">
+                    <span className="text-gray-500">Chemicals this month</span>
+                    <span
+                      className={`font-medium tabular-nums ${plan.chemicalUsage.overageCents > 0 ? "text-amber-700" : "text-gray-900"}`}
+                    >
+                      {formatCurrency(plan.chemicalUsage.usedCents, plan.currency)} of{" "}
+                      {formatCurrency(plan.chemicalUsage.allowanceCents, plan.currency)}
+                    </span>
+                  </div>
+                )}
+                <div className="flex justify-between py-2">
+                  <span className="text-gray-500">Term length</span>
+                  <span className="font-medium text-gray-900">{plan.termMonths || 3} months</span>
+                </div>
+                <div className="flex justify-between py-2">
+                  <span className="text-gray-500">Renewal</span>
+                  <span className="font-medium text-gray-900">{plan.autoRenew ? "Automatic" : "Manual"}</span>
+                </div>
+                <div className="flex justify-between py-2">
+                  <span className="text-gray-500">Term price</span>
+                  <span className="font-medium text-gray-900">
+                    {formatCurrency(plan.priceCents * (plan.termMonths || 3), plan.currency)}
+                  </span>
+                </div>
+              </div>
+              {plan.chemicalUsage && (plan.chemicalUsage.overageCents > 0 || plan.chemicalUsage.unpriced > 0) && (
+                <div className="mt-3 rounded-lg bg-amber-50 p-3 text-xs text-amber-900 space-y-2">
+                  {plan.chemicalUsage.overageCents > 0 && (
+                    <p>
+                      {formatCurrency(plan.chemicalUsage.overageCents, plan.currency)} above this month&apos;s allowance.
+                      Under the contract the client approves this before it is charged.
+                    </p>
+                  )}
+                  {plan.chemicalUsage.unpriced > 0 && (
+                    <p>
+                      {plan.chemicalUsage.unpriced} chemical entr{plan.chemicalUsage.unpriced === 1 ? "y" : "ies"} couldn&apos;t be priced (no rate
+                      set, or logged in a unit like oz) — check Settings → Policies → Chemical Rate Card.
+                    </p>
+                  )}
+                  {plan.chemicalUsage.overageCents > 0 && (
+                    <Button size="sm" variant="outline" onClick={handleRaiseOverage} disabled={raisingOverage}>
+                      {raisingOverage ? "Sending…" : "Send overage quote to client"}
+                    </Button>
+                  )}
+                </div>
+              )}
+              <p className="text-xs text-gray-500 mt-3">
+                {plan.status === "pending_payment"
+                  ? "The first term invoice has been sent. Visits are scheduled as soon as it is paid."
+                  : plan.status === "expired"
+                  ? "The paid term has ended. Issue a renewal invoice to restart visits."
+                  : plan.autoRenew
+                  ? "The next term is invoiced automatically 14 days before this one ends."
+                  : "The client gets a reminder 14 days before the term ends."}
+              </p>
+              <div className="mt-4 space-y-3">
+                <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Schedule B</p>
+                {[
+                  {
+                    field: "visitsPerTerm" as const,
+                    label: "Contracted visits per term",
+                    placeholder: "From frequency",
+                    value: visitsOverride,
+                    set: setVisitsOverride,
+                    saved: plan.visitsPerTerm,
+                    note: "Applies from the next term that is paid.",
+                  },
+                  {
+                    field: "emergencyVisitsPerMonth" as const,
+                    label: "Emergency visits per month",
+                    placeholder: "None",
+                    value: emergencyAllowance,
+                    set: setEmergencyAllowance,
+                    saved: plan.emergencyVisitsPerMonth,
+                    note: "The client can request these from the app.",
+                  },
+                  {
+                    field: "chemicalAllowanceCents" as const,
+                    label: "Chemical allowance per month (GHS)",
+                    placeholder: "None",
+                    value: chemicalAllowance,
+                    set: setChemicalAllowance,
+                    saved: plan.chemicalAllowanceCents != null ? (plan.chemicalAllowanceCents / 100).toFixed(2) : null,
+                    note: "Routine chemicals are tracked against this each month.",
+                    scale: 100,
+                  },
+                ].map((f: any) => (
+                  <div key={f.field}>
+                    <label htmlFor={f.field} className="text-xs text-gray-500">{f.label}</label>
+                    <div className="flex gap-2 mt-1">
+                      <input
+                        id={f.field}
+                        type="number"
+                        min={0}
+                        placeholder={f.placeholder}
+                        value={f.value}
+                        onChange={(e) => f.set(e.target.value)}
+                        className="h-9 flex-1 rounded-md border border-gray-200 px-3 text-sm"
+                      />
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => saveScheduleB(f.field, f.value, f.note, f.scale || 1)}
+                        disabled={savingOverride === f.field || f.value === (f.saved != null ? String(f.saved) : "")}
+                      >
+                        Save
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {plan.status !== "cancelled" && (
+                <Button variant="outline" size="sm" className="w-full mt-3" onClick={handleRenew} disabled={renewing}>
+                  <FileText className="h-4 w-4 mr-2" />
+                  {renewing ? "Issuing…" : "Issue next term invoice"}
+                </Button>
+              )}
+            </div>
+          )}
+
           {/* Plan Information */}
           <Card>
             <CardHeader>
@@ -390,6 +728,76 @@ export default function ServicePlanDetailPage() {
                 </div>
               </div>
 
+              {daysNeeded > 0 && (
+                <div className="flex items-start gap-3">
+                  <Clock className="h-5 w-5 text-gray-400 mt-0.5" />
+                  <div className="flex-1">
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm font-medium text-gray-900">Service days</p>
+                      {!editingDays && (
+                        <button
+                          type="button"
+                          className="text-xs font-medium text-blue-600 hover:underline"
+                          onClick={() => {
+                            setDraftDays((plan.dow || "").split(",").filter(Boolean));
+                            setEditingDays(true);
+                          }}
+                        >
+                          Edit
+                        </button>
+                      )}
+                    </div>
+                    {editingDays ? (
+                      <div className="mt-2 space-y-2">
+                        <div className="flex flex-wrap gap-1.5">
+                          {WEEKDAYS.map((d) => {
+                            const on = draftDays.includes(d.value);
+                            return (
+                              <button
+                                key={d.value}
+                                type="button"
+                                onClick={() =>
+                                  setDraftDays(
+                                    on
+                                      ? draftDays.filter((x) => x !== d.value)
+                                      : daysNeeded === 1
+                                      ? [d.value]
+                                      : [...draftDays, d.value].slice(-daysNeeded)
+                                  )
+                                }
+                                className={`h-8 w-11 rounded-lg text-xs font-medium ${
+                                  on ? "bg-gray-900 text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                                }`}
+                              >
+                                {d.label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        <p className="text-xs text-gray-500">
+                          Pick {daysNeeded}. Future visits on other days are cancelled and the new days scheduled.
+                        </p>
+                        <div className="flex gap-2">
+                          <Button size="sm" onClick={handleSaveDays} disabled={draftDays.length !== daysNeeded || savingDays}>
+                            {savingDays ? "Saving…" : "Save days"}
+                          </Button>
+                          <Button size="sm" variant="outline" onClick={() => setEditingDays(false)}>
+                            Cancel
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className={`text-sm ${currentDays.length === daysNeeded ? "text-gray-600" : "text-amber-700"}`}>
+                        {currentDays.length
+                          ? currentDays.map((d) => WEEKDAYS.find((w) => w.value === d)?.label || d).join(", ")
+                          : "Not set"}
+                        {currentDays.length !== daysNeeded && ` — needs ${daysNeeded} day${daysNeeded > 1 ? "s" : ""}`}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {plan.windowStart && plan.windowEnd && (
                 <div className="flex items-start gap-3">
                   <Clock className="h-5 w-5 text-gray-400 mt-0.5" />
@@ -402,13 +810,13 @@ export default function ServicePlanDetailPage() {
                 </div>
               )}
 
-              {plan.nextVisitAt && (
+              {nextVisit && (
                 <div className="flex items-start gap-3">
                   <Calendar className="h-5 w-5 text-gray-400 mt-0.5" />
                   <div>
                     <p className="text-sm font-medium text-gray-900">Next Visit</p>
                     <p className="text-sm text-gray-600">
-                      {new Date(plan.nextVisitAt).toLocaleDateString()}
+                      {new Date(nextVisit).toLocaleDateString()}
                     </p>
                   </div>
                 </div>

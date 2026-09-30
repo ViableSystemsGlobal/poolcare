@@ -16,6 +16,7 @@ import {
 import { Settings, Building, DollarSign, Save, Globe, MapPin, Mail, Phone, CheckCircle, Image, Palette, Map, Loader2, Send, Sparkles, FileText, Lightbulb, MessageCircleQuestion, Calendar, Inbox, BookOpen, ClipboardCheck } from "lucide-react";
 import LeadSourcesPage from "./lead-sources/page";
 import KnowledgeBasePage from "../knowledge/page";
+import { ChemicalRatesCard } from "@/components/settings/chemical-rates-card";
 import {
   Dialog,
   DialogContent,
@@ -2871,6 +2872,8 @@ export default function SettingsPage() {
                 </div>
               </CardContent>
             </Card>
+
+            <ChemicalRatesCard />
           </>)}
 
           {/* Integrations */}

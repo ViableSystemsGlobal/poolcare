@@ -4,6 +4,9 @@ import { CreatePlanDto, UpdatePlanDto, PausePlanDto, OverrideWindowDto, CancelPl
 import { SubscriptionTemplatesService } from "../subscription-templates/subscription-templates.service";
 import { NotificationsService } from "../notifications/notifications.service";
 import { createEmailTemplate, getOrgEmailSettings } from "../email/email-template.util";
+import { PrepaidTermsService } from "./prepaid-terms.service";
+import { DEFAULT_DAYS, WEEKLY_DAY_COUNT, emergencyVisitsUsedThisMonth } from "./visit-entitlement";
+import { chemicalUsageThisMonth } from "../settings/chemical-rates";
 
 @Injectable()
 export class PlansService {
@@ -13,7 +16,9 @@ export class PlansService {
     @Inject(forwardRef(() => SubscriptionTemplatesService))
     private readonly subscriptionTemplatesService: SubscriptionTemplatesService,
     @Inject(forwardRef(() => NotificationsService))
-    private readonly notificationsService: NotificationsService
+    private readonly notificationsService: NotificationsService,
+    @Inject(forwardRef(() => PrepaidTermsService))
+    private readonly prepaidTerms: PrepaidTermsService
   ) {}
 
   async list(
@@ -90,12 +95,54 @@ export class PlansService {
       prisma.servicePlan.count({ where }),
     ]);
 
+    // Prepaid plans show where they stand in their current term (visits delivered etc.).
+    const withTerms = await Promise.all(
+      items.map(async (plan) =>
+        plan.billingType === "prepaid"
+          ? {
+              ...plan,
+              currentTerm: await this.prepaidTerms.currentTerm(plan.id),
+              emergencyUsedThisMonth: await emergencyVisitsUsedThisMonth(plan.id),
+            }
+          : plan
+      )
+    );
+
     return {
-      items,
+      items: withTerms,
       total,
       page: filters.page,
       limit: filters.limit,
     };
+  }
+
+  /** Terms with visit entitlement for a prepaid plan (clients: own plans only). */
+  async listTerms(orgId: string, id: string, userId?: string, role?: string) {
+    const plan = await this.getOne(orgId, id, userId, role);
+    return this.prepaidTerms.listTerms(plan.id);
+  }
+
+  /**
+   * Weekly-type frequencies visit on fixed weekdays ("mon,thu"). Fill in the
+   * default pattern when none is given, and reject a pattern with the wrong
+   * number of days — a "twice weekly" plan on one day silently halves the
+   * contracted visits.
+   */
+  private normalizeDays(frequency: string, dow?: string | null): string | undefined {
+    const expected = WEEKLY_DAY_COUNT[frequency];
+    if (!expected) return dow || undefined;
+    if (!dow) return DEFAULT_DAYS[frequency];
+    const days = Array.from(new Set(dow.split(",").map((d) => d.trim().toLowerCase()).filter(Boolean)));
+    const valid = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
+    if (days.some((d) => !valid.includes(d))) {
+      throw new BadRequestException(`Invalid day in "${dow}"`);
+    }
+    if (days.length !== expected) {
+      throw new BadRequestException(
+        `${frequency.replace(/_/g, " ")} needs exactly ${expected} day${expected > 1 ? "s" : ""} (got ${days.length})`
+      );
+    }
+    return days.join(",");
   }
 
   async create(orgId: string, dto: CreatePlanDto) {
@@ -109,7 +156,7 @@ export class PlansService {
     }
 
     // Validate frequency requirements
-    if ((dto.frequency === "weekly" || dto.frequency === "biweekly" || dto.frequency === "once_week" || dto.frequency === "twice_week" || dto.frequency === "thrice_week") && !dto.dow) {
+    if (WEEKLY_DAY_COUNT[dto.frequency] && !dto.dow && !dto.templateId) {
       throw new BadRequestException("dow required for weekly/biweekly/once_week/twice_week/thrice_week frequency");
     }
 
@@ -125,15 +172,18 @@ export class PlansService {
     // Calculate nextVisitAt (simplified - will be enhanced in generator)
     const startsOnDate = dto.startsOn ? new Date(dto.startsOn) : null;
     const endsOnDate = dto.endsOn ? new Date(dto.endsOn) : null;
-    const nextVisitAt = this.calculateNextVisit(dto.frequency, dto.dow, dto.dom, startsOnDate);
+    const dow = this.normalizeDays(dto.frequency, dto.dow);
+    const nextVisitAt = this.calculateNextVisit(dto.frequency, dow, dto.dom, startsOnDate);
 
     // Calculate next billing date for subscriptions
     const billingType = dto.billingType || "per_visit";
     let nextBillingDate: Date | null = null;
     let trialEndsAt: Date | null = null;
-    let status = "active";
+    // Prepaid plans wait for their first term to be paid before any visit is scheduled.
+    const isPrepaid = billingType === "prepaid";
+    let status = isPrepaid ? "pending_payment" : "active";
 
-    if (billingType !== "per_visit" && startsOnDate) {
+    if (billingType !== "per_visit" && !isPrepaid && startsOnDate) {
       nextBillingDate = this.calculateNextBillingDate(billingType, startsOnDate);
     }
 
@@ -142,7 +192,7 @@ export class PlansService {
         orgId,
         poolId: dto.poolId,
         frequency: dto.frequency,
-        dow: dto.dow,
+        dow,
         dom: dto.dom,
         windowStart: dto.window?.start,
         windowEnd: dto.window?.end,
@@ -180,17 +230,7 @@ export class PlansService {
       },
     });
 
-    // Auto-generate jobs for the new plan (async, don't wait)
-    this.generateJobsForPlan(orgId, plan.id, 56).catch((err) => {
-      console.error(`Failed to auto-generate jobs for plan ${plan.id}:`, err);
-    });
-
-    // Send notification to client (async, don't wait)
-    this.sendPlanCreatedNotification(orgId, plan).catch((err) => {
-      this.logger.error(`Failed to send plan creation notification for plan ${plan.id}:`, err);
-    });
-
-    return plan;
+    return this.afterCreate(orgId, plan);
   }
 
   async createFromTemplate(orgId: string, templateId: string, overrides?: Partial<CreatePlanDto>) {
@@ -218,15 +258,18 @@ export class PlansService {
     const frequency = overrides?.frequency || template.frequency;
     const startsOnDate = overrides?.startsOn ? new Date(overrides.startsOn) : new Date();
     const endsOnDate = overrides?.endsOn ? new Date(overrides.endsOn) : null;
-    const nextVisitAt = this.calculateNextVisit(frequency, overrides?.dow, overrides?.dom, startsOnDate);
+    const dow = this.normalizeDays(frequency, overrides?.dow);
+    const nextVisitAt = this.calculateNextVisit(frequency, dow, overrides?.dom, startsOnDate);
 
     // Calculate subscription dates
     const billingType = template.billingType;
-    const trialEndsAt = template.trialDays > 0
+    const isPrepaid = billingType === "prepaid";
+    // Prepaid terms have no trial: service starts when the first term is paid.
+    const trialEndsAt = !isPrepaid && template.trialDays > 0
       ? new Date(startsOnDate.getTime() + template.trialDays * 24 * 60 * 60 * 1000)
       : null;
-    const nextBillingDate = this.calculateNextBillingDate(billingType, startsOnDate, trialEndsAt);
-    const status = trialEndsAt ? "trial" : "active";
+    const nextBillingDate = isPrepaid ? null : this.calculateNextBillingDate(billingType, startsOnDate, trialEndsAt);
+    const status = isPrepaid ? "pending_payment" : trialEndsAt ? "trial" : "active";
 
     const plan = await prisma.servicePlan.create({
       data: {
@@ -234,7 +277,7 @@ export class PlansService {
         poolId,
         templateId: template.id,
         frequency,
-        dow: overrides?.dow,
+        dow,
         dom: overrides?.dom,
         windowStart: overrides?.window?.start || undefined,
         windowEnd: overrides?.window?.end || undefined,
@@ -274,6 +317,24 @@ export class PlansService {
       },
     });
 
+    return this.afterCreate(orgId, plan);
+  }
+
+  /**
+   * Post-create side effects. A prepaid plan gets its first term invoice (which
+   * notifies the client) and no jobs until that invoice is paid; any other plan
+   * starts generating jobs straight away.
+   */
+  private async afterCreate(orgId: string, plan: any) {
+    if (plan.billingType === "prepaid") {
+      try {
+        await this.prepaidTerms.issueTermInvoice(orgId, plan.id, "initial");
+      } catch (err: any) {
+        this.logger.error(`Failed to issue first term invoice for plan ${plan.id}: ${err.message}`);
+      }
+      return plan;
+    }
+
     // Auto-generate jobs for the new plan (async, don't wait)
     this.generateJobsForPlan(orgId, plan.id, 56).catch((err) => {
       console.error(`Failed to auto-generate jobs for plan ${plan.id}:`, err);
@@ -285,6 +346,116 @@ export class PlansService {
     });
 
     return plan;
+  }
+
+  /**
+   * Client (or office) requests an Emergency Cleaning Visit (Schedule A):
+   * labour-only, within the plan's monthly quota, booked for the next business
+   * day and flagged to the office. Sits outside the contracted visit count.
+   */
+  async requestEmergencyVisit(orgId: string, id: string, userId: string, role: string, note?: string) {
+    const plan = await this.getOne(orgId, id, userId, role);
+    const today = new Date(new Date().toISOString().slice(0, 10));
+    if (plan.status !== "active" || (plan.billingType === "prepaid" && (!plan.paidThrough || plan.paidThrough < today))) {
+      throw new BadRequestException("Emergency visits are available on an active, paid plan");
+    }
+    const allowance = plan.emergencyVisitsPerMonth || 0;
+    const used = await emergencyVisitsUsedThisMonth(plan.id);
+    if (used >= allowance) {
+      throw new BadRequestException(
+        allowance === 0
+          ? "Your plan doesn't include emergency visits. Please contact PoolCare to arrange one."
+          : "You've used this month's included emergency visit. Contact PoolCare to arrange another at the call-out rate."
+      );
+    }
+
+    // Next business day (no Sundays — contract "Business Day"), 8am–5pm.
+    const windowStart = new Date();
+    windowStart.setDate(windowStart.getDate() + 1);
+    if (windowStart.getDay() === 0) windowStart.setDate(windowStart.getDate() + 1);
+    windowStart.setHours(8, 0, 0, 0);
+    const windowEnd = new Date(windowStart);
+    windowEnd.setHours(17, 0, 0, 0);
+
+    const job = await prisma.job.create({
+      data: {
+        orgId,
+        poolId: plan.poolId,
+        planId: plan.id,
+        kind: "emergency",
+        windowStart,
+        windowEnd,
+        status: "scheduled",
+        durationMin: plan.serviceDurationMin,
+        assignedCarerId: plan.preferredCarerId || null,
+        notes: `Emergency cleaning visit (labour only)${note ? `: ${note}` : ""}`,
+      },
+    });
+
+    const managers = await prisma.orgMember.findMany({
+      where: { orgId, role: { in: ["ADMIN", "MANAGER"] } },
+      include: { user: true },
+    });
+    const poolName = plan.pool?.name || "a pool";
+    const clientName = plan.pool?.client?.name || "A client";
+    for (const m of managers) {
+      if (!m.user) continue;
+      const body = `${clientName} requested an emergency cleaning visit at ${poolName}${note ? `: "${note}"` : ""}. Booked for ${windowStart.toDateString()} — assign a carer.`;
+      await this.notificationsService
+        .send(orgId, { channel: "push", to: m.user.id, recipientId: m.user.id, recipientType: "user", subject: "Emergency visit requested", body, template: "emergency_visit", metadata: { type: "emergency_visit", jobId: job.id } })
+        .catch(() => undefined);
+      if (m.user.email) {
+        await this.notificationsService
+          .send(orgId, { channel: "email", to: m.user.email, recipientId: m.user.id, recipientType: "user", subject: `Emergency visit requested — ${poolName}`, body, template: "emergency_visit", metadata: { type: "emergency_visit", jobId: job.id } })
+          .catch(() => undefined);
+      }
+    }
+
+    return { job, used: used + 1, allowance };
+  }
+
+  /**
+   * Routine chemicals used above this month's Schedule B allowance (cl. 7.3):
+   * raise a charge-only quote for the client to approve in the app. One per
+   * plan per month.
+   */
+  async raiseChemicalOverageQuote(orgId: string, id: string) {
+    const plan = await this.getOne(orgId, id);
+    const usage = plan.chemicalUsage;
+    if (!usage || usage.overageCents <= 0) {
+      throw new BadRequestException("No chemical usage above the allowance this month");
+    }
+    const marker = `chemical-overage:${plan.id}:${usage.month}`;
+    const existing = await prisma.quote.findFirst({ where: { orgId, poolId: plan.poolId, notes: { contains: marker } } });
+    if (existing) throw new BadRequestException("An overage quote for this month already exists");
+
+    const monthLabel = new Date(`${usage.month}-01T00:00:00Z`).toLocaleDateString("en-GB", { month: "long", year: "numeric", timeZone: "UTC" });
+    const quote = await prisma.quote.create({
+      data: {
+        orgId,
+        poolId: plan.poolId,
+        clientId: plan.pool.clientId,
+        schedulesWork: false,
+        currency: plan.currency || "GHS",
+        items: [{ label: `Routine chemicals above monthly allowance — ${monthLabel}`, qty: 1, unitPriceCents: usage.overageCents, taxPct: 0 }],
+        subtotalCents: usage.overageCents,
+        taxCents: 0,
+        totalCents: usage.overageCents,
+        notes: `Allowance ${(usage.allowanceCents / 100).toFixed(2)}, used ${(usage.usedCents / 100).toFixed(2)} (${marker})`,
+      },
+    });
+    await prisma.quoteAudit.create({ data: { orgId, quoteId: quote.id, action: "create", payload: { chemicalOverage: usage } as any } });
+    await this.notificationsService.notifyQuoteReady(plan.pool.clientId, quote.id, orgId).catch(() => undefined);
+    return quote;
+  }
+
+  /** Issue the invoice for a prepaid plan's next term (manual renewal or reactivation). */
+  async renew(orgId: string, id: string, userId?: string, role?: string) {
+    const plan = await this.getOne(orgId, id, userId, role);
+    if (plan.billingType !== "prepaid") {
+      throw new BadRequestException("Only prepaid plans are renewed by term");
+    }
+    return this.prepaidTerms.issueTermInvoice(orgId, plan.id, "renewal");
   }
 
   /**
@@ -536,7 +707,12 @@ Thank you for choosing PoolCare!`;
       throw new NotFoundException("Service plan not found");
     }
 
-    return plan;
+    return {
+      ...plan,
+      emergencyUsedThisMonth: await emergencyVisitsUsedThisMonth(plan.id),
+      chemicalUsage:
+        plan.chemicalAllowanceCents != null ? await chemicalUsageThisMonth(orgId, plan.id, plan.chemicalAllowanceCents) : null,
+    };
   }
 
   async update(orgId: string, id: string, dto: UpdatePlanDto) {
@@ -549,12 +725,14 @@ Thank you for choosing PoolCare!`;
     }
 
     const endsOnDate = dto.endsOn ? new Date(dto.endsOn) : undefined;
+    const frequency = dto.frequency || plan.frequency;
+    const dow = dto.dow !== undefined || dto.frequency ? this.normalizeDays(frequency, dto.dow ?? plan.dow) : undefined;
 
     const updated = await prisma.servicePlan.update({
       where: { id },
       data: {
         frequency: dto.frequency,
-        dow: dto.dow,
+        dow,
         dom: dto.dom,
         windowStart: dto.window?.start,
         windowEnd: dto.window?.end,
@@ -566,6 +744,9 @@ Thank you for choosing PoolCare!`;
         discountPct: dto.discountPct,
         endsOn: endsOnDate,
         notes: dto.notes,
+        ...(dto.visitsPerTerm !== undefined ? { visitsPerTerm: dto.visitsPerTerm } : {}),
+        ...(dto.emergencyVisitsPerMonth !== undefined ? { emergencyVisitsPerMonth: dto.emergencyVisitsPerMonth } : {}),
+        ...(dto.chemicalAllowanceCents !== undefined ? { chemicalAllowanceCents: dto.chemicalAllowanceCents } : {}),
         ...(dto.preferredCarerId !== undefined
           ? { preferredCarerId: dto.preferredCarerId }
           : {}),
@@ -577,7 +758,30 @@ Thank you for choosing PoolCare!`;
       },
     });
 
+    // New service days: drop future visits on days no longer in the pattern and
+    // schedule the new days. Visits already under way are left alone.
+    if (dow !== undefined && dow !== plan.dow && updated.status === "active") {
+      await this.rescheduleForNewDays(orgId, id, dow);
+    }
+
     return updated;
+  }
+
+  private async rescheduleForNewDays(orgId: string, planId: string, dow: string) {
+    const dayIndex: Record<string, number> = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 };
+    const keep = new Set(dow.split(",").map((d) => dayIndex[d]));
+    const future = await prisma.job.findMany({
+      where: { planId, orgId, kind: "routine", status: "scheduled", windowStart: { gt: new Date() } },
+      select: { id: true, windowStart: true },
+    });
+    const stale = future.filter((j) => !keep.has(j.windowStart.getDay())).map((j) => j.id);
+    if (stale.length) {
+      await prisma.job.updateMany({
+        where: { id: { in: stale } },
+        data: { status: "cancelled", cancelCode: "SCHEDULE_CHANGED", cancelledAt: new Date() },
+      });
+    }
+    await this.generateJobsForPlan(orgId, planId, 56);
   }
 
   async pause(orgId: string, id: string, dto: PausePlanDto) {
@@ -600,20 +804,23 @@ Thank you for choosing PoolCare!`;
   }
 
   async cancel(orgId: string, id: string, dto: CancelPlanDto, userId: string, role: string) {
-    const plan = await prisma.servicePlan.findFirst({
-      where: { id, orgId },
-    });
-
-    if (!plan) {
-      throw new NotFoundException("Service plan not found");
-    }
+    // getOne scopes CLIENT callers to their own pools, so a client cannot
+    // cancel someone else's plan by id.
+    const plan = await this.getOne(orgId, id, userId, role);
 
     const updated = await prisma.servicePlan.update({
       where: { id },
       data: {
         status: "cancelled",
+        cancelledAt: new Date(),
+        cancellationReason: dto.reason || null,
       },
     });
+
+    // An unpaid future term is not a debt (contract cl. 17.1) — void its invoice.
+    if (plan.billingType === "prepaid") {
+      await this.prepaidTerms.voidOpenTerms(id, "Plan cancelled");
+    }
 
     // Log cancellation reason if provided
     if (dto.reason) {
@@ -650,6 +857,10 @@ Thank you for choosing PoolCare!`;
 
     if (!plan) {
       throw new NotFoundException("Service plan not found");
+    }
+
+    if (plan.billingType === "prepaid" && (!plan.paidThrough || plan.paidThrough < new Date(new Date().toISOString().slice(0, 10)))) {
+      throw new BadRequestException("This prepaid plan has no paid term covering today — issue a renewal invoice instead");
     }
 
     // Recalculate nextVisitAt
@@ -954,7 +1165,17 @@ Thank you for choosing PoolCare!`;
 
     // Respect end date if set
     const endDate = plan.endsOn ? new Date(plan.endsOn) : null;
-    const effectiveEnd = endDate && endDate < horizonEnd ? endDate : horizonEnd;
+    let effectiveEnd = endDate && endDate < horizonEnd ? endDate : horizonEnd;
+
+    // Prepaid plans get exactly their paid term scheduled — never beyond it,
+    // and all of it regardless of the rolling horizon.
+    if (plan.billingType === "prepaid") {
+      if (!plan.paidThrough) {
+        return { count: 0, message: "No paid term yet" };
+      }
+      const paidEnd = new Date(plan.paidThrough.getTime() + 24 * 60 * 60 * 1000 - 1);
+      effectiveEnd = endDate && endDate < paidEnd ? endDate : paidEnd;
+    }
 
     // Calculate all job occurrences
     const occurrences = this.calculateOccurrences(
@@ -969,7 +1190,8 @@ Thank you for choosing PoolCare!`;
       return { count: 0, message: "No occurrences found in the specified range" };
     }
 
-    // Get existing jobs for this plan to avoid duplicates
+    // Get existing jobs for this plan to avoid duplicates. Visits cancelled
+    // because a prepaid term expired don't count — a paid renewal reschedules them.
     const existingJobs = await prisma.job.findMany({
       where: {
         planId,
@@ -977,6 +1199,8 @@ Thank you for choosing PoolCare!`;
           gte: effectiveStart,
           lte: effectiveEnd,
         },
+        kind: "routine",
+        OR: [{ status: { not: "cancelled" } }, { cancelCode: null }, { cancelCode: { not: "TERM_EXPIRED" } }],
       },
       select: {
         windowStart: true,

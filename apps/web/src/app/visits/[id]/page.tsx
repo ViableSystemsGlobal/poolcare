@@ -83,6 +83,11 @@ interface Visit {
   completedAt?: string;
   rating?: number;
   feedback?: string;
+  reportStatus?: "in_review" | "accepted" | "disputed" | "resolved" | null;
+  reportReviewUntil?: string | null;
+  reportDisputedAt?: string | null;
+  reportDisputeNote?: string | null;
+  reportDisputeResolution?: string | null;
   clientSignatureUrl?: string;
   paymentStatus?: string;
   approvedAt?: string;
@@ -131,6 +136,30 @@ export default function VisitDetailPage() {
   const { toast } = useToast();
   const confirm = useConfirm();
   const [markingPaid, setMarkingPaid] = useState(false);
+  const [resolution, setResolution] = useState("");
+  const [resolving, setResolving] = useState(false);
+
+  // Close out a client's report dispute (contract cl. 10.3); the client is notified.
+  const handleResolveDispute = async () => {
+    if (!resolution.trim()) return;
+    setResolving(true);
+    try {
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+      const res = await fetch(`${API_URL}/visits/${visitId}/report/resolve`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("auth_token")}` },
+        body: JSON.stringify({ resolution: resolution.trim() }),
+      });
+      if (!res.ok) throw new Error((await res.json()).message || "Failed to resolve");
+      setResolution("");
+      toast({ title: "Resolved", description: "The client has been notified.", variant: "success" });
+      await fetchVisit();
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } finally {
+      setResolving(false);
+    }
+  };
   const [approving, setApproving] = useState(false);
   const visitId = params.id as string;
 
@@ -553,6 +582,51 @@ export default function VisitDetailPage() {
               )}
             </CardContent>
           </Card>
+
+          {/* Report review — client has 7 days to flag inaccuracies (cl. 10.3) */}
+          {visit.reportStatus && (
+            <div className="bg-white rounded-xl shadow-sm p-5">
+              <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wider mb-3">Report Review</h3>
+              {visit.reportStatus === "in_review" && (
+                <p className="text-sm text-gray-600">
+                  Client can flag inaccuracies until{" "}
+                  {visit.reportReviewUntil ? new Date(visit.reportReviewUntil).toLocaleDateString() : "—"}.
+                </p>
+              )}
+              {visit.reportStatus === "accepted" && (
+                <p className="text-sm text-gray-600">Accepted — the 7-day review period passed without a dispute.</p>
+              )}
+              {(visit.reportStatus === "disputed" || visit.reportStatus === "resolved") && (
+                <div className="space-y-3 text-sm">
+                  <div>
+                    <p className="font-medium text-gray-900">
+                      Client flagged{visit.reportDisputedAt ? ` on ${new Date(visit.reportDisputedAt).toLocaleDateString()}` : ""}
+                    </p>
+                    <p className="text-gray-600">{visit.reportDisputeNote}</p>
+                  </div>
+                  {visit.reportStatus === "resolved" ? (
+                    <div>
+                      <p className="font-medium text-gray-900">Resolution</p>
+                      <p className="text-gray-600">{visit.reportDisputeResolution}</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <textarea
+                        className="w-full rounded-md border border-gray-200 p-2 text-sm"
+                        rows={3}
+                        placeholder="What you found and what was corrected (sent to the client)"
+                        value={resolution}
+                        onChange={(e) => setResolution(e.target.value)}
+                      />
+                      <Button size="sm" onClick={handleResolveDispute} disabled={!resolution.trim() || resolving}>
+                        {resolving ? "Saving…" : "Mark resolved"}
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Client Feedback */}
           {visit.rating && (

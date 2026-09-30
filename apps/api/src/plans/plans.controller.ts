@@ -10,6 +10,7 @@ import {
   UseGuards,
 } from "@nestjs/common";
 import { PlansService } from "./plans.service";
+import { PrepaidTermsService } from "./prepaid-terms.service";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { RolesGuard } from "../auth/guards/roles.guard";
 import { Roles } from "../auth/decorators/roles.decorator";
@@ -19,7 +20,10 @@ import { CreatePlanDto, UpdatePlanDto, PausePlanDto, OverrideWindowDto, CancelPl
 @Controller("service-plans")
 @UseGuards(JwtAuthGuard)
 export class PlansController {
-  constructor(private readonly plansService: PlansService) {}
+  constructor(
+    private readonly plansService: PlansService,
+    private readonly prepaidTerms: PrepaidTermsService
+  ) {}
 
   @Get()
   async list(
@@ -130,6 +134,46 @@ export class PlansController {
   @Roles("ADMIN", "MANAGER")
   async generateForPlan(@CurrentUser() user: { org_id: string }, @Param("id") id: string) {
     return this.plansService.generateJobsForPlan(user.org_id, id);
+  }
+
+  @Post(":id/chemical-overage-quote")
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "MANAGER")
+  async raiseChemicalOverageQuote(@CurrentUser() user: { org_id: string }, @Param("id") id: string) {
+    return this.plansService.raiseChemicalOverageQuote(user.org_id, id);
+  }
+
+  @Post(":id/emergency")
+  async requestEmergency(
+    @CurrentUser() user: { org_id: string; role: string; sub: string },
+    @Param("id") id: string,
+    @Body() body: { note?: string }
+  ) {
+    return this.plansService.requestEmergencyVisit(user.org_id, id, user.sub, user.role, body?.note);
+  }
+
+  @Get(":id/terms")
+  async listTerms(
+    @CurrentUser() user: { org_id: string; role: string; sub: string },
+    @Param("id") id: string
+  ) {
+    return this.plansService.listTerms(user.org_id, id, user.sub, user.role);
+  }
+
+  /** Run the daily prepaid-term sweep (renewal invoices, reminders, expiry) now. */
+  @Post("prepaid/process")
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "MANAGER")
+  async processPrepaidTerms(@CurrentUser() user: { org_id: string }) {
+    return this.prepaidTerms.processTerms(user.org_id);
+  }
+
+  @Post(":id/renew")
+  async renew(
+    @CurrentUser() user: { org_id: string; role: string; sub: string },
+    @Param("id") id: string
+  ) {
+    return this.plansService.renew(user.org_id, id, user.sub, user.role);
   }
 
   @Post(":id/cancel")

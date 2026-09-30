@@ -340,6 +340,11 @@ class ApiClient {
     return response.json();
   }
 
+  /** Org chemical rate card: the chemicals carers pick from (and how they're priced). */
+  async getChemicalRates() {
+    return this.request(`/settings/chemical-rates`) as Promise<Array<{ key: string; label: string; unit: "kg" | "L" }>>;
+  }
+
   async addChemical(visitId: string, data: any) {
     return this.request(`/visits/${visitId}/chemicals`, {
       method: "POST",
@@ -559,6 +564,30 @@ class ApiClient {
     const token = await this.getAuthToken();
     const url = `${getBaseUrl()}/pools/upload-image`;
     const response = await fetch(url, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: formData,
+    });
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ message: response.statusText }));
+      throw new Error(errorData?.message || response.statusText);
+    }
+    return response.json() as Promise<{ imageUrl: string }>;
+  }
+
+  /** Record that a visit could not go ahead (e.g. no access), with evidence. */
+  async failJob(
+    id: string,
+    data: { code: "NO_ACCESS" | "CLIENT_ABSENT" | "EQUIP_FAILURE" | "OTHER"; notes?: string; location?: { lat: number; lng: number; accuracyM?: number }; photoUrl?: string }
+  ) {
+    return this.request(`/jobs/${id}/fail`, { method: "POST", body: JSON.stringify(data) });
+  }
+
+  async uploadAccessPhoto(jobId: string, imageUri: string, fileName: string, mimeType: string) {
+    const formData = new FormData();
+    formData.append("image", { uri: imageUri, name: fileName, type: mimeType } as any);
+    const token = await this.getAuthToken();
+    const response = await fetch(`${getBaseUrl()}/jobs/${jobId}/access-photo`, {
       method: "POST",
       headers: { Authorization: `Bearer ${token}` },
       body: formData,

@@ -3,6 +3,7 @@ import { Cron } from "@nestjs/schedule";
 import { prisma } from "@poolcare/db";
 import { NotificationsService } from "../notifications/notifications.service";
 import { createEmailTemplate, getOrgEmailSettings } from "../email/email-template.util";
+import { nextInvoiceNumber } from "../invoices/invoice-number.util";
 
 @Injectable()
 export class BillingService {
@@ -142,7 +143,7 @@ export class BillingService {
             dueDate.setDate(dueDate.getDate() + 7); // Due in 7 days
 
             const invoice = await prisma.$transaction(async (tx) => {
-              const invoiceNumber = await this.nextInvoiceNumber(plan.orgId, tx);
+              const invoiceNumber = await nextInvoiceNumber(plan.orgId, tx);
 
               return tx.invoice.create({
                 data: {
@@ -262,28 +263,6 @@ export class BillingService {
     next.setDate(BILLING_DAY);
 
     return next;
-  }
-
-  /**
-   * Generate next invoice number inside an existing transaction.
-   * Uses a PostgreSQL advisory lock to prevent concurrent duplicates for the same org.
-   */
-  private async nextInvoiceNumber(orgId: string, tx: any): Promise<string> {
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${orgId}))`;
-
-    const year = new Date().getFullYear();
-    const prefix = `INV-${year}-`;
-
-    const lastInvoice = await tx.invoice.findFirst({
-      where: { orgId, invoiceNumber: { startsWith: prefix } },
-      orderBy: { invoiceNumber: "desc" },
-    });
-
-    const nextNum = lastInvoice
-      ? parseInt(lastInvoice.invoiceNumber.replace(prefix, ""), 10) + 1
-      : 1;
-
-    return `${prefix}${String(nextNum).padStart(4, "0")}`;
   }
 
   /**

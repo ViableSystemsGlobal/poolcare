@@ -110,7 +110,8 @@ export class SubscriptionTemplatesController {
     return this.plansService.createFromTemplate(user.org_id, templateId, {
       poolId: dto.poolId,
       startsOn: dto.startsOn,
-      autoRenew: dto.autoRenew ?? true,
+      // Prepaid auto-renewal must be expressly chosen by the client (contract cl. 4.8).
+      autoRenew: dto.autoRenew ?? template.billingType !== "prepaid",
       preferredCarerId: dto.preferredCarerId,
     });
   }

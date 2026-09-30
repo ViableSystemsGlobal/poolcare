@@ -116,14 +116,18 @@ export default function QuoteDetailPage() {
     }
   };
 
+  const [skipPrepayment, setSkipPrepayment] = useState(false);
+
   const handleApprove = async () => {
     try {
       const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
       const response = await fetch(`${API_URL}/quotes/${quoteId}/approve`, {
         method: "POST",
         headers: {
+          "Content-Type": "application/json",
           Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
         },
+        body: JSON.stringify({ skipPrepayment }),
       });
 
       if (response.ok) {
@@ -505,10 +509,26 @@ export default function QuoteDetailPage() {
           <DialogHeader>
             <DialogTitle>Approve Quote</DialogTitle>
             <DialogDescription>
-              Approve this quote? You can create an invoice after approval.
+              Approving invoices the client for this work. The repair job is booked automatically once the
+              invoice is paid.
             </DialogDescription>
           </DialogHeader>
-          <div className="py-4">
+          <div className="py-4 space-y-4">
+            <label className="flex items-start gap-2 rounded-lg bg-gray-50 p-3 text-sm">
+              <input
+                type="checkbox"
+                className="mt-0.5"
+                checked={skipPrepayment}
+                onChange={(e) => setSkipPrepayment(e.target.checked)}
+              />
+              <span>
+                <span className="font-medium text-gray-900">Schedule now, invoice later</span>
+                <span className="block text-xs text-gray-500">
+                  Only when a different payment arrangement is agreed in writing (contract cl. 16.2).
+                </span>
+              </span>
+            </label>
+
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={() => setIsApproveDialogOpen(false)}>
                 Cancel

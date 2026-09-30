@@ -123,7 +123,7 @@ export default function QuoteDetailScreen() {
   const handleApprove = () => {
     Alert.alert(
       "Approve Quote",
-      `Approve ${quote?.reference} for ${fmtCents(quote?.totalCents ?? 0, quote?.currency)}? A service will be scheduled upon approval.`,
+      `Approve ${quote?.reference} for ${fmtCents(quote?.totalCents ?? 0, quote?.currency)}? An invoice will be issued, and the work is scheduled once it is paid.`,
       [
         { text: "Cancel", style: "cancel" },
         {
@@ -133,7 +133,11 @@ export default function QuoteDetailScreen() {
               setProcessing(true);
               await api.approveQuote(quote!.id);
               setQuote((q) => q ? { ...q, status: "approved", approvedAt: new Date().toISOString() } : q);
-              Alert.alert("Approved!", "Your quote has been approved. We'll be in touch to schedule the service.");
+              Alert.alert(
+                "Approved!",
+                "Your invoice is ready in Billing. We'll schedule the work as soon as it's paid.",
+                [{ text: "Later" }, { text: "Pay now", onPress: () => router.push("/billing") }]
+              );
             } catch (error: any) {
               Alert.alert("Error", error.message || "Failed to approve quote. Please try again.");
             } finally {

@@ -7,11 +7,18 @@ import {
   Query,
   Body,
   UseGuards,
+  UseInterceptors,
+  UploadedFile,
+  ParseFilePipe,
+  MaxFileSizeValidator,
+  FileTypeValidator,
   NotFoundException,
   ForbiddenException,
   BadRequestException,
 } from "@nestjs/common";
+import { FileInterceptor } from "@nestjs/platform-express";
 import { JobsService } from "./jobs.service";
+import { FilesService } from "../files/files.service";
 import { DispatchService } from "./dispatch.service";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { RolesGuard } from "../auth/guards/roles.guard";
@@ -34,7 +41,8 @@ import {
 export class JobsController {
   constructor(
     private readonly jobsService: JobsService,
-    private readonly dispatchService: DispatchService
+    private readonly dispatchService: DispatchService,
+    private readonly filesService: FilesService
   ) {}
 
   @Get()
@@ -168,6 +176,30 @@ export class JobsController {
     @Body() dto: CompleteJobDto
   ) {
     return this.jobsService.complete(user.org_id, (user as any).sub, id, dto);
+  }
+
+  /** Evidence photo for an access failure (gate, locked pump room…); pass the URL to /fail. */
+  @Post(":id/access-photo")
+  @UseGuards(RolesGuard)
+  @Roles("CARER")
+  @UseInterceptors(FileInterceptor("image"))
+  async uploadAccessPhoto(
+    @CurrentUser() user: { org_id: string; sub: string },
+    @Param("id") id: string,
+    @UploadedFile(
+      new ParseFilePipe({
+        fileIsRequired: true,
+        validators: [
+          new MaxFileSizeValidator({ maxSize: 5 * 1024 * 1024 }),
+          new FileTypeValidator({ fileType: /(jpeg|jpg|png|webp)$/ }),
+        ],
+      })
+    )
+    file: Express.Multer.File
+  ) {
+    await this.jobsService.assertAssignedCarer(user.org_id, user.sub, id);
+    const imageUrl = await this.filesService.uploadImage(user.org_id, file, "job_access", id);
+    return { imageUrl };
   }
 
   @Post(":id/fail")

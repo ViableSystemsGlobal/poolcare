@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsInt, IsNumber, IsEnum, IsDateString, IsObject, ValidateNested } from "class-validator";
+import { IsString, IsOptional, IsInt, IsNumber, IsEnum, IsDateString, IsObject, ValidateNested, Min } from "class-validator";
 import { Type } from "class-transformer";
 
 class WindowDto {
@@ -10,6 +10,24 @@ class WindowDto {
 }
 
 export class UpdatePlanDto {
+  // Schedule B "Contracted Visits" per prepaid term; null clears the override.
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  visitsPerTerm?: number | null;
+
+  // Schedule B: included Emergency Cleaning Visits per calendar month.
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  emergencyVisitsPerMonth?: number | null;
+
+  // Schedule B: monthly routine-chemical allowance in minor units (pesewas).
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  chemicalAllowanceCents?: number | null;
+
   @IsOptional()
   @IsEnum(["weekly", "biweekly", "monthly", "once_week", "twice_week", "thrice_week", "once_month", "twice_month", "thrice_month"])
   frequency?: string;

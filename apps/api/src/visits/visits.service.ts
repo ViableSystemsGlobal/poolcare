@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from "@nestjs/common";
 import { prisma } from "@poolcare/db";
+import { loadChemicalRates, priceChemical } from "../settings/chemical-rates";
 import { FilesService } from "../files/files.service";
 import { InvoicesService } from "../invoices/invoices.service";
 import { NotificationsService } from "../notifications/notifications.service";
@@ -13,6 +14,9 @@ import {
   CompleteVisitDto,
   ReviewVisitDto,
 } from "./dto";
+
+/** Days a client has to dispute a visit report before it is deemed accepted (contract cl. 10.3). */
+const REPORT_REVIEW_DAYS = 7;
 
 @Injectable()
 export class VisitsService {
@@ -188,7 +192,100 @@ export class VisitsService {
       );
     }
 
-    return visit;
+    return { ...visit, ...this.reportStatus(visit) };
+  }
+
+  /**
+   * Contract cl. 10.3: a report can be disputed for 7 days after the visit is
+   * completed; after that, if undisputed, it is deemed accepted.
+   */
+  private reportStatus(visit: { completedAt: Date | null; reportDisputedAt: Date | null; reportDisputeResolvedAt: Date | null }) {
+    if (!visit.completedAt) return { reportStatus: null, reportReviewUntil: null };
+    const reportReviewUntil = new Date(visit.completedAt.getTime() + REPORT_REVIEW_DAYS * 24 * 60 * 60 * 1000);
+    const reportStatus = visit.reportDisputedAt
+      ? visit.reportDisputeResolvedAt
+        ? "resolved"
+        : "disputed"
+      : Date.now() > reportReviewUntil.getTime()
+      ? "accepted"
+      : "in_review";
+    return { reportStatus, reportReviewUntil };
+  }
+
+  /** Client flags a material inaccuracy in a visit report (within 7 days). */
+  async disputeReport(orgId: string, role: string, userId: string, visitId: string, note: string) {
+    if (role !== "CLIENT") throw new ForbiddenException("Only the client can dispute a visit report");
+    const visit = await this.getOne(orgId, role, userId, visitId);
+    if (!visit.completedAt) throw new BadRequestException("This visit hasn't been completed yet");
+    if (visit.reportDisputedAt) throw new BadRequestException("This report has already been flagged");
+    if (visit.reportStatus === "accepted") {
+      throw new BadRequestException("The 7-day review period for this report has ended");
+    }
+    const trimmed = (note || "").trim();
+    if (trimmed.length < 5) throw new BadRequestException("Please describe what is inaccurate");
+
+    const updated = await prisma.visitEntry.update({
+      where: { id: visitId },
+      data: { reportDisputedAt: new Date(), reportDisputeNote: trimmed },
+    });
+
+    const managers = await prisma.orgMember.findMany({
+      where: { orgId, role: { in: ["ADMIN", "MANAGER"] } },
+      include: { user: true },
+    });
+    const poolName = visit.job.pool?.name || "a pool";
+    const clientName = visit.job.pool?.client?.name || "A client";
+    for (const m of managers) {
+      if (!m.user?.email) continue;
+      await this.notificationsService
+        .send(orgId, {
+          recipientId: m.user.id,
+          recipientType: "user",
+          channel: "email",
+          to: m.user.email,
+          subject: `Visit report disputed — ${poolName}`,
+          body: `${clientName} flagged the visit report for ${poolName} as inaccurate:\n\n"${trimmed}"\n\nReview and resolve it on the visit page.`,
+          template: "visit_report_disputed",
+          metadata: { type: "visit_report_disputed", visitId },
+        })
+        .catch((err) => console.error(`Failed to notify manager of report dispute ${visitId}:`, err));
+    }
+    return { ...updated, ...this.reportStatus(updated) };
+  }
+
+  /** Admin/manager records how a disputed report was resolved; the client is told. */
+  async resolveReportDispute(orgId: string, role: string, visitId: string, resolution: string) {
+    if (role !== "ADMIN" && role !== "MANAGER") throw new ForbiddenException("Access denied");
+    const visit = await prisma.visitEntry.findFirst({
+      where: { id: visitId, orgId },
+      include: { job: { include: { pool: { include: { client: true } } } } },
+    });
+    if (!visit) throw new NotFoundException("Visit not found");
+    if (!visit.reportDisputedAt) throw new BadRequestException("This report has not been disputed");
+    const trimmed = (resolution || "").trim();
+    if (!trimmed) throw new BadRequestException("Describe how the dispute was resolved");
+
+    const updated = await prisma.visitEntry.update({
+      where: { id: visitId },
+      data: { reportDisputeResolvedAt: new Date(), reportDisputeResolution: trimmed },
+    });
+
+    const clientUserId = visit.job.pool?.client?.userId;
+    if (clientUserId) {
+      await this.notificationsService
+        .send(orgId, {
+          channel: "push",
+          to: clientUserId,
+          recipientId: clientUserId,
+          recipientType: "client",
+          subject: "Your visit report query was resolved",
+          body: trimmed,
+          template: "visit_report_resolved",
+          metadata: { type: "visit_report_resolved", visitId },
+        })
+        .catch((err) => console.error(`Failed to notify client of dispute resolution ${visitId}:`, err));
+    }
+    return { ...updated, ...this.reportStatus(updated) };
   }
 
   async addReading(orgId: string, userId: string, visitId: string, dto: AddReadingDto) {
@@ -217,6 +314,9 @@ export class VisitsService {
   async addChemical(orgId: string, userId: string, visitId: string, dto: AddChemicalDto) {
     const visit = await this.verifyVisitAccess(orgId, userId, visitId);
 
+    // Price against the org's chemical rate card (routine-chemical allowance, cl. 7.2).
+    const priced = priceChemical(await loadChemicalRates(orgId), dto.chemical, dto.qty, dto.unit);
+
     const chemical = await prisma.chemicalsUsed.create({
       data: {
         orgId,
@@ -225,7 +325,8 @@ export class VisitsService {
         qty: dto.qty,
         unit: dto.unit,
         lotNo: dto.lotNo,
-        costCents: dto.costCents,
+        rateKey: priced.rateKey,
+        costCents: dto.costCents ?? priced.costCents,
       },
     });
 

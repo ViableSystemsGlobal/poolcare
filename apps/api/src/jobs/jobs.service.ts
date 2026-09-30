@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException, ForbiddenException, BadRequestException, Logger } from "@nestjs/common";
 import { prisma } from "@poolcare/db";
+import { LATE_CANCEL_CODE, LATE_CANCEL_HOURS, ACCESS_FAILURE_CODES } from "../plans/visit-entitlement";
 import { MapsService } from "../maps/maps.service";
 import { NotificationsService } from "../notifications/notifications.service";
 import { SettingsService } from "../settings/settings.service";
@@ -758,6 +759,7 @@ export class JobsService {
       data: {
         status: "cancelled",
         cancelCode: dto.code,
+        cancelledAt: new Date(),
         notes: dto.reason ? `${job.notes || ""}\nCancelled: ${dto.reason}`.trim() : job.notes,
       },
     });
@@ -797,11 +799,15 @@ export class JobsService {
       throw new BadRequestException(`Cannot cancel a ${job.status} job`);
     }
 
+    // Contract cl. 13.2: with 24h+ notice the visit stays owed and can be
+    // rescheduled; a later cancellation counts as a delivered visit.
+    const late = this.hoursUntil(job.windowStart) < LATE_CANCEL_HOURS;
     const updated = await prisma.job.update({
       where: { id: jobId },
       data: {
         status: "cancelled",
-        cancelCode: "CLIENT_REQUEST",
+        cancelCode: late ? LATE_CANCEL_CODE : "CLIENT_REQUEST",
+        cancelledAt: new Date(),
         notes: dto.reason ? `${job.notes || ""}\nClient cancelled: ${dto.reason}`.trim() : job.notes,
       },
     });
@@ -811,7 +817,11 @@ export class JobsService {
       `The client cancelled the job at ${job.pool.name || "a pool"} on ${this.formatJobWhen(job.windowStart)}.`,
       { jobId, type: "job_cancelled" });
 
-    return updated;
+    return { ...updated, countsAsDelivered: late };
+  }
+
+  private hoursUntil(when: Date): number {
+    return (when.getTime() - Date.now()) / (60 * 60 * 1000);
   }
 
   async clientReschedule(
@@ -829,6 +839,7 @@ export class JobsService {
           },
         },
         assignedCarer: { select: { userId: true } },
+        plan: { select: { billingType: true, paidThrough: true } },
       },
     });
 
@@ -849,6 +860,23 @@ export class JobsService {
 
     if (windowEnd <= windowStart) {
       throw new BadRequestException("windowEnd must be after windowStart");
+    }
+
+    // Contract cl. 13.2: self-service rescheduling needs 24 hours' notice.
+    if (this.hoursUntil(job.windowStart) < LATE_CANCEL_HOURS) {
+      throw new BadRequestException(
+        "This visit is less than 24 hours away, so it can't be moved in the app. Please contact PoolCare."
+      );
+    }
+    if (windowStart.getTime() < Date.now()) {
+      throw new BadRequestException("The new time must be in the future");
+    }
+    // A prepaid visit can only move within the paid term (same Service Period).
+    if (job.plan?.billingType === "prepaid" && job.plan.paidThrough) {
+      const termEnd = new Date(job.plan.paidThrough.getTime() + 24 * 60 * 60 * 1000);
+      if (windowStart >= termEnd) {
+        throw new BadRequestException("Visits can only be moved within your current paid term");
+      }
     }
 
     const updated = await prisma.job.update({
@@ -1312,6 +1340,15 @@ export class JobsService {
     return updated;
   }
 
+  /** Throws unless the calling user is the carer assigned to this job. */
+  async assertAssignedCarer(orgId: string, userId: string, jobId: string) {
+    const carer = await prisma.carer.findFirst({ where: { orgId, userId }, select: { id: true } });
+    const job = carer
+      ? await prisma.job.findFirst({ where: { id: jobId, orgId, assignedCarerId: carer.id }, select: { id: true } })
+      : null;
+    if (!job) throw new NotFoundException("Job not found or not assigned to you");
+  }
+
   async fail(orgId: string, userId: string, jobId: string, dto: FailJobDto) {
     const carer = await prisma.carer.findFirst({
       where: { orgId, userId },
@@ -1333,12 +1370,32 @@ export class JobsService {
       throw new NotFoundException("Job not found or not assigned to you");
     }
 
+    if (job.status === "completed" || job.status === "cancelled") {
+      throw new BadRequestException(`Cannot fail a ${job.status} job`);
+    }
+
+    // Access failures count as delivered visits (contract cl. 13.1), so they
+    // must carry evidence that the carer attended (cl. 13.3).
+    const isAccessFailure = ACCESS_FAILURE_CODES.includes(dto.code);
+    if (isAccessFailure && !dto.location) {
+      throw new BadRequestException("Location is required to record an access failure");
+    }
+
     const updated = await prisma.job.update({
       where: { id: jobId },
       data: {
         status: "failed",
         failCode: dto.code,
         notes: dto.notes ? `${job.notes || ""}\nFailed: ${dto.notes}`.trim() : job.notes,
+        ...(dto.location || dto.photoUrl
+          ? {
+              failEvidence: {
+                ...(dto.location || {}),
+                at: new Date().toISOString(),
+                ...(dto.photoUrl ? { photoUrl: dto.photoUrl } : {}),
+              },
+            }
+          : {}),
       },
     });
 
