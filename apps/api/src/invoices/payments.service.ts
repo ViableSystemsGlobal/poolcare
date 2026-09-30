@@ -591,7 +591,7 @@ export class PaymentsService {
    * Follow-ups once an invoice is fully paid: a prepaid-term invoice starts that
    * term; a quote invoice books the approved work. Never fails the payment.
    */
-  private async onInvoicePaid(invoiceId: string) {
+  async onInvoicePaid(invoiceId: string) {
     try {
       await this.prepaidTerms.activateFromInvoice(invoiceId);
       const invoice = await prisma.invoice.findUnique({ where: { id: invoiceId }, select: { orgId: true, quoteId: true } });
@@ -656,18 +656,16 @@ export class PaymentsService {
       },
     });
 
-    // Update invoice balance (increase it by refund amount)
+    // A refund reopens that much of the invoice (balance = total - paid).
     const invoice = payment.invoice;
     if (invoice) {
-      const newBalanceCents = invoice.balanceCents + dto.amountCents;
-      const newPaidCents = invoice.paidCents - dto.amountCents;
-
+      const newPaidCents = Math.max(0, invoice.paidCents - dto.amountCents);
       await prisma.invoice.update({
         where: { id: invoice.id },
         data: {
-          balanceCents: newBalanceCents,
-          paidCents: Math.max(0, newPaidCents),
-          status: newBalanceCents > 0 ? "sent" : "paid",
+          paidCents: newPaidCents,
+          status: newPaidCents >= invoice.totalCents ? "paid" : "sent",
+          paidAt: newPaidCents >= invoice.totalCents ? invoice.paidAt : null,
         },
       });
     }

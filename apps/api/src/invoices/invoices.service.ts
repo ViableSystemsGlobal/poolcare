@@ -6,6 +6,7 @@ import { prisma } from "@poolcare/db";
 import { CreateInvoiceDto, UpdateInvoiceDto, SendInvoiceDto, CreateCreditNoteDto } from "./dto";
 import { NotificationsService } from "../notifications/notifications.service";
 import { nextInvoiceNumber } from "./invoice-number.util";
+import { PaymentsService } from "./payments.service";
 import {
   createEmailTemplate,
   getOrgEmailSettings,
@@ -14,7 +15,10 @@ import {
 
 @Injectable()
 export class InvoicesService {
-  constructor(private readonly notificationsService: NotificationsService) {}
+  constructor(
+    private readonly notificationsService: NotificationsService,
+    private readonly paymentsService: PaymentsService
+  ) {}
 
   private calculateTotals(items: any[]): { subtotalCents: number; taxCents: number; totalCents: number } {
     let subtotalCents = 0;
@@ -918,26 +922,50 @@ Thank you for choosing PoolCare!`;
       throw new NotFoundException("Invoice not found");
     }
 
-    // Apply credit note to invoice
-    const newBalanceCents = Math.max(0, invoice.balanceCents - creditNote.amountCents);
+    // Apply the credit as a settled payment of type "credit_note", so the
+    // invoice balance (total - paid) is right everywhere it's read.
+    const remainingCents = invoice.totalCents - invoice.paidCents;
+    if (remainingCents <= 0) {
+      throw new BadRequestException("Invoice is already fully paid");
+    }
+    const appliedCents = Math.min(creditNote.amountCents, remainingCents);
+    const newPaidCents = invoice.paidCents + appliedCents;
+    const fullyPaid = newPaidCents >= invoice.totalCents;
 
-    await prisma.invoice.update({
-      where: { id: invoiceId },
-      data: {
-        balanceCents: newBalanceCents,
-        status: newBalanceCents === 0 ? "paid" : invoice.status,
-      },
-    });
+    const [, updatedInvoice] = await prisma.$transaction([
+      prisma.payment.create({
+        data: {
+          orgId,
+          invoiceId,
+          method: "credit_note",
+          provider: "credit_note",
+          providerRef: creditNote.id,
+          amountCents: appliedCents,
+          currency: invoice.currency,
+          status: "completed",
+          processedAt: new Date(),
+        },
+      }),
+      prisma.invoice.update({
+        where: { id: invoiceId },
+        data: {
+          paidCents: newPaidCents,
+          status: fullyPaid ? "paid" : invoice.status === "draft" ? "draft" : "sent",
+          paidAt: fullyPaid ? new Date() : invoice.paidAt,
+        },
+      }),
+      prisma.creditNote.update({
+        where: { id: creditNoteId },
+        data: { appliedAt: new Date(), invoiceId },
+      }),
+    ]);
 
-    await prisma.creditNote.update({
-      where: { id: creditNoteId },
-      data: {
-        appliedAt: new Date(),
-        invoiceId: invoiceId,
-      },
-    });
+    // e.g. a credit that settles a prepaid-term invoice starts that term.
+    if (fullyPaid) {
+      await this.paymentsService.onInvoicePaid(invoiceId);
+    }
 
-    return { creditNote, invoice };
+    return { creditNote, invoice: updatedInvoice, appliedCents };
   }
 
   async listCreditNotes(orgId: string, clientId?: string, invoiceId?: string) {

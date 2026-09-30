@@ -446,7 +446,7 @@ export class QuotesService {
             ? `Invoice ${invoice.invoiceNumber} (${amount}) is ready in the app.`
             : `Invoice ${invoice.invoiceNumber} (${amount}) is ready in the app. We'll book the work as soon as it's paid.`,
           template: "quote_invoice",
-          metadata: { type: "quote_invoice", invoiceId: invoice.id, quoteId: quote.id },
+          metadata: { type: "quote_invoice", invoiceId: invoice.id, quoteId: quote.id, url: `/pay/${invoice.id}` },
         })
         .catch((err) => console.error(`Failed to notify client of quote invoice ${invoice.id}:`, err));
     }

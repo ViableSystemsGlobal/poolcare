@@ -363,7 +363,13 @@ export class PrepaidTermsService {
   ) {
     const client = plan.pool?.client;
     if (!client) return;
-    const metadata = { type: msg.template, servicePlanId: plan.id, ...(msg.invoiceId ? { invoiceId: msg.invoiceId } : {}) };
+    // `url` is where a tap on the push lands in the client app.
+    const metadata = {
+      type: msg.template,
+      servicePlanId: plan.id,
+      url: msg.invoiceId ? `/pay/${msg.invoiceId}` : "/my-subscriptions",
+      ...(msg.invoiceId ? { invoiceId: msg.invoiceId } : {}),
+    };
 
     const sends: Promise<unknown>[] = [];
     if (client.userId) {

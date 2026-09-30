@@ -163,10 +163,11 @@ export class BillingService {
                   ],
                   subtotalCents,
                   taxCents: taxAmountCents,
-                  discountCents: discountAmountCents,
                   totalCents,
                   dueDate,
                   metadata: {
+                    // Invoice has no discount column; keep it with the billing context.
+                    discountCents: discountAmountCents,
                     servicePlanId: plan.id,
                     subscriptionBillingId: billing.id,
                     billingPeriodStart: billingPeriodStart.toISOString(),

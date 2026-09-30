@@ -63,6 +63,7 @@ export default function MySubscriptionsScreen() {
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<ServicePlan | null>(null);
   const [cancelReason, setCancelReason] = useState("");
+  const [pendingAgreements, setPendingAgreements] = useState<Array<{ id: string; plan?: { pool?: { name?: string } } }>>([]);
 
   useEffect(() => { fetchPlans(); }, []);
 
@@ -71,6 +72,8 @@ export default function MySubscriptionsScreen() {
       setLoading(true);
       const res = await api.getServicePlans() as any;
       setPlans(res.items || res || []);
+      const agreements = (await api.getMyAgreements().catch(() => [])) as any[];
+      setPendingAgreements((agreements || []).filter((a) => a.status === "pending"));
     } catch {
       Alert.alert("Error", "Failed to load subscriptions.");
     } finally {
@@ -192,6 +195,22 @@ export default function MySubscriptionsScreen() {
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={themeColor} />}
       >
+        {pendingAgreements.map((a) => (
+          <TouchableOpacity
+            key={a.id}
+            style={[styles.agreementBanner, { borderColor: themeColor }]}
+            onPress={() => router.push(`/agreements/${a.id}`)}
+          >
+            <Ionicons name="document-text-outline" size={22} color={themeColor} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.agreementBannerTitle}>Agreement to review</Text>
+              <Text style={styles.agreementBannerText}>
+                Please review and accept your service agreement{a.plan?.pool?.name ? ` for ${a.plan.pool.name}` : ""}.
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color="#9ca3af" />
+          </TouchableOpacity>
+        ))}
         {plans.length === 0 ? (
           <View style={styles.emptyState}>
             <View style={[styles.emptyIcon, { backgroundColor: `${themeColor}15` }]}>
@@ -431,6 +450,18 @@ const styles = StyleSheet.create({
     borderBottomColor: "#e5e7eb",
   },
   headerTitle: { fontSize: 20, fontWeight: "700", color: "#111827" },
+  agreementBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 16,
+  },
+  agreementBannerTitle: { fontSize: 15, fontWeight: "700", color: "#111827" },
+  agreementBannerText: { fontSize: 13, color: "#6b7280", marginTop: 2 },
   center: { flex: 1, justifyContent: "center", alignItems: "center", gap: 12 },
   loadingText: { fontSize: 15, color: "#6b7280" },
   scroll: { flex: 1 },

@@ -56,6 +56,15 @@ interface Pool {
   equipment?: any;
   targets?: any;
   notes?: string;
+  siteSafety?: {
+    hazards?: string[];
+    details?: string;
+    accessInstructions?: string;
+    accessContactName?: string;
+    accessContactPhone?: string;
+    updatedAt?: string;
+    updatedByRole?: string;
+  } | null;
   createdAt: string;
   client?: {
     id: string;
@@ -489,6 +498,38 @@ export default function PoolDetailPage() {
               )}
             </CardContent>
           </Card>
+
+          {/* Site safety & access — disclosed by the client in the app (contract cl. 12.2) */}
+          <div className="bg-white rounded-xl shadow-sm p-5">
+            <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wider mb-3">Site Safety & Access</h3>
+            {pool.siteSafety?.updatedAt ? (
+              <div className="space-y-2 text-sm">
+                <p className="text-gray-900">
+                  {(pool.siteSafety.hazards || []).length
+                    ? pool.siteSafety.hazards!.map((h) => h.replace(/_/g, " ")).join(" · ")
+                    : "No hazards reported"}
+                </p>
+                {pool.siteSafety.details && <p className="text-gray-600">{pool.siteSafety.details}</p>}
+                {pool.siteSafety.accessInstructions && (
+                  <p className="text-gray-600">Access: {pool.siteSafety.accessInstructions}</p>
+                )}
+                {pool.siteSafety.accessContactName && (
+                  <p className="text-gray-600">
+                    Contact: {pool.siteSafety.accessContactName}
+                    {pool.siteSafety.accessContactPhone ? ` · ${pool.siteSafety.accessContactPhone}` : ""}
+                  </p>
+                )}
+                <p className="text-xs text-gray-400">
+                  Updated {new Date(pool.siteSafety.updatedAt).toLocaleDateString()}
+                  {pool.siteSafety.updatedByRole === "CLIENT" ? " by the client" : ""}
+                </p>
+              </div>
+            ) : (
+              <p className="text-sm text-gray-500">
+                The client hasn&apos;t disclosed site hazards yet. They can do it from their pool screen in the app.
+              </p>
+            )}
+          </div>
 
           {/* Pool Images Gallery */}
           {pool.imageUrls && pool.imageUrls.length > 0 && (

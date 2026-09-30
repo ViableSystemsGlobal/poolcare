@@ -1,3 +1,4 @@
+import { NotificationsModule } from "../notifications/notifications.module";
 import { Module } from "@nestjs/common";
 import { PoolsController } from "./pools.controller";
 import { PoolsService } from "./pools.service";
@@ -7,7 +8,7 @@ import { MapsModule } from "../maps/maps.module";
 import { SettingsModule } from "../settings/settings.module";
 
 @Module({
-  imports: [AuthModule, FilesModule, MapsModule, SettingsModule],
+  imports: [AuthModule, FilesModule, MapsModule, SettingsModule, NotificationsModule],
   controllers: [PoolsController],
   providers: [PoolsService],
   exports: [PoolsService],

@@ -747,6 +747,8 @@ Thank you for choosing PoolCare!`;
         ...(dto.visitsPerTerm !== undefined ? { visitsPerTerm: dto.visitsPerTerm } : {}),
         ...(dto.emergencyVisitsPerMonth !== undefined ? { emergencyVisitsPerMonth: dto.emergencyVisitsPerMonth } : {}),
         ...(dto.chemicalAllowanceCents !== undefined ? { chemicalAllowanceCents: dto.chemicalAllowanceCents } : {}),
+        ...(dto.authorisedUsers !== undefined ? { authorisedUsers: dto.authorisedUsers as any } : {}),
+        ...(dto.specialConditions !== undefined ? { specialConditions: dto.specialConditions || null } : {}),
         ...(dto.preferredCarerId !== undefined
           ? { preferredCarerId: dto.preferredCarerId }
           : {}),

@@ -356,6 +356,11 @@ class ApiClient {
     return this.request(`/pools/${id}`);
   }
 
+  /** Site hazards + access instructions for PoolCare staff (contract cl. 12.2). */
+  async updateSiteSafety(poolId: string, data: any) {
+    return this.request(`/pools/${poolId}/site-safety`, { method: "PUT", body: JSON.stringify(data) });
+  }
+
   async createPool(data: any) {
     return this.request("/pools", {
       method: "POST",
@@ -522,6 +527,19 @@ class ApiClient {
       method: "POST",
       body: JSON.stringify({ reason }),
     });
+  }
+
+  // Service agreement + Schedule B acceptance (contract cl. 11.4, 30.7)
+  async getMyAgreements() {
+    return this.request(`/agreements/mine`);
+  }
+
+  async getAgreement(id: string) {
+    return this.request(`/agreements/${id}`);
+  }
+
+  async acceptAgreement(id: string, name: string) {
+    return this.request(`/agreements/${id}/accept`, { method: "POST", body: JSON.stringify({ name }) });
   }
 
   /** Request an Emergency Cleaning Visit within the plan's monthly allowance. */

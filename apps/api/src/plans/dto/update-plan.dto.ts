@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsInt, IsNumber, IsEnum, IsDateString, IsObject, ValidateNested, Min } from "class-validator";
+import { IsString, IsArray, IsOptional, IsInt, IsNumber, IsEnum, IsDateString, IsObject, ValidateNested, Min } from "class-validator";
 import { Type } from "class-transformer";
 
 class WindowDto {
@@ -27,6 +27,16 @@ export class UpdatePlanDto {
   @IsInt()
   @Min(0)
   chemicalAllowanceCents?: number | null;
+
+  // Schedule B: authorised app users [{ name, contact, role }] (cl. 12.1(h)).
+  @IsOptional()
+  @IsArray()
+  authorisedUsers?: Array<{ name: string; contact?: string; role?: string }>;
+
+  // Schedule B B7: special conditions / approved variations.
+  @IsOptional()
+  @IsString()
+  specialConditions?: string | null;
 
   @IsOptional()
   @IsEnum(["weekly", "biweekly", "monthly", "once_week", "twice_week", "thrice_week", "once_month", "twice_month", "thrice_month"])

@@ -37,6 +37,7 @@ import { useTheme } from "@/contexts/theme-context";
 import { SkeletonMetricCard } from "@/components/ui/skeleton";
 import { formatCurrencyForDisplay } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
+import { PlanAgreementPanel } from "@/components/plans/plan-agreement-panel";
 
 interface ServicePlan {
   id: string;
@@ -56,6 +57,8 @@ interface ServicePlan {
   emergencyVisitsPerMonth?: number | null;
   emergencyUsedThisMonth?: number;
   chemicalAllowanceCents?: number | null;
+  authorisedUsers?: Array<{ name: string; contact?: string; role?: string }> | null;
+  specialConditions?: string | null;
   chemicalUsage?: { month: string; allowanceCents: number; usedCents: number; overageCents: number; unpriced: number } | null;
   startsOn?: string;
   endsOn?: string;
@@ -711,6 +714,13 @@ export default function ServicePlanDetailPage() {
               )}
             </div>
           )}
+
+          <PlanAgreementPanel
+            key={plan.id}
+            planId={plan.id}
+            authorisedUsers={plan.authorisedUsers}
+            specialConditions={plan.specialConditions}
+          />
 
           {/* Plan Information */}
           <Card>

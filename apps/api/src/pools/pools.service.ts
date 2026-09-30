@@ -2,14 +2,68 @@ import { Injectable, NotFoundException, ForbiddenException, BadRequestException 
 import { prisma } from "@poolcare/db";
 import { MapsService } from "../maps/maps.service";
 import { SettingsService } from "../settings/settings.service";
+import { NotificationsService } from "../notifications/notifications.service";
 import { CreatePoolDto, UpdatePoolDto } from "./dto";
 
 @Injectable()
 export class PoolsService {
   constructor(
     private readonly mapsService: MapsService,
-    private readonly settingsService: SettingsService
+    private readonly settingsService: SettingsService,
+    private readonly notificationsService: NotificationsService
   ) {}
+
+  /**
+   * Client hazard disclosure and access instructions (contract cl. 12.2).
+   * The pool's client or the office can update it; carers see it on every job.
+   * A client change is flagged to managers, since conditions may have changed.
+   */
+  async updateSiteSafety(
+    orgId: string,
+    role: string,
+    userId: string,
+    poolId: string,
+    dto: { hazards?: string[]; details?: string; accessInstructions?: string; accessContactName?: string; accessContactPhone?: string }
+  ) {
+    if (!["CLIENT", "ADMIN", "MANAGER"].includes(role)) throw new ForbiddenException("Access denied");
+    const pool = await this.getOne(orgId, role, userId, poolId); // scopes CLIENT to their own pools
+    const known = ["dogs", "exposed_wiring", "chemicals_stored", "slippery", "construction", "security", "other"];
+    const clip = (v: any, n: number) => (typeof v === "string" ? v.trim().slice(0, n) : "");
+    const siteSafety = {
+      hazards: Array.isArray(dto.hazards) ? dto.hazards.filter((h) => known.includes(h)) : [],
+      details: clip(dto.details, 2000),
+      accessInstructions: clip(dto.accessInstructions, 2000),
+      accessContactName: clip(dto.accessContactName, 120),
+      accessContactPhone: clip(dto.accessContactPhone, 40),
+      updatedAt: new Date().toISOString(),
+      updatedByRole: role,
+    };
+    const updated = await prisma.pool.update({ where: { id: poolId }, data: { siteSafety } });
+
+    if (role === "CLIENT") {
+      const managers = await prisma.orgMember.findMany({
+        where: { orgId, role: { in: ["ADMIN", "MANAGER"] } },
+        include: { user: true },
+      });
+      const summary = siteSafety.hazards.length ? siteSafety.hazards.join(", ").replace(/_/g, " ") : "no listed hazards";
+      for (const m of managers) {
+        if (!m.user?.email) continue;
+        await this.notificationsService
+          .send(orgId, {
+            recipientId: m.user.id,
+            recipientType: "user",
+            channel: "email",
+            to: m.user.email,
+            subject: `Site safety updated — ${(pool as any).name || "pool"}`,
+            body: `The client updated site safety for ${(pool as any).name || "a pool"}: ${summary}.${siteSafety.details ? `\n\n${siteSafety.details}` : ""}`,
+            template: "site_safety_updated",
+            metadata: { type: "site_safety_updated", poolId },
+          })
+          .catch(() => undefined);
+      }
+    }
+    return updated;
+  }
   async list(
     orgId: string,
     role: string,

@@ -74,6 +74,7 @@ model Organization {
   pools                 Pool[]
   subscriptionTemplates SubscriptionTemplate[]
   servicePlans          ServicePlan[]
+  serviceAgreements     ServiceAgreement[]
   templates             VisitTemplate[]
   jobs                  Job[]
   visits                VisitEntry[]
@@ -386,6 +387,7 @@ model Client {
   creditNotes      CreditNote[]
   shopOrders       ShopOrder[]
   crmAccount       Account? // set when a CRM Account is converted to this Client
+  agreements       ServiceAgreement[]
 
   @@index([orgId, name])
   @@index([orgId, phone])
@@ -432,6 +434,9 @@ model Pool {
   equipment      Json?
   targets        Json?
   notes          String?
+  // Client hazard disclosure + access instructions (contract cl. 12.2):
+  // { hazards: string[], details, accessInstructions, accessContact, updatedAt, updatedByRole }
+  siteSafety     Json?
   createdAt      DateTime @default(now()) @db.Timestamptz(6)
 
   org          Organization  @relation(fields: [orgId], references: [id], onDelete: Cascade)
@@ -538,6 +543,35 @@ model SubscriptionTemplate {
   @@index([orgId, displayOrder])
 }
 
+// Client acceptance of the service agreement + a Schedule B snapshot
+// (contract cl. 11.4, 30.3, 30.7). Each send is a new row; a newer one for the
+// same plan supersedes older ones.
+model ServiceAgreement {
+  id                String    @id @default(uuid()) @db.Uuid
+  orgId             String    @db.Uuid
+  clientId          String    @db.Uuid
+  planId            String?   @db.Uuid
+  version           String // agreement document version (settings)
+  documentUrl       String? // the full agreement PDF at time of sending
+  scheduleB         Json // commercial selections snapshot
+  status            String    @default("pending") // pending, accepted, superseded
+  sentAt            DateTime  @default(now()) @db.Timestamptz(6)
+  sentById          String?   @db.Uuid
+  acceptedAt        DateTime? @db.Timestamptz(6)
+  acceptedByUserId  String?   @db.Uuid
+  acceptedName      String?
+  acceptedIp        String?
+  acceptedUserAgent String?
+  createdAt         DateTime  @default(now()) @db.Timestamptz(6)
+
+  org    Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  client Client       @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  plan   ServicePlan? @relation(fields: [planId], references: [id], onDelete: SetNull)
+
+  @@index([orgId, clientId, status])
+  @@index([planId])
+}
+
 // Service Plans (Module 5) - Enhanced with Subscription Features
 model ServicePlan {
   id                   String    @id @default(uuid()) @db.Uuid
@@ -577,6 +611,8 @@ model ServicePlan {
   visitsPerTerm        Int? // Schedule B "Contracted Visits" override; null = derived from frequency
   emergencyVisitsPerMonth Int? // Schedule B: included Emergency Cleaning Visits per calendar month
   chemicalAllowanceCents  Int? // Schedule B: monthly routine-chemical allowance (priced via the org chemical rate card)
+  authorisedUsers         Json? // Schedule B: [{ name, contact, role }] — client's authorised app users (cl. 12.1(h))
+  specialConditions       String? // Schedule B B7: special conditions / approved variations
   nextBillingDate      DateTime? @db.Date
   lastBilledDate       DateTime? @db.Date
   trialEndsAt          DateTime? @db.Date
@@ -596,6 +632,7 @@ model ServicePlan {
   jobs            Job[]
   billings        SubscriptionBilling[]
   Invoice         Invoice[]
+  agreements      ServiceAgreement[]
 
   @@index([orgId, poolId])
   @@index([orgId, status, nextVisitAt])

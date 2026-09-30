@@ -12,6 +12,7 @@ import { PoolsModule } from "./pools/pools.module";
 import { FilesModule } from "./files/files.module";
 import { TemplatesModule } from "./templates/templates.module";
 import { PlansModule } from "./plans/plans.module";
+import { AgreementsModule } from "./agreements/agreements.module";
 import { SubscriptionTemplatesModule } from "./subscription-templates/subscription-templates.module";
 import { JobsModule } from "./jobs/jobs.module";
 import { VisitsModule } from "./visits/visits.module";
@@ -59,6 +60,7 @@ import { RlsInterceptor } from "./core/rls.interceptor";
     FilesModule,
     TemplatesModule,
     PlansModule,
+    AgreementsModule,
     SubscriptionTemplatesModule,
     JobsModule,
     VisitsModule,

@@ -281,7 +281,7 @@ export class VisitsService {
           subject: "Your visit report query was resolved",
           body: trimmed,
           template: "visit_report_resolved",
-          metadata: { type: "visit_report_resolved", visitId },
+          metadata: { type: "visit_report_resolved", visitId, url: `/visits/${visitId}` },
         })
         .catch((err) => console.error(`Failed to notify client of dispute resolution ${visitId}:`, err));
     }

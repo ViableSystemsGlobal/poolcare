@@ -1,4 +1,5 @@
 import {
+  Put,
   Controller,
   Get,
   Post,
@@ -75,6 +76,15 @@ export class PoolsController {
     @Body() dto: UpdatePoolDto
   ) {
     return this.poolsService.update(user.org_id, id, dto);
+  }
+
+  @Put(":id/site-safety")
+  async updateSiteSafety(
+    @CurrentUser() user: { org_id: string; role: string; sub: string },
+    @Param("id") id: string,
+    @Body() body: any
+  ) {
+    return this.poolsService.updateSiteSafety(user.org_id, user.role, user.sub, id, body || {});
   }
 
   @Delete(":id")

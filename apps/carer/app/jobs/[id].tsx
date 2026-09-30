@@ -50,6 +50,17 @@ interface Reading {
   salinity?: number;
 }
 
+// Labels for client-disclosed hazards (mirrors the client app's list).
+const SITE_HAZARD_LABELS: Record<string, string> = {
+  dogs: "Dogs or other animals",
+  exposed_wiring: "Exposed wiring / electrical",
+  chemicals_stored: "Hazardous chemicals stored",
+  slippery: "Slippery or unsafe surfaces",
+  construction: "Construction / other works",
+  security: "Security / access control",
+  other: "Other (see details)",
+};
+
 export default function JobDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const insets = useSafeAreaInsets();
@@ -529,6 +540,7 @@ export default function JobDetailScreen() {
         poolImageUrl,
         clientName: client?.name || null,
         clientPhone: client?.phone || null,
+        siteSafety: pool?.siteSafety || null,
       });
       
       // If job is already en_route, on_site, or completed, mark as started
@@ -1969,6 +1981,35 @@ export default function JobDetailScreen() {
               </View>
             )}
 
+        {/* Client-disclosed hazards and access (service agreement cl. 12.2) */}
+        {job.status !== "completed" &&
+          job.siteSafety &&
+          ((job.siteSafety.hazards || []).length > 0 || !!job.siteSafety.details || !!job.siteSafety.accessInstructions) && (
+            <View style={styles.siteSafetyCard}>
+              <View style={styles.siteSafetyHeader}>
+                <Ionicons name="warning-outline" size={18} color="#b45309" />
+                <Text style={styles.siteSafetyTitle}>Site safety & access</Text>
+              </View>
+              {(job.siteSafety.hazards || []).length > 0 && (
+                <Text style={styles.siteSafetyText}>
+                  {(job.siteSafety.hazards as string[])
+                    .map((h) => SITE_HAZARD_LABELS[h] || h)
+                    .join(" · ")}
+                </Text>
+              )}
+              {!!job.siteSafety.details && <Text style={styles.siteSafetyText}>{job.siteSafety.details}</Text>}
+              {!!job.siteSafety.accessInstructions && (
+                <Text style={styles.siteSafetyText}>Access: {job.siteSafety.accessInstructions}</Text>
+              )}
+              {!!job.siteSafety.accessContactName && (
+                <Text style={styles.siteSafetyText}>
+                  Contact: {job.siteSafety.accessContactName}
+                  {job.siteSafety.accessContactPhone ? ` · ${job.siteSafety.accessContactPhone}` : ""}
+                </Text>
+              )}
+            </View>
+          )}
+
         {/* Swipe Action Buttons */}
         {!arrived && job.status !== "completed" && job.isScheduledForToday && (
           <View style={styles.swipeActionContainer}>
@@ -2948,6 +2989,16 @@ const styles = StyleSheet.create({
   swipeActionContainer: {
     marginBottom: 20,
   },
+  siteSafetyCard: {
+    backgroundColor: "#fffbeb",
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 16,
+    gap: 6,
+  },
+  siteSafetyHeader: { flexDirection: "row", alignItems: "center", gap: 6 },
+  siteSafetyTitle: { fontSize: 15, fontWeight: "700", color: "#92400e" },
+  siteSafetyText: { fontSize: 14, color: "#78350f", lineHeight: 20 },
   accessFailureLink: {
     flexDirection: "row",
     alignItems: "center",

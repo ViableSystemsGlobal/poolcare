@@ -20,6 +20,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useTheme } from "../../src/contexts/ThemeContext";
 import { api } from "../../src/lib/api-client";
 import { fixUrlForMobile } from "../../src/lib/network-utils";
+import SiteSafetyCard from "../../src/components/SiteSafetyCard";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const CHART_WIDTH = SCREEN_WIDTH - 64; // Account for padding
@@ -1113,6 +1114,16 @@ export default function PoolDetailScreen() {
               </View>
             ))}
           </View>
+        )}
+
+        {/* Site safety & access (service agreement cl. 12.2) */}
+        {pool && (
+          <SiteSafetyCard
+            poolId={pool.id}
+            value={pool.siteSafety}
+            themeColor={themeColor}
+            onSaved={(siteSafety) => setPool({ ...pool, siteSafety })}
+          />
         )}
       </ScrollView>
     </View>
