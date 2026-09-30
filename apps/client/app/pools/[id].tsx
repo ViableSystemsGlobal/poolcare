@@ -21,6 +21,7 @@ import { useTheme } from "../../src/contexts/ThemeContext";
 import { api } from "../../src/lib/api-client";
 import { fixUrlForMobile } from "../../src/lib/network-utils";
 import SiteSafetyCard from "../../src/components/SiteSafetyCard";
+import ChemicalStockCard from "../../src/components/ChemicalStockCard";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const CHART_WIDTH = SCREEN_WIDTH - 64; // Account for padding
@@ -1115,6 +1116,9 @@ export default function PoolDetailScreen() {
             ))}
           </View>
         )}
+
+        {/* Chemicals kept at the pool (service agreement cl. 7.1) */}
+        {pool && <ChemicalStockCard poolId={pool.id} themeColor={themeColor} />}
 
         {/* Site safety & access (service agreement cl. 12.2) */}
         {pool && (

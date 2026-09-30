@@ -41,6 +41,7 @@ import {
   Globe,
   BriefcaseBusiness,
   Sun,
+  FlaskConical,
 } from "lucide-react";
 
 const navigationGroups = [
@@ -95,6 +96,7 @@ const navigationGroups = [
           { name: "Overview", href: "/inventory", icon: Warehouse },
           { name: "Products", href: "/inventory/products", icon: Package },
           { name: "Stock Levels", href: "/inventory/stock", icon: BarChart3 },
+          { name: "Client Chemicals", href: "/inventory/client-chemicals", icon: FlaskConical },
           { name: "Movements", href: "/inventory/movements", icon: Truck },
           { name: "Warehouses", href: "/inventory/warehouses", icon: Warehouse },
           { name: "Suppliers", href: "/inventory/suppliers", icon: Users },

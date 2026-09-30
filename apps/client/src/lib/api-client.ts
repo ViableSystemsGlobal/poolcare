@@ -356,6 +356,27 @@ class ApiClient {
     return this.request(`/pools/${id}`);
   }
 
+  // Chemicals the client keeps at the pool (contract cl. 7.1)
+  async getChemicalStock(poolId: string) {
+    return this.request(`/pools/${poolId}/chemical-stock`);
+  }
+
+  async addChemicalStock(poolId: string, data: { name: string; unit: string; qty: number; lowAt?: number | null; note?: string }) {
+    return this.request(`/pools/${poolId}/chemical-stock`, { method: "POST", body: JSON.stringify(data) });
+  }
+
+  async adjustChemicalStock(poolId: string, stockId: string, data: { onHand?: number; lowAt?: number | null }) {
+    return this.request(`/pools/${poolId}/chemical-stock/${stockId}`, { method: "PATCH", body: JSON.stringify(data) });
+  }
+
+  async removeChemicalStock(poolId: string, stockId: string) {
+    return this.request(`/pools/${poolId}/chemical-stock/${stockId}`, { method: "DELETE" });
+  }
+
+  async getChemicalRates() {
+    return this.request(`/settings/chemical-rates`) as Promise<Array<{ key: string; label: string; unit: "kg" | "L" }>>;
+  }
+
   /** Site hazards + access instructions for PoolCare staff (contract cl. 12.2). */
   async updateSiteSafety(poolId: string, data: any) {
     return this.request(`/pools/${poolId}/site-safety`, { method: "PUT", body: JSON.stringify(data) });

@@ -1,4 +1,5 @@
 import {
+  ForbiddenException,
   Put,
   Controller,
   Get,
@@ -15,6 +16,7 @@ import {
 } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
 import { PoolsService } from "./pools.service";
+import { addStock, adjustStock, listStock, removeStock } from "./client-chemical-stock";
 import { FilesService } from "../files/files.service";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { RolesGuard } from "../auth/guards/roles.guard";
@@ -76,6 +78,53 @@ export class PoolsController {
     @Body() dto: UpdatePoolDto
   ) {
     return this.poolsService.update(user.org_id, id, dto);
+  }
+
+  // ── Client chemical stock (contract cl. 7.1) ─────────────────────────────
+  // Clients see and manage their own pools' stock; the office and carers too.
+
+  @Get(":id/chemical-stock")
+  async getChemicalStock(@CurrentUser() user: { org_id: string; role: string; sub: string }, @Param("id") id: string) {
+    await this.poolsService.getOne(user.org_id, user.role, user.sub, id);
+    return listStock(user.org_id, id);
+  }
+
+  @Post(":id/chemical-stock")
+  async addChemicalStock(
+    @CurrentUser() user: { org_id: string; role: string; sub: string },
+    @Param("id") id: string,
+    @Body() body: { name: string; unit: string; qty: number; lowAt?: number | null; note?: string }
+  ) {
+    this.assertStockEditor(user.role);
+    await this.poolsService.getOne(user.org_id, user.role, user.sub, id);
+    return addStock(user.org_id, id, body || ({} as any), { userId: user.sub, role: user.role });
+  }
+
+  @Patch(":id/chemical-stock/:stockId")
+  async adjustChemicalStock(
+    @CurrentUser() user: { org_id: string; role: string; sub: string },
+    @Param("id") id: string,
+    @Param("stockId") stockId: string,
+    @Body() body: { onHand?: number; lowAt?: number | null; note?: string }
+  ) {
+    this.assertStockEditor(user.role);
+    await this.poolsService.getOne(user.org_id, user.role, user.sub, id);
+    return adjustStock(user.org_id, id, stockId, body || {}, { userId: user.sub, role: user.role });
+  }
+
+  @Delete(":id/chemical-stock/:stockId")
+  async removeChemicalStock(
+    @CurrentUser() user: { org_id: string; role: string; sub: string },
+    @Param("id") id: string,
+    @Param("stockId") stockId: string
+  ) {
+    this.assertStockEditor(user.role);
+    await this.poolsService.getOne(user.org_id, user.role, user.sub, id);
+    return removeStock(user.org_id, id, stockId);
+  }
+
+  private assertStockEditor(role: string) {
+    if (!["CLIENT", "ADMIN", "MANAGER"].includes(role)) throw new ForbiddenException("Access denied");
   }
 
   @Put(":id/site-safety")

@@ -69,6 +69,7 @@ export default function JobDetailScreen() {
   const [visitStarted, setVisitStarted] = useState(false);
   const [arrived, setArrived] = useState(false);
   const [showAccessFailure, setShowAccessFailure] = useState(false);
+  const [clientStock, setClientStock] = useState<Array<{ id: string; name: string; unit: string; onHand: number; lowAt: number | null }>>([]);
   const [checklist, setChecklist] = useState<ChecklistItem[]>([]);
   const [readings, setReadings] = useState<Reading>({});
   const [showReadingsModal, setShowReadingsModal] = useState(false);
@@ -542,6 +543,9 @@ export default function JobDetailScreen() {
         clientPhone: client?.phone || null,
         siteSafety: pool?.siteSafety || null,
       });
+      if (pool?.id) {
+        api.getClientChemicalStock(pool.id).then(setClientStock).catch(() => setClientStock([]));
+      }
       
       // If job is already en_route, on_site, or completed, mark as started
       if (jobStatus === "en_route" || jobStatus === "on_site" || jobStatus === "completed") {
@@ -2010,6 +2014,25 @@ export default function JobDetailScreen() {
             </View>
           )}
 
+        {/* Chemicals the client keeps on site (service agreement cl. 7.1) */}
+        {job.status !== "completed" && clientStock.length > 0 && (
+          <View style={styles.clientStockCard}>
+            <Text style={styles.clientStockTitle}>Client&apos;s chemicals on site</Text>
+            {clientStock.map((s) => {
+              const low = s.onHand <= 0 || (s.lowAt != null && s.onHand <= s.lowAt);
+              return (
+                <View key={s.id} style={styles.clientStockRow}>
+                  <Text style={styles.clientStockName}>{s.name}</Text>
+                  <Text style={[styles.clientStockQty, low && { color: s.onHand <= 0 ? "#dc2626" : "#d97706" }]}>
+                    {Math.round(s.onHand * 100) / 100} {s.unit}
+                    {s.onHand <= 0 ? " · out" : low ? " · low" : ""}
+                  </Text>
+                </View>
+              );
+            })}
+          </View>
+        )}
+
         {/* Swipe Action Buttons */}
         {!arrived && job.status !== "completed" && job.isScheduledForToday && (
           <View style={styles.swipeActionContainer}>
@@ -2989,6 +3012,11 @@ const styles = StyleSheet.create({
   swipeActionContainer: {
     marginBottom: 20,
   },
+  clientStockCard: { backgroundColor: "#f9fafb", borderRadius: 12, padding: 14, marginBottom: 16, gap: 6 },
+  clientStockTitle: { fontSize: 15, fontWeight: "700", color: "#111827", marginBottom: 2 },
+  clientStockRow: { flexDirection: "row", justifyContent: "space-between" },
+  clientStockName: { fontSize: 14, color: "#374151" },
+  clientStockQty: { fontSize: 14, color: "#111827", fontWeight: "600" },
   siteSafetyCard: {
     backgroundColor: "#fffbeb",
     borderRadius: 12,

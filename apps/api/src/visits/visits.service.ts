@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from "@nestjs/common";
 import { prisma } from "@poolcare/db";
 import { loadChemicalRates, priceChemical } from "../settings/chemical-rates";
+import { drawDownForVisit } from "../pools/client-chemical-stock";
 import { FilesService } from "../files/files.service";
 import { InvoicesService } from "../invoices/invoices.service";
 import { NotificationsService } from "../notifications/notifications.service";
@@ -330,7 +331,34 @@ export class VisitsService {
       },
     });
 
+    // Client-supplied chemicals come out of the client's stock at the pool (cl. 7.1).
+    try {
+      const low = await drawDownForVisit(orgId, visitId, { name: dto.chemical, rateKey: priced.rateKey, qty: dto.qty, unit: dto.unit }, { userId, role: "CARER" });
+      if (low) await this.notifyLowClientStock(orgId, low);
+    } catch (err: any) {
+      console.error(`Client stock draw-down failed for visit ${visitId}:`, err?.message);
+    }
+
     return chemical;
+  }
+
+  /** Ask the client to restock before the next visit (contract cl. 7.1). */
+  private async notifyLowClientStock(orgId: string, item: { name: string; onHand: number; unit: string; poolId: string }) {
+    const pool = await prisma.pool.findUnique({ where: { id: item.poolId }, include: { client: { select: { userId: true } } } });
+    const userId = pool?.client?.userId;
+    if (!userId) return;
+    await this.notificationsService
+      .send(orgId, {
+        channel: "push",
+        to: userId,
+        recipientId: userId,
+        recipientType: "client",
+        subject: `${item.name} is running low`,
+        body: `${item.onHand} ${item.unit} of ${item.name} left at ${pool?.name || "your pool"}. Please restock before the next visit so we can keep your water balanced.`,
+        template: "client_stock_low",
+        metadata: { type: "client_stock_low", poolId: item.poolId, url: `/pools/${item.poolId}` },
+      })
+      .catch(() => undefined);
   }
 
   async presignPhoto(orgId: string, visitId: string, body: { contentType: string; fileName?: string }) {

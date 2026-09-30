@@ -1,4 +1,5 @@
 "use client";
+import { ClientChemicalStockCard } from "@/components/pools/client-chemical-stock-card";
 
 import { formatCurrencyForDisplay } from "@/lib/utils";
 
@@ -498,6 +499,8 @@ export default function PoolDetailPage() {
               )}
             </CardContent>
           </Card>
+
+          <ClientChemicalStockCard poolId={pool.id} />
 
           {/* Site safety & access — disclosed by the client in the app (contract cl. 12.2) */}
           <div className="bg-white rounded-xl shadow-sm p-5">

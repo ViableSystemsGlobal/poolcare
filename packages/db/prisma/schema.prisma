@@ -75,6 +75,8 @@ model Organization {
   subscriptionTemplates SubscriptionTemplate[]
   servicePlans          ServicePlan[]
   serviceAgreements     ServiceAgreement[]
+  clientChemicalStock   ClientChemicalStock[]
+  clientChemicalMoves   ClientChemicalMovement[]
   templates             VisitTemplate[]
   jobs                  Job[]
   visits                VisitEntry[]
@@ -439,9 +441,10 @@ model Pool {
   siteSafety     Json?
   createdAt      DateTime @default(now()) @db.Timestamptz(6)
 
-  org          Organization  @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  client       Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  servicePlans ServicePlan[]
+  org           Organization          @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  client        Client                @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  chemicalStock ClientChemicalStock[]
+  servicePlans  ServicePlan[]
   jobs         Job[]
   issues       Issue[]
   quotes       Quote[]
@@ -449,6 +452,47 @@ model Pool {
 
   @@index([orgId, clientId])
   @@index([orgId, name])
+}
+
+// Chemicals the client keeps at the property (contract cl. 7.1: under Flex the
+// client supplies chemicals). Visits on client-supplied plans draw it down.
+model ClientChemicalStock {
+  id        String   @id @default(uuid()) @db.Uuid
+  orgId     String   @db.Uuid
+  poolId    String   @db.Uuid
+  name      String
+  rateKey   String? // chemical rate card entry, when it matches one
+  unit      String // kg, L, pcs
+  onHand    Float    @default(0)
+  lowAt     Float? // notify the client when stock falls to/below this
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  org       Organization               @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  pool      Pool                       @relation(fields: [poolId], references: [id], onDelete: Cascade)
+  movements ClientChemicalMovement[]
+
+  @@unique([poolId, name])
+  @@index([orgId, poolId])
+}
+
+model ClientChemicalMovement {
+  id        String   @id @default(uuid()) @db.Uuid
+  orgId     String   @db.Uuid
+  stockId   String   @db.Uuid
+  type      String // added, used, adjusted
+  qty       Float // signed change, in the item's unit
+  balance   Float // on-hand after the change
+  note      String?
+  visitId   String?  @db.Uuid
+  byUserId  String?  @db.Uuid
+  byRole    String?
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+
+  org   Organization        @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  stock ClientChemicalStock @relation(fields: [stockId], references: [id], onDelete: Cascade)
+
+  @@index([stockId, createdAt])
 }
 
 // Device Tokens (Module 2)

@@ -340,6 +340,11 @@ class ApiClient {
     return response.json();
   }
 
+  /** Chemicals the client keeps at the pool (drawn down when carers log usage). */
+  async getClientChemicalStock(poolId: string) {
+    return this.request(`/pools/${poolId}/chemical-stock`) as Promise<Array<{ id: string; name: string; unit: string; onHand: number; lowAt: number | null }>>;
+  }
+
   /** Org chemical rate card: the chemicals carers pick from (and how they're priced). */
   async getChemicalRates() {
     return this.request(`/settings/chemical-rates`) as Promise<Array<{ key: string; label: string; unit: "kg" | "L" }>>;
