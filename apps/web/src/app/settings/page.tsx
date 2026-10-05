@@ -17,6 +17,7 @@ import { Settings, Building, DollarSign, Save, Globe, MapPin, Mail, Phone, Check
 import LeadSourcesPage from "./lead-sources/page";
 import KnowledgeBasePage from "../knowledge/page";
 import { ChemicalRatesCard } from "@/components/settings/chemical-rates-card";
+import { PrepaidTermsCard } from "@/components/settings/prepaid-terms-card";
 import { AgreementDocumentCard } from "@/components/settings/agreement-document-card";
 import {
   Dialog,
@@ -2873,6 +2874,8 @@ export default function SettingsPage() {
                 </div>
               </CardContent>
             </Card>
+
+            <PrepaidTermsCard />
 
             <ChemicalRatesCard />
 

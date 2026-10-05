@@ -269,8 +269,9 @@ export class InvoicesService {
     const currency = invoice.currency || "GHS";
     // Currency codes rather than symbols: pdfkit's built-in fonts are WinAnsi
     // and cannot encode the cedi sign (₵).
+    // Sign before the currency: "-GHS 1,800.00", not "GHS -1,800.00".
     const money = (cents: number) =>
-      `${currency} ${(cents / 100).toLocaleString("en-US", {
+      `${cents < 0 ? "-" : ""}${currency} ${(Math.abs(cents) / 100).toLocaleString("en-US", {
         minimumFractionDigits: 2,
         maximumFractionDigits: 2,
       })}`;
@@ -379,11 +380,12 @@ export class InvoicesService {
 
     // ---- Line items
     const cols = {
-      label: { x: left, width: 215, align: "left" as const },
-      qty: { x: left + 225, width: 45, align: "right" as const },
-      unit: { x: left + 280, width: 90, align: "right" as const },
-      tax: { x: left + 378, width: 45, align: "right" as const },
-      total: { x: left + 430, width: contentWidth - 430, align: "right" as const },
+      // Amount column wide enough for "-GHS 99,999.00" on one line.
+      label: { x: left, width: 200, align: "left" as const },
+      qty: { x: left + 205, width: 35, align: "right" as const },
+      unit: { x: left + 245, width: 100, align: "right" as const },
+      tax: { x: left + 350, width: 40, align: "right" as const },
+      total: { x: left + 395, width: contentWidth - 395, align: "right" as const },
     };
 
     const drawItemsHeader = (top: number) => {

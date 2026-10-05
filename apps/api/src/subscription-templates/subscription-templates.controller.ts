@@ -113,6 +113,7 @@ export class SubscriptionTemplatesController {
       // Prepaid auto-renewal must be expressly chosen by the client (contract cl. 4.8).
       autoRenew: dto.autoRenew ?? template.billingType !== "prepaid",
       preferredCarerId: dto.preferredCarerId,
+      termMonths: dto.termMonths,
     });
   }
 }

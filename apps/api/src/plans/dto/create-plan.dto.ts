@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsInt, IsNumber, IsEnum, IsDateString, IsObject, ValidateNested, IsBoolean } from "class-validator";
+import { IsIn, IsString, IsOptional, IsInt, IsNumber, IsEnum, IsDateString, IsObject, ValidateNested, IsBoolean } from "class-validator";
 import { Type } from "class-transformer";
 
 class WindowDto {
@@ -85,5 +85,11 @@ export class CreatePlanDto {
   @IsOptional()
   @IsString()
   preferredCarerId?: string; // Preferred carer for auto-generated jobs
+
+  // Prepaid term length in months (1, 3, 6 or 12 — whichever Settings offers).
+  @IsOptional()
+  @IsInt()
+  @IsIn([1, 3, 6, 12])
+  termMonths?: number;
 }
 

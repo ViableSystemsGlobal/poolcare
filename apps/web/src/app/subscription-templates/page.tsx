@@ -465,7 +465,7 @@ export default function SubscriptionTemplatesPage() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="prepaid">Prepaid — 3-month term</SelectItem>
+              <SelectItem value="prepaid">Prepaid (term chosen per plan)</SelectItem>
               <SelectItem value="monthly">Monthly</SelectItem>
               <SelectItem value="quarterly">Quarterly</SelectItem>
               <SelectItem value="annually">Annually</SelectItem>
@@ -754,7 +754,7 @@ export default function SubscriptionTemplatesPage() {
                         </div>
                       </TableCell>
                       <TableCell className="capitalize">{template.frequency}</TableCell>
-                      <TableCell className="capitalize">{template.billingType === "prepaid" ? "Prepaid, 3 months" : template.billingType}</TableCell>
+                      <TableCell className="capitalize">{template.billingType === "prepaid" ? "Prepaid" : template.billingType}</TableCell>
                       <TableCell>
                         {template.pricingType === "range" && template.priceMinCents != null && template.priceMaxCents != null ? (
                           <span>

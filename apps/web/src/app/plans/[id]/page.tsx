@@ -236,6 +236,37 @@ export default function ServicePlanDetailPage() {
   };
 
   const [renewing, setRenewing] = useState(false);
+  const [prepaidTerms, setPrepaidTerms] = useState<Array<{ months: number; discountPct: number; enabled: boolean }>>([]);
+
+  useEffect(() => {
+    const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+    fetch(`${API_URL}/settings/prepaid-terms`, { headers: { Authorization: `Bearer ${localStorage.getItem("auth_token")}` } })
+      .then((r) => (r.ok ? r.json() : []))
+      .then(setPrepaidTerms)
+      .catch(() => undefined);
+  }, []);
+
+  // Term length for the next term invoiced (the current one keeps its length).
+  const handleChangeTerm = async (months: number) => {
+    try {
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+      const res = await fetch(`${API_URL}/service-plans/${planId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("auth_token")}` },
+        body: JSON.stringify({ termMonths: months }),
+      });
+      if (!res.ok) throw new Error((await res.json()).message || "Failed to change term");
+      setPlan((p) => (p ? { ...p, termMonths: months, visitsPerTerm: null } : p));
+      setVisitsOverride("");
+      toast({
+        title: "Term length updated",
+        description: "Applies from the next term invoiced. Any open invoice keeps its original term.",
+        variant: "success",
+      });
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    }
+  };
   const [editingDays, setEditingDays] = useState(false);
   const [draftDays, setDraftDays] = useState<string[]>([]);
   const [savingDays, setSavingDays] = useState(false);
@@ -458,6 +489,8 @@ export default function ServicePlanDetailPage() {
     { weekly: 1, once_week: 1, biweekly: 1, twice_week: 2, thrice_week: 3 }[plan.frequency as string] || 0;
   const currentDays = (plan.dow || "").split(",").filter(Boolean);
 
+  const termDiscountPct = prepaidTerms.find((t) => t.months === (plan.termMonths || 3))?.discountPct || 0;
+
   const upcomingJobs = jobs.filter((j) => j.status === "scheduled" || j.status === "en_route");
   // plan.nextVisitAt is the generator's "resume after" marker (past everything
   // already scheduled), so prefer the earliest visit actually on the calendar.
@@ -630,7 +663,21 @@ export default function ServicePlanDetailPage() {
                 )}
                 <div className="flex justify-between py-2">
                   <span className="text-gray-500">Term length</span>
-                  <span className="font-medium text-gray-900">{plan.termMonths || 3} months</span>
+                  <select
+                    className="h-7 rounded-md border border-gray-200 px-1.5 text-sm font-medium text-gray-900"
+                    value={plan.termMonths || 3}
+                    onChange={(e) => handleChangeTerm(parseInt(e.target.value, 10))}
+                    title="Applies from the next term invoiced"
+                  >
+                    {prepaidTerms
+                      .filter((t) => t.enabled || t.months === (plan.termMonths || 3))
+                      .map((t) => (
+                        <option key={t.months} value={t.months}>
+                          {t.months} month{t.months > 1 ? "s" : ""}
+                          {t.discountPct ? ` (${t.discountPct}% off)` : ""}
+                        </option>
+                      ))}
+                  </select>
                 </div>
                 <div className="flex justify-between py-2">
                   <span className="text-gray-500">Renewal</span>
@@ -639,7 +686,8 @@ export default function ServicePlanDetailPage() {
                 <div className="flex justify-between py-2">
                   <span className="text-gray-500">Term price</span>
                   <span className="font-medium text-gray-900">
-                    {formatCurrency(plan.priceCents * (plan.termMonths || 3), plan.currency)}
+                    {formatCurrency(Math.round(plan.priceCents * (plan.termMonths || 3) * (1 - termDiscountPct / 100)), plan.currency)}
+                    {termDiscountPct > 0 && <span className="text-gray-500 font-normal"> ({termDiscountPct}% off)</span>}
                   </span>
                 </div>
               </div>

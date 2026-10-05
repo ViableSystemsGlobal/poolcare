@@ -373,6 +373,11 @@ class ApiClient {
     return this.request(`/pools/${poolId}/chemical-stock/${stockId}`, { method: "DELETE" });
   }
 
+  /** Prepaid term lengths offered and their discounts. */
+  async getPrepaidTerms() {
+    return this.request(`/settings/prepaid-terms`) as Promise<Array<{ months: number; discountPct: number; enabled: boolean }>>;
+  }
+
   async getChemicalRates() {
     return this.request(`/settings/chemical-rates`) as Promise<Array<{ key: string; label: string; unit: "kg" | "L" }>>;
   }
@@ -526,7 +531,7 @@ class ApiClient {
     return this.request(`/subscription-templates/${id}`);
   }
 
-  async subscribeToTemplate(templateId: string, data: { poolId: string; startsOn?: string; autoRenew?: boolean; preferredCarerId?: string }) {
+  async subscribeToTemplate(templateId: string, data: { poolId: string; startsOn?: string; autoRenew?: boolean; preferredCarerId?: string; termMonths?: number }) {
     return this.request(`/subscription-templates/${templateId}/subscribe`, {
       method: "POST",
       body: JSON.stringify(data),

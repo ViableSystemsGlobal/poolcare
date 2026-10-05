@@ -79,6 +79,7 @@ export default function AgreementScreen() {
           ? ([["Standard Rate (for refunds)", money(b.standardRateCents, cur)]] as Array<[string, string]>)
           : []),
         ...(b.termAmountCents != null ? ([["Amount per term", money(b.termAmountCents, cur)]] as Array<[string, string]>) : []),
+        ...(b.prepaidDiscountPct ? ([["Prepaid discount", `${b.prepaidDiscountPct}%`]] as Array<[string, string]>) : []),
         [
           "Service",
           `${FREQ[b.frequency] || b.frequency || "—"}${

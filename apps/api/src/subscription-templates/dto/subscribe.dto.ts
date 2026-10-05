@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsDateString, IsBoolean } from "class-validator";
+import { IsIn, IsInt, IsString, IsOptional, IsDateString, IsBoolean } from "class-validator";
 
 export class SubscribeToTemplateDto {
   @IsString()
@@ -15,4 +15,10 @@ export class SubscribeToTemplateDto {
   @IsOptional()
   @IsString()
   preferredCarerId?: string;
+
+  // Prepaid term length in months (1, 3, 6 or 12 — whichever Settings offers).
+  @IsOptional()
+  @IsInt()
+  @IsIn([1, 3, 6, 12])
+  termMonths?: number;
 }

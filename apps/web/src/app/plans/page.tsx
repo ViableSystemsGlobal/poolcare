@@ -99,6 +99,7 @@ export default function PlansPage() {
     notes: "",
     billingType: "per_visit",
     autoRenew: false,
+    termMonths: 3,
     templateId: "",
     preferredCarerId: "",
   });
@@ -121,6 +122,22 @@ export default function PlansPage() {
 
   // The PoolCare plan chosen for this subscription. Pricing, frequency, billing,
   // duration etc. all come from it — the form only collects per-client details.
+  // Prepaid term lengths + discounts from Settings → Policies → Prepaid Terms.
+  const [prepaidTerms, setPrepaidTerms] = useState<Array<{ months: number; discountPct: number; enabled: boolean }>>([]);
+  useEffect(() => {
+    const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+    fetch(`${API_URL}/settings/prepaid-terms`, { headers: { Authorization: `Bearer ${localStorage.getItem("auth_token")}` } })
+      .then((r) => (r.ok ? r.json() : []))
+      .then((terms) => {
+        setPrepaidTerms(terms);
+        const offered = (terms || []).filter((t: any) => t.enabled);
+        if (offered.length && !offered.some((t: any) => t.months === 3)) {
+          setFormData((f: any) => ({ ...f, termMonths: offered[0].months }));
+        }
+      })
+      .catch(() => undefined);
+  }, []);
+
   const selectedTemplate = useMemo(
     () => subscriptionTemplates.find((t) => t.id === formData.templateId) || null,
     [subscriptionTemplates, formData.templateId]
@@ -394,6 +411,7 @@ export default function PlansPage() {
       notes: "",
       billingType: "per_visit",
       autoRenew: false,
+    termMonths: 3,
       templateId: "",
       preferredCarerId: "",
     });
@@ -445,7 +463,10 @@ export default function PlansPage() {
       if (formData.endsOn) payload.endsOn = formData.endsOn;
       if (formData.notes) payload.notes = formData.notes;
       if (formData.preferredCarerId) payload.preferredCarerId = formData.preferredCarerId;
-      if (selectedTemplate?.billingType === "prepaid") payload.autoRenew = !!formData.autoRenew;
+      if (selectedTemplate?.billingType === "prepaid") {
+        payload.autoRenew = !!formData.autoRenew;
+        payload.termMonths = formData.termMonths;
+      }
 
       const url = `${API_URL}/service-plans/from-template/${formData.templateId}`;
 
@@ -565,7 +586,7 @@ export default function PlansPage() {
                   <div className="flex justify-between">
                     <span className="text-gray-500">Billing</span>
                     <span className="font-medium capitalize">
-                      {selectedTemplate.billingType === "prepaid" ? "Prepaid, 3 months" : selectedTemplate.billingType}
+                      {selectedTemplate.billingType === "prepaid" ? "Prepaid" : selectedTemplate.billingType}
                     </span>
                   </div>
                   <div className="flex justify-between">
@@ -578,8 +599,8 @@ export default function PlansPage() {
                   </div>
                   {selectedTemplate.billingType === "prepaid" && (
                     <p className="col-span-2 text-xs text-gray-500">
-                      Price is the monthly rate. The client is invoiced for the full 3-month term now, and visits
-                      are scheduled once that invoice is paid.
+                      Price is the monthly rate. The client is invoiced for the whole term now, and visits are
+                      scheduled once that invoice is paid.
                     </p>
                   )}
                   {selectedTemplate.pricingType === "range" && (
@@ -676,6 +697,42 @@ export default function PlansPage() {
                   />
                 </div>
               </div>
+
+              {selectedTemplate?.billingType === "prepaid" && (
+                <div className="grid gap-2">
+                  <Label>Prepaid term *</Label>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    {prepaidTerms
+                      .filter((t) => t.enabled)
+                      .map((t) => {
+                        const on = formData.termMonths === t.months;
+                        const monthly = (selectedTemplate.priceCents || 0) / 100;
+                        const total = monthly * t.months * (1 - t.discountPct / 100);
+                        return (
+                          <button
+                            key={t.months}
+                            type="button"
+                            onClick={() => setFormData({ ...formData, termMonths: t.months })}
+                            className={`rounded-lg p-3 text-left transition-colors ${
+                              on ? "bg-gray-900 text-white" : "bg-gray-100 text-gray-900 hover:bg-gray-200"
+                            }`}
+                          >
+                            <span className="block text-sm font-semibold">
+                              {t.months} month{t.months > 1 ? "s" : ""}
+                            </span>
+                            <span className={`block text-xs tabular-nums ${on ? "text-gray-200" : "text-gray-600"}`}>
+                              {formatCurrencyForDisplay(selectedTemplate.currency || "GHS")}
+                              {total.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </span>
+                            <span className={`block text-xs ${on ? "text-emerald-300" : "text-emerald-700"}`}>
+                              {t.discountPct ? `${t.discountPct}% off` : "\u00a0"}
+                            </span>
+                          </button>
+                        );
+                      })}
+                  </div>
+                </div>
+              )}
 
               {selectedTemplate?.billingType === "prepaid" && (
                 <div className="flex items-start gap-3 rounded-lg bg-gray-50 p-3">
@@ -992,7 +1049,7 @@ export default function PlansPage() {
                           ) : (
                             <div>
                               <div className="font-medium capitalize">
-                                {plan.billingType === "prepaid" ? "Prepaid, 3 months" : plan.billingType}
+                                {plan.billingType === "prepaid" ? `Prepaid, ${plan.termMonths || 3} mo` : plan.billingType}
                               </div>
                               {plan.billingType === "prepaid" ? (
                                 plan.paidThrough && (

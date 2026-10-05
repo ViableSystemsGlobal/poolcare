@@ -39,11 +39,11 @@ export class AgreementsService {
 
   /** Schedule B snapshot built from the plan as it stands now. */
   private async buildScheduleB(plan: any) {
-    const months = plan.termMonths || 3;
     const currentTerm = await prisma.subscriptionBilling.findFirst({
       where: { planId: plan.id, status: { in: ["paid", "pending"] } },
       orderBy: { billingPeriodStart: "desc" },
     });
+    const months = currentTerm?.termMonths || plan.termMonths || 3;
     return {
       client: plan.pool?.client?.name || null,
       serviceProperty: plan.pool?.name || null,
@@ -54,7 +54,8 @@ export class AgreementsService {
       termMonths: plan.billingType === "prepaid" ? months : null,
       monthlyRateCents: plan.priceCents,
       standardRateCents: plan.standardRateCents ?? null,
-      termAmountCents: plan.billingType === "prepaid" ? plan.priceCents * months : null,
+      termAmountCents: plan.billingType === "prepaid" ? currentTerm?.amountCents ?? plan.priceCents * months : null,
+      prepaidDiscountPct: currentTerm?.termDiscountPct ?? null,
       currency: plan.currency || "GHS",
       frequency: plan.frequency,
       serviceDays: plan.dow || null,

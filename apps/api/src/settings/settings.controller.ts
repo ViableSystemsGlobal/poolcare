@@ -2,6 +2,7 @@ import { Controller, Get, Patch, Body, UseGuards, Post, UseInterceptors, Uploade
 import { FileInterceptor } from "@nestjs/platform-express";
 import { SettingsService } from "./settings.service";
 import { loadChemicalRates, normalizeChemicalRates } from "./chemical-rates";
+import { loadPrepaidTerms, normalizePrepaidTerms } from "./prepaid-terms";
 import { prisma } from "@poolcare/db";
 import { FilesService } from "../files/files.service";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
@@ -114,6 +115,27 @@ export class SettingsController {
   @Roles("ADMIN", "MANAGER")
   async updateDailyBriefingSettings(@CurrentUser() user: any, @Body() data: any) {
     return this.settingsService.updateDailyBriefingSettings(user.org_id, data);
+  }
+
+  /** Prepaid term lengths and their discounts — readable by clients (they choose a term in the app). */
+  @Get("prepaid-terms")
+  async getPrepaidTerms(@CurrentUser() user: any) {
+    return loadPrepaidTerms(user.org_id);
+  }
+
+  @Patch("prepaid-terms")
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "MANAGER")
+  async updatePrepaidTerms(@CurrentUser() user: any, @Body() body: { terms: any[] }) {
+    const terms = normalizePrepaidTerms(body?.terms);
+    const existing = await prisma.orgSetting.findUnique({ where: { orgId: user.org_id } });
+    const policies = { ...((existing?.policies as any) || {}), prepaidTerms: terms };
+    await prisma.orgSetting.upsert({
+      where: { orgId: user.org_id },
+      update: { policies },
+      create: { orgId: user.org_id, policies },
+    });
+    return terms;
   }
 
   /** Chemical rate card — readable by carers (they pick chemicals from it). */

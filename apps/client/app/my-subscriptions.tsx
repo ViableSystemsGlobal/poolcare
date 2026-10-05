@@ -27,6 +27,7 @@ interface ServicePlan {
   nextVisitAt?: string;
   nextBillingDate?: string;
   paidThrough?: string | null;
+  termMonths?: number;
   currentTerm?: { delivered: number; entitled: number; upcoming: number } | null;
   emergencyVisitsPerMonth?: number | null;
   emergencyUsedThisMonth?: number;
@@ -51,7 +52,7 @@ const BILLING_LABEL: Record<string, string> = {
   quarterly: "/ quarter",
   annually: "/ year",
   per_visit: "/ visit",
-  prepaid: "/ month, paid 3 months ahead",
+  prepaid: "/ month, prepaid",
 };
 
 export default function MySubscriptionsScreen() {
@@ -358,7 +359,11 @@ function PlanCard({ plan, themeColor, fmt, fmtDate, statusMeta, onCancel, onRene
           <Text style={[styles.planPrice, { color: themeColor }]}>
             {fmt(plan.priceCents, plan.currency)}
           </Text>
-          <Text style={styles.planPricePer}>{BILLING_LABEL[plan.billingType] || `/ ${plan.billingType}`}</Text>
+          <Text style={styles.planPricePer}>
+            {plan.billingType === "prepaid"
+              ? `/ month · ${plan.termMonths || 3}-month term`
+              : BILLING_LABEL[plan.billingType] || `/ ${plan.billingType}`}
+          </Text>
         </View>
       </View>
 

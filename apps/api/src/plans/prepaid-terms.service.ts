@@ -6,6 +6,7 @@ import { NotificationsService } from "../notifications/notifications.service";
 import { createEmailTemplate, getOrgEmailSettings } from "../email/email-template.util";
 import { nextInvoiceNumber } from "../invoices/invoice-number.util";
 import { contractedVisitsFor, settleCarryForward, summarizeTerm } from "./visit-entitlement";
+import { resolveTermOption } from "../settings/prepaid-terms";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 // Contract cl. 4.8: renewal price must be notified at least 14 days before payment.
@@ -87,18 +88,33 @@ export class PrepaidTermsService {
       const requested = plan.startsOn ? dateOnly(plan.startsOn) : today;
       start = requested > today ? requested : today;
     }
-    const months = plan.termMonths || 3;
+    // Term length and its prepaid discount come from Settings → Prepaid Terms
+    // at the moment of invoicing; both are stored on the term.
+    const option = await resolveTermOption(orgId, plan.termMonths || 3);
+    const months = option.months;
     const end = termEnd(start, months);
 
     // Contract prices are tax-inclusive (cl. 16.3): the plan's monthly rate is
     // the gross figure, so tax is carved out of it rather than added on top.
-    const grossCents = Math.round(plan.priceCents * months * (1 - (plan.discountPct || 0) / 100));
+    const baseGrossCents = Math.round(plan.priceCents * months * (1 - (plan.discountPct || 0) / 100));
+    const discountGrossCents = Math.round((baseGrossCents * option.discountPct) / 100);
+    const grossCents = baseGrossCents - discountGrossCents;
     const taxPct = plan.taxPct || 0;
-    const subtotalCents = Math.round(grossCents / (1 + taxPct / 100));
+    const net = (cents: number) => Math.round(cents / (1 + taxPct / 100));
+    const subtotalCents = net(grossCents);
     const taxCents = grossCents - subtotalCents;
     const currency = plan.currency || "GHS";
     const planName = plan.template?.name || "Service plan";
     const label = `${planName} — ${months}-month prepaid term (${fmtDate(start)} – ${fmtDate(end)})`;
+    const items: any[] = [{ label, qty: months, unitPriceCents: Math.round(net(baseGrossCents) / months), taxPct }];
+    if (discountGrossCents > 0) {
+      items.push({
+        label: `${months}-month prepaid discount (${option.discountPct}%)`,
+        qty: 1,
+        unitPriceCents: -net(discountGrossCents),
+        taxPct,
+      });
+    }
 
     const billing = await prisma.$transaction(async (tx) => {
       const invoiceNumber = await nextInvoiceNumber(orgId, tx);
@@ -111,14 +127,14 @@ export class PrepaidTermsService {
           invoiceNumber,
           status: "sent",
           currency,
-          items: [{ label, qty: months, unitPriceCents: Math.round(subtotalCents / months), taxPct }],
+          items,
           subtotalCents,
           taxCents,
           totalCents: grossCents,
           dueDate: start,
           issuedAt: new Date(),
           notes: "Prepaid term: service for this period begins once payment is received in full.",
-          metadata: { servicePlanId: plan.id, prepaidTerm: true, kind },
+          metadata: { servicePlanId: plan.id, prepaidTerm: true, kind, termMonths: months, termDiscountPct: option.discountPct },
         },
       });
       return tx.subscriptionBilling.create({
@@ -131,6 +147,8 @@ export class PrepaidTermsService {
           amountCents: grossCents,
           currency,
           status: "pending",
+          termMonths: months,
+          termDiscountPct: option.discountPct,
         },
         include: { invoice: true },
       });
@@ -173,8 +191,9 @@ export class PrepaidTermsService {
     } else if (start < today) {
       start = today;
     }
-    const end = termEnd(start, plan.termMonths || 3);
-    const contractedVisits = contractedVisitsFor(plan, plan.termMonths || 3);
+    const months = billing.termMonths || plan.termMonths || 3;
+    const end = termEnd(start, months);
+    const contractedVisits = contractedVisitsFor(plan, months);
 
     await prisma.$transaction([
       prisma.subscriptionBilling.update({
@@ -249,7 +268,7 @@ export class PrepaidTermsService {
     });
     if (!term) throw new NotFoundException("Paid term not found");
     const summary = await summarizeTerm(term);
-    const months = term.plan.termMonths || 3;
+    const months = term.termMonths || term.plan.termMonths || 3;
     const standardRateCents = term.plan.standardRateCents ?? term.plan.priceCents;
     const perVisitCents = summary.contracted > 0 ? Math.round((standardRateCents * months) / summary.contracted) : 0;
     const paidCents = term.invoice?.paidCents ?? term.amountCents;

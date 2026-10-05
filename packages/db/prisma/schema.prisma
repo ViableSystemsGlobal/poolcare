@@ -1065,6 +1065,10 @@ model SubscriptionBilling {
   // carry can be settled.
   contractedVisits   Int?
   carriedInVisits    Int?
+  // Length and prepaid discount this term was bought at (settings → prepaid
+  // terms). Fixed at invoicing so later plan changes can't alter a sold term.
+  termMonths         Int?
+  termDiscountPct    Float?
   paidAt             DateTime? @db.Timestamptz(6)
   failureReason      String?
   createdAt          DateTime  @default(now()) @db.Timestamptz(6)

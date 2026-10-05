@@ -52,6 +52,24 @@ export default function SubscriptionsScreen() {
   const [showSubscribeModal, setShowSubscribeModal] = useState(false);
   const [selectedPoolId, setSelectedPoolId] = useState<string>("");
   const [autoRenew, setAutoRenew] = useState(true);
+  // Prepaid packages: term length (1/3/6/12 months) with its discount.
+  const [prepaidTerms, setPrepaidTerms] = useState<Array<{ months: number; discountPct: number; enabled: boolean }>>([]);
+  const [termMonths, setTermMonths] = useState(3);
+  const isPrepaid = selectedTemplate?.billingType === "prepaid";
+  const offeredTerms = prepaidTerms.filter((t) => t.enabled);
+
+  useEffect(() => {
+    api.getPrepaidTerms().then(setPrepaidTerms).catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
+    if (!selectedTemplate) return;
+    // Prepaid auto-renewal must be an express choice (service agreement cl. 4.8).
+    setAutoRenew(selectedTemplate.billingType !== "prepaid");
+    if (offeredTerms.length && !offeredTerms.some((t) => t.months === termMonths)) {
+      setTermMonths(offeredTerms.find((t) => t.months === 3)?.months || offeredTerms[0].months);
+    }
+  }, [selectedTemplate?.id, prepaidTerms.length]);
   const [carers, setCarers] = useState<{ id: string; name: string }[]>([]);
   const [selectedCarerId, setSelectedCarerId] = useState<string>("");
 
@@ -102,6 +120,7 @@ export default function SubscriptionsScreen() {
       await api.subscribeToTemplate(selectedTemplate.id, {
         poolId: selectedPoolId,
         autoRenew,
+        ...(isPrepaid ? { termMonths } : {}),
         ...(selectedCarerId ? { preferredCarerId: selectedCarerId } : {}),
       });
 
@@ -154,6 +173,7 @@ export default function SubscriptionsScreen() {
       quarterly: "Quarterly",
       annually: "Annually",
       per_visit: "Per Visit",
+      prepaid: "Month",
     };
     return labels[billingType] || billingType;
   };
@@ -410,6 +430,45 @@ export default function SubscriptionsScreen() {
 
               {pools.length > 0 && (
                 <>
+                  {isPrepaid && offeredTerms.length > 0 && selectedTemplate && (
+                    <View style={styles.formGroup}>
+                      <Text style={styles.label}>Pay ahead for</Text>
+                      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+                        {offeredTerms.map((t) => {
+                          const on = termMonths === t.months;
+                          const total = selectedTemplate.priceCents * t.months * (1 - t.discountPct / 100);
+                          return (
+                            <TouchableOpacity
+                              key={t.months}
+                              onPress={() => setTermMonths(t.months)}
+                              style={{
+                                flexBasis: "47%",
+                                flexGrow: 1,
+                                padding: 12,
+                                borderRadius: 12,
+                                borderWidth: 1.5,
+                                borderColor: on ? themeColor : "#e5e7eb",
+                                backgroundColor: on ? `${themeColor}12` : "#fff",
+                              }}
+                            >
+                              <Text style={{ fontSize: 15, fontWeight: "700", color: "#111827" }}>
+                                {t.months} month{t.months > 1 ? "s" : ""}
+                              </Text>
+                              <Text style={{ fontSize: 13, color: "#374151", marginTop: 2 }}>
+                                {formatCurrency(Math.round(total), selectedTemplate.currency)}
+                              </Text>
+                              {t.discountPct > 0 && (
+                                <Text style={{ fontSize: 12, fontWeight: "600", color: "#16a34a", marginTop: 2 }}>
+                                  Save {t.discountPct}%
+                                </Text>
+                              )}
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                    </View>
+                  )}
+
                   <View style={styles.formGroup}>
                     <TouchableOpacity
                       style={styles.checkboxRow}
@@ -420,7 +479,9 @@ export default function SubscriptionsScreen() {
                         size={24}
                         color={autoRenew ? themeColor : "#9ca3af"}
                       />
-                      <Text style={styles.checkboxLabel}>Auto-renew subscription</Text>
+                      <Text style={styles.checkboxLabel}>
+                        {isPrepaid ? `Renew automatically every ${termMonths} month${termMonths > 1 ? "s" : ""}` : "Auto-renew subscription"}
+                      </Text>
                     </TouchableOpacity>
                   </View>
 
@@ -437,6 +498,22 @@ export default function SubscriptionsScreen() {
                           {formatCurrency(selectedTemplate.priceCents, selectedTemplate.currency)}/{getBillingLabel(selectedTemplate.billingType)}
                         </Text>
                       </View>
+                      {isPrepaid && (
+                        <View style={styles.summaryRow}>
+                          <Text style={styles.summaryLabel}>Pay now</Text>
+                          <Text style={styles.summaryValue}>
+                            {formatCurrency(
+                              Math.round(
+                                selectedTemplate.priceCents *
+                                  termMonths *
+                                  (1 - (offeredTerms.find((t) => t.months === termMonths)?.discountPct || 0) / 100)
+                              ),
+                              selectedTemplate.currency
+                            )}{" "}
+                            for {termMonths} month{termMonths > 1 ? "s" : ""}
+                          </Text>
+                        </View>
+                      )}
                       <View style={styles.summaryRow}>
                         <Text style={styles.summaryLabel}>Service</Text>
                         <Text style={styles.summaryValue}>

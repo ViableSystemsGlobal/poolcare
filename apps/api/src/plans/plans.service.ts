@@ -8,6 +8,7 @@ import { PrepaidTermsService } from "./prepaid-terms.service";
 import { DEFAULT_DAYS, WEEKLY_DAY_COUNT, emergencyVisitsUsedThisMonth, missedVisitsLast30Days } from "./visit-entitlement";
 import { chemicalUsageThisMonth } from "../settings/chemical-rates";
 import { buildPerformanceReport } from "./performance-report";
+import { resolveTermOption } from "../settings/prepaid-terms";
 
 @Injectable()
 export class PlansService {
@@ -182,6 +183,7 @@ export class PlansService {
     let trialEndsAt: Date | null = null;
     // Prepaid plans wait for their first term to be paid before any visit is scheduled.
     const isPrepaid = billingType === "prepaid";
+    const termMonths = isPrepaid ? (await resolveTermOption(orgId, dto.termMonths)).months : 3;
     let status = isPrepaid ? "pending_payment" : "active";
 
     if (billingType !== "per_visit" && !isPrepaid && startsOnDate) {
@@ -213,6 +215,7 @@ export class PlansService {
         // Subscription fields
         billingType,
         autoRenew: dto.autoRenew || false,
+        termMonths,
         nextBillingDate,
         trialEndsAt,
       },
@@ -265,6 +268,7 @@ export class PlansService {
     // Calculate subscription dates
     const billingType = template.billingType;
     const isPrepaid = billingType === "prepaid";
+    const termMonths = isPrepaid ? (await resolveTermOption(orgId, overrides?.termMonths)).months : 3;
     // Prepaid terms have no trial: service starts when the first term is paid.
     const trialEndsAt = !isPrepaid && template.trialDays > 0
       ? new Date(startsOnDate.getTime() + template.trialDays * 24 * 60 * 60 * 1000)
@@ -300,6 +304,7 @@ export class PlansService {
         // Subscription fields from template
         billingType,
         autoRenew: overrides?.autoRenew ?? false,
+        termMonths,
         nextBillingDate,
         trialEndsAt,
       },
@@ -738,6 +743,10 @@ Thank you for choosing PoolCare!`;
 
     const endsOnDate = dto.endsOn ? new Date(dto.endsOn) : undefined;
     const frequency = dto.frequency || plan.frequency;
+    const termChange =
+      dto.termMonths !== undefined && dto.termMonths !== plan.termMonths
+        ? { termMonths: (await resolveTermOption(orgId, dto.termMonths)).months, visitsPerTerm: null }
+        : {};
     const dow = dto.dow !== undefined || dto.frequency ? this.normalizeDays(frequency, dto.dow ?? plan.dow) : undefined;
 
     const updated = await prisma.servicePlan.update({
@@ -757,6 +766,7 @@ Thank you for choosing PoolCare!`;
         endsOn: endsOnDate,
         notes: dto.notes,
         ...(dto.visitsPerTerm !== undefined ? { visitsPerTerm: dto.visitsPerTerm } : {}),
+        ...termChange,
         ...(dto.emergencyVisitsPerMonth !== undefined ? { emergencyVisitsPerMonth: dto.emergencyVisitsPerMonth } : {}),
         ...(dto.chemicalAllowanceCents !== undefined ? { chemicalAllowanceCents: dto.chemicalAllowanceCents } : {}),
         ...(dto.standardRateCents !== undefined ? { standardRateCents: dto.standardRateCents } : {}),
