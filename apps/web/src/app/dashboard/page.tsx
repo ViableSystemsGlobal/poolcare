@@ -579,7 +579,7 @@ export default function Dashboard() {
                   Plan Mix
                 </h3>
                 <p className="text-xs text-gray-400 mb-3">Active service plans by package</p>
-                <div className="flex-1 flex items-center">
+                <div className="flex-1 flex items-center min-w-0">
                   <PlanMixDonut data={trends.planMix} />
                 </div>
               </div>

@@ -138,7 +138,8 @@ export function PlanMixDonut({ data }: { data: PlanMixSlice[] }) {
   }
 
   return (
-    <div className="flex items-center gap-2">
+    // Legend sits beside the donut when the card is wide enough, else wraps below it.
+    <div className="flex w-full min-w-0 flex-wrap items-center justify-center gap-4">
       <div className="relative h-52 w-52 shrink-0">
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>
@@ -159,13 +160,16 @@ export function PlanMixDonut({ data }: { data: PlanMixSlice[] }) {
           <span className="text-[11px] text-gray-400">active plans</span>
         </div>
       </div>
-      <div className="flex-1 min-w-0 space-y-2">
+      <div className="flex-1 min-w-[200px] space-y-2">
         {slices.map((s) => (
-          <div key={s.name} className="flex items-center gap-2 text-sm">
-            <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: s.fill }} />
-            <span className="text-gray-600 truncate">{s.name}</span>
-            <span className="ml-auto font-semibold text-gray-900">{s.count}</span>
-            <span className="text-xs text-gray-400 w-9 text-right">{s.pct}%</span>
+          <div key={s.name} className="flex items-start gap-2 text-sm">
+            <span className="mt-1.5 h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: s.fill }} />
+            {/* Long package names wrap to two lines inside the card; full name on hover. */}
+            <span className="flex-1 min-w-0 text-gray-600 leading-snug line-clamp-2 break-words" title={s.name}>
+              {s.name}
+            </span>
+            <span className="shrink-0 font-semibold text-gray-900 tabular-nums">{s.count}</span>
+            <span className="shrink-0 text-xs text-gray-400 w-9 text-right tabular-nums leading-5">{s.pct}%</span>
           </div>
         ))}
       </div>
