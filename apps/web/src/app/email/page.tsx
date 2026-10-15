@@ -225,7 +225,7 @@ export default function EmailPage() {
         toast({ title: "Email sent", description: "Your email was sent successfully." });
       } else {
         const error = await response.json();
-        toast({ title: "Failed to send", description: error.error || "Unknown error", variant: "destructive" });
+        toast({ title: "Failed to send", description: error.message || error.error || "Unknown error", variant: "destructive" });
       }
     } catch (error: any) {
       toast({ title: "Failed to send", description: error.message || "Unknown error", variant: "destructive" });

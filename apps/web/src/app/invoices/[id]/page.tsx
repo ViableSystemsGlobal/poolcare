@@ -187,7 +187,7 @@ export default function InvoiceDetailPage() {
         await fetchInvoice();
       } else {
         const error = await response.json();
-        alert(`Failed to send invoice: ${error.error || "Unknown error"}`);
+        alert(`Failed to send invoice: ${error.message || error.error || "Unknown error"}`);
       }
     } catch (error) {
       console.error("Failed to send invoice:", error);
@@ -199,9 +199,9 @@ export default function InvoiceDetailPage() {
     try {
       const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
       const balanceCents = invoice!.totalCents - invoice!.paidCents;
-      const amountCents = paymentAmount ? parseInt(paymentAmount) * 100 : balanceCents;
+      const amountCents = paymentAmount ? Math.round(parseFloat(paymentAmount) * 100) : balanceCents;
 
-      const response = await fetch(`${API_URL}/invoices/${invoiceId}/pay/paystack`, {
+      const response = await fetch(`${API_URL}/invoices/${invoiceId}/payments/init`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -214,8 +214,8 @@ export default function InvoiceDetailPage() {
         const data = await response.json();
         // In production, redirect to Paystack checkout
         // For now, open in new window
-        if (data.authorization_url) {
-          window.open(data.authorization_url, "_blank");
+        if (data.authorizationUrl) {
+          window.open(data.authorizationUrl, "_blank");
           setIsPayDialogOpen(false);
           alert(
             "Payment page opened. After payment, the invoice will be updated automatically via webhook."
@@ -223,7 +223,7 @@ export default function InvoiceDetailPage() {
         }
       } else {
         const error = await response.json();
-        alert(`Failed to initialize payment: ${error.error || "Unknown error"}`);
+        alert(`Failed to initialize payment: ${error.message || error.error || "Unknown error"}`);
       }
     } catch (error: any) {
       console.error("Failed to initialize payment:", error);
@@ -239,7 +239,7 @@ export default function InvoiceDetailPage() {
       }
 
       const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
-      const amountCents = parseInt(paymentAmount) * 100;
+      const amountCents = Math.round(parseFloat(paymentAmount) * 100);
 
       const response = await fetch(`${API_URL}/invoices/payments`, {
         method: "POST",

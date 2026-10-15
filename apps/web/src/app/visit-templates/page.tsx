@@ -468,7 +468,7 @@ export default function VisitTemplatesPage() {
         await fetchTemplates();
       } else {
         const error = await response.json();
-        alert(`Failed to update template: ${error.error || "Unknown error"}`);
+        alert(`Failed to update template: ${error.message || error.error || "Unknown error"}`);
       }
     } catch (error) {
       console.error("Failed to update template:", error);
@@ -492,7 +492,7 @@ export default function VisitTemplatesPage() {
         await fetchTemplates();
       } else {
         const error = await response.json();
-        alert(`Failed to delete template: ${error.error || error.details || "Unknown error"}`);
+        alert(`Failed to delete template: ${error.message || error.error || error.details || "Unknown error"}`);
       }
     } catch (error) {
       console.error("Failed to delete template:", error);

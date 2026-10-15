@@ -298,7 +298,7 @@ export default function IssuesPage() {
         const error = await response.json();
         toast({
           title: "Error",
-          description: error.error || "Failed to create issue",
+          description: error.message || error.error || "Failed to create issue",
           variant: "destructive",
         });
       }
@@ -350,7 +350,7 @@ export default function IssuesPage() {
         const error = await response.json();
         toast({
           title: "Error",
-          description: error.error || "Failed to update issue",
+          description: error.message || error.error || "Failed to update issue",
           variant: "destructive",
         });
       }

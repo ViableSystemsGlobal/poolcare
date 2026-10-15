@@ -280,7 +280,7 @@ export default function ClientDetailPage() {
         const error = await response.json();
         toast({
           title: "Error",
-          description: error.error || "Failed to update client",
+          description: error.message || error.error || "Failed to update client",
           variant: "destructive",
         });
       }
@@ -459,7 +459,7 @@ export default function ClientDetailPage() {
         const error = await response.json();
         toast({
           title: "Error",
-          description: error.error || "Failed to remove member",
+          description: error.message || error.error || "Failed to remove member",
           variant: "destructive",
         });
       }

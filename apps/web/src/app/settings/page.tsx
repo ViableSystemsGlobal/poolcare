@@ -3070,7 +3070,7 @@ export default function SettingsPage() {
                             toast({ title: "Settings saved" });
                                               } else {
                             const error = await response.json();
-                            toast({ title: "Save failed", description: error.error || "Unknown error", variant: "destructive" });
+                            toast({ title: "Save failed", description: error.message || error.error || "Unknown error", variant: "destructive" });
                           }
                         } catch (error: any) {
                           toast({ title: "Save failed", description: error.message || "Unknown error", variant: "destructive" });
@@ -3264,7 +3264,7 @@ export default function SettingsPage() {
                             toast({ title: "Settings saved" });
                                               } else {
                             const error = await response.json();
-                            toast({ title: "Save failed", description: error.error || "Unknown error", variant: "destructive" });
+                            toast({ title: "Save failed", description: error.message || error.error || "Unknown error", variant: "destructive" });
                           }
                         } catch (error: any) {
                           toast({ title: "Save failed", description: error.message || "Unknown error", variant: "destructive" });

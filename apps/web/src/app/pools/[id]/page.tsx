@@ -257,7 +257,7 @@ export default function PoolDetailPage() {
         await fetchPoolData();
       } else {
         const error = await response.json();
-        alert(`Failed to update pool: ${error.error || "Unknown error"}`);
+        alert(`Failed to update pool: ${error.message || error.error || "Unknown error"}`);
       }
     } catch (error) {
       console.error("Failed to update pool:", error);

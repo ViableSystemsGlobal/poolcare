@@ -19,6 +19,9 @@ async function bootstrap() {
     // Increase body size limit for photo uploads (10MB)
     // NestJS uses express under the hood, so we can access the underlying express app
     const expressApp = app.getHttpAdapter().getInstance();
+    // Behind one nginx hop in production: take the client IP from
+    // X-Forwarded-For, or every request shares one rate-limit bucket.
+    expressApp.set("trust proxy", 1);
     expressApp.use(express.json({ limit: '10mb' }));
     expressApp.use(express.urlencoded({ limit: '10mb', extended: true }));
 

@@ -187,7 +187,7 @@ export default function NotificationsPage() {
         fetchNotifications();
       } else {
         const error = await response.json();
-        alert(`Failed to resend: ${error.error || "Unknown error"}`);
+        alert(`Failed to resend: ${error.message || error.error || "Unknown error"}`);
       }
     } catch (error) {
       console.error("Failed to resend notification:", error);
@@ -209,7 +209,7 @@ export default function NotificationsPage() {
         fetchNotifications();
       } else {
         const error = await response.json();
-        alert(`Failed to cancel: ${error.error || "Unknown error"}`);
+        alert(`Failed to cancel: ${error.message || error.error || "Unknown error"}`);
       }
     } catch (error) {
       console.error("Failed to cancel notification:", error);

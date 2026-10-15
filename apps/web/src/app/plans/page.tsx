@@ -492,7 +492,7 @@ export default function PlansPage() {
         const error = await response.json();
         toast({
           title: "Error",
-          description: `Failed to create plan: ${error.error || error.details || "Unknown error"}`,
+          description: `Failed to create plan: ${error.message || error.error || error.details || "Unknown error"}`,
           variant: "destructive",
         });
       }

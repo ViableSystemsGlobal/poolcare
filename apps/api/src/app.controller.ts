@@ -35,13 +35,15 @@ export class AppController {
     @Query("horizonDays") horizonDays?: string,
     @Headers("x-cron-secret") secret?: string
   ) {
-    // Verify cron secret if set
+    // Verify cron secret; fail closed in production (the in-process 2am cron
+    // already covers generation, so an unset secret only disables this route).
     const expectedSecret = process.env.CRON_SECRET;
-    if (expectedSecret && secret !== expectedSecret) {
+    if (expectedSecret ? secret !== expectedSecret : process.env.NODE_ENV === "production") {
       throw new UnauthorizedException();
     }
 
-    const horizon = horizonDays ? parseInt(horizonDays, 10) : 56;
+    const parsed = horizonDays ? parseInt(horizonDays, 10) : 56;
+    const horizon = Number.isFinite(parsed) ? Math.min(Math.max(parsed, 1), 365) : 56;
     return this.plansSchedulerService.generateJobsForAllPlans(horizon);
   }
 }

@@ -236,7 +236,7 @@ export default function VisitDetailPage() {
     setApproving(true);
     try {
       const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
-      const paymentAmountCents = paymentAmount ? parseFloat(paymentAmount) * 100 : undefined;
+      const paymentAmountCents = paymentAmount ? Math.round(parseFloat(paymentAmount) * 100) : undefined;
 
       const response = await fetch(`${API_URL}/visits/${visitId}/approve`, {
         method: "POST",
@@ -260,7 +260,7 @@ export default function VisitDetailPage() {
         const error = await response.json();
         toast({
           title: "Failed to approve",
-          description: error.error || "Unknown error",
+          description: error.message || error.error || "Unknown error",
           variant: "destructive",
         });
       }

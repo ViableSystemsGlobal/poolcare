@@ -237,7 +237,7 @@ export default function InboxPage() {
         await fetchThreadDetails(selectedThread.id);
       } else {
         const error = await response.json();
-        alert(`Failed to link thread: ${error.error || "Unknown error"}`);
+        alert(`Failed to link thread: ${error.message || error.error || "Unknown error"}`);
       }
     } catch (error) {
       console.error("Failed to link thread:", error);
@@ -385,7 +385,7 @@ export default function InboxPage() {
         await fetchThreads();
       } else {
         const error = await response.json();
-        alert(`Failed to send message: ${error.error || "Unknown error"}`);
+        alert(`Failed to send message: ${error.message || error.error || "Unknown error"}`);
       }
     } catch (error) {
       console.error("Failed to send message:", error);

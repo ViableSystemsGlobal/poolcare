@@ -570,7 +570,7 @@ export default function CarersPage() {
       if (formData.homeBaseAddress.trim()) payload.homeBaseAddress = formData.homeBaseAddress.trim();
       if (formData.ghanaPostAddress.trim()) payload.ghanaPostAddress = formData.ghanaPostAddress.trim().toUpperCase();
       if (formData.ratePerVisitCents) {
-        payload.ratePerVisitCents = parseFloat(formData.ratePerVisitCents) * 100; // Convert to cents
+        payload.ratePerVisitCents = Math.round(parseFloat(formData.ratePerVisitCents) * 100); // Convert to cents
       } else {
         payload.ratePerVisitCents = null; // Allow clearing the rate
       }
@@ -594,7 +594,7 @@ export default function CarersPage() {
         await fetchCarers();
       } else {
         const error = await response.json();
-        alert(`Failed to update carer: ${error.error || "Unknown error"}`);
+        alert(`Failed to update carer: ${error.message || error.error || "Unknown error"}`);
       }
     } catch (error) {
       console.error("Failed to update carer:", error);
@@ -618,7 +618,7 @@ export default function CarersPage() {
         await fetchCarers();
       } else {
         const error = await response.json();
-        alert(`Failed to delete carer: ${error.error || "Unknown error"}`);
+        alert(`Failed to delete carer: ${error.message || error.error || "Unknown error"}`);
       }
     } catch (error) {
       console.error("Failed to delete carer:", error);

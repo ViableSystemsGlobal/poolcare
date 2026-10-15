@@ -1217,11 +1217,16 @@ Thank you for choosing PoolCare!`;
 
     // Get existing jobs for this plan to avoid duplicates. Visits cancelled
     // because a prepaid term expired don't count — a paid renewal reschedules them.
+    // From the start of effectiveStart's day: today's occurrence is keyed by
+    // date, so a visit already booked for earlier today must still count, or a
+    // mid-day run (term activation, the Generate button) books it twice.
+    const existingFrom = new Date(effectiveStart);
+    existingFrom.setHours(0, 0, 0, 0);
     const existingJobs = await prisma.job.findMany({
       where: {
         planId,
         windowStart: {
-          gte: effectiveStart,
+          gte: existingFrom,
           lte: effectiveEnd,
         },
         kind: "routine",

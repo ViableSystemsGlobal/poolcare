@@ -97,7 +97,7 @@ export default function CreditNotesPage() {
   const fetchCreditNotes = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`${API_URL}/credit-notes?limit=100`, {
+      const response = await fetch(`${API_URL}/invoices/credit-notes`, {
         headers: {
           Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
         },
@@ -105,7 +105,7 @@ export default function CreditNotesPage() {
 
       if (response.ok) {
         const data = await response.json();
-        setCreditNotes(data.items || []);
+        setCreditNotes(Array.isArray(data) ? data : data.items || []);
       }
     } catch (error) {
       console.error("Failed to fetch credit notes:", error);
@@ -143,26 +143,32 @@ export default function CreditNotesPage() {
     }
 
     try {
-      const response = await fetch(`${API_URL}/invoices/${formData.invoiceId}/credit-notes`, {
+      const invoice = invoices.find((inv) => inv.id === formData.invoiceId);
+      const response = await fetch(`${API_URL}/invoices/credit-notes`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
         },
         body: JSON.stringify({
+          clientId: invoice?.clientId || invoice?.client?.id,
+          invoiceId: formData.invoiceId,
           reason: formData.reason || undefined,
-          items: formData.items,
-          applyNow: formData.applyNow,
+          items: formData.items.filter((item) => item.label && item.unitPriceCents),
         }),
       });
 
       if (response.ok) {
+        if (formData.applyNow) {
+          const created = await response.json();
+          await applyCreditNote(created.id, formData.invoiceId);
+        }
         setIsCreateDialogOpen(false);
         resetForm();
         fetchCreditNotes();
       } else {
         const error = await response.json();
-        alert(`Failed to create credit note: ${error.error || "Unknown error"}`);
+        alert(`Failed to create credit note: ${error.message || error.error || "Unknown error"}`);
       }
     } catch (error) {
       console.error("Failed to create credit note:", error);
@@ -170,24 +176,28 @@ export default function CreditNotesPage() {
     }
   };
 
-  const handleApply = async (creditNoteId: string) => {
+  const applyCreditNote = (creditNoteId: string, invoiceId: string) =>
+    fetch(`${API_URL}/invoices/credit-notes/${creditNoteId}/apply`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
+      },
+      body: JSON.stringify({ invoiceId }),
+    });
+
+  const handleApply = async (creditNote: CreditNote) => {
+    if (!creditNote.invoiceId) return;
     if (!confirm("Apply this credit note to the invoice?")) return;
 
     try {
-      const response = await fetch(`${API_URL}/credit-notes/${creditNoteId}/apply`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
-        },
-        body: JSON.stringify({}),
-      });
+      const response = await applyCreditNote(creditNote.id, creditNote.invoiceId);
 
       if (response.ok) {
         fetchCreditNotes();
       } else {
         const error = await response.json();
-        alert(`Failed to apply credit note: ${error.error || "Unknown error"}`);
+        alert(`Failed to apply credit note: ${error.message || error.error || "Unknown error"}`);
       }
     } catch (error) {
       console.error("Failed to apply credit note:", error);
@@ -234,8 +244,10 @@ export default function CreditNotesPage() {
     });
   };
 
+  // There is no credit-note detail page; open the invoice it belongs to.
   const handleRowClick = (creditNoteId: string) => {
-    router.push(`/credit-notes/${creditNoteId}`);
+    const invoiceId = creditNotes.find((cn) => cn.id === creditNoteId)?.invoiceId;
+    if (invoiceId) router.push(`/invoices/${invoiceId}`);
   };
 
   const resetForm = () => {
@@ -509,7 +521,7 @@ export default function CreditNotesPage() {
                               size="sm"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                handleApply(creditNote.id);
+                                handleApply(creditNote);
                               }}
                             >
                               Apply
@@ -567,7 +579,7 @@ export default function CreditNotesPage() {
                   ) : (
                     invoices.map((invoice) => (
                       <SelectItem key={invoice.id} value={invoice.id}>
-                        {invoice.invoiceNumber} - {invoice.client?.name || "Unknown"} - {formatCurrencyForDisplay(invoice.currency)}{(invoice.balanceCents / 100).toFixed(2)} balance
+                        {invoice.invoiceNumber} - {invoice.client?.name || "Unknown"} - {formatCurrencyForDisplay(invoice.currency)}{((invoice.totalCents - invoice.paidCents) / 100).toFixed(2)} balance
                       </SelectItem>
                     ))
                   )}

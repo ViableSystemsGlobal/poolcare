@@ -211,7 +211,7 @@ export default function JobDetailPage() {
         await fetchJobData();
       } else {
         const error = await response.json();
-        alert(`Failed to assign job: ${error.error || "Unknown error"}`);
+        alert(`Failed to assign job: ${error.message || error.error || "Unknown error"}`);
       }
     } catch (error) {
       console.error("Failed to assign job:", error);
@@ -235,7 +235,7 @@ export default function JobDetailPage() {
         await fetchJobData();
       } else {
         const error = await response.json();
-        alert(`Failed to unassign job: ${error.error || "Unknown error"}`);
+        alert(`Failed to unassign job: ${error.message || error.error || "Unknown error"}`);
       }
     } catch (error) {
       console.error("Failed to unassign job:", error);
@@ -263,7 +263,7 @@ export default function JobDetailPage() {
         await fetchJobData();
       } else {
         const error = await response.json();
-        alert(`Failed to reschedule job: ${error.error || "Unknown error"}`);
+        alert(`Failed to reschedule job: ${error.message || error.error || "Unknown error"}`);
       }
     } catch (error) {
       console.error("Failed to reschedule job:", error);
@@ -287,7 +287,7 @@ export default function JobDetailPage() {
         await fetchJobData();
       } else {
         const error = await response.json();
-        alert(`Failed to cancel job: ${error.error || "Unknown error"}`);
+        alert(`Failed to cancel job: ${error.message || error.error || "Unknown error"}`);
       }
     } catch (error) {
       console.error("Failed to cancel job:", error);

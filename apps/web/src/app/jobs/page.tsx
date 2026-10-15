@@ -609,7 +609,7 @@ export default function JobsPage() {
         await fetchJobs();
       } else {
         const error = await response.json();
-        alert(`Failed to assign job: ${error.error || "Unknown error"}`);
+        alert(`Failed to assign job: ${error.message || error.error || "Unknown error"}`);
       }
     } catch (error) {
       console.error("Failed to assign job:", error);
@@ -719,7 +719,7 @@ export default function JobsPage() {
         await fetchJobs();
       } else {
         const error = await response.json();
-        alert(`Failed to cancel job: ${error.error || "Unknown error"}`);
+        alert(`Failed to cancel job: ${error.message || error.error || "Unknown error"}`);
       }
     } catch (error) {
       console.error("Failed to cancel job:", error);
@@ -745,7 +745,7 @@ export default function JobsPage() {
         await fetchJobs();
       } else {
         const error = await response.json();
-        alert(`Failed to delete job: ${error.error || "Unknown error"}`);
+        alert(`Failed to delete job: ${error.message || error.error || "Unknown error"}`);
       }
     } catch (error) {
       console.error("Failed to delete job:", error);

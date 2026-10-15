@@ -519,7 +519,7 @@ export default function InvoicesPage() {
         await fetchInvoices();
       } else {
         const error = await response.json();
-        alert(`Failed to send invoice: ${error.error || "Unknown error"}`);
+        alert(`Failed to send invoice: ${error.message || error.error || "Unknown error"}`);
       }
     } catch (error) {
       console.error("Failed to send invoice:", error);
@@ -542,7 +542,7 @@ export default function InvoicesPage() {
         await fetchInvoices();
       } else {
         const error = await response.json();
-        alert(`Failed to delete invoice: ${error.error || "Unknown error"}`);
+        alert(`Failed to delete invoice: ${error.message || error.error || "Unknown error"}`);
       }
     } catch (error) {
       console.error("Failed to delete invoice:", error);

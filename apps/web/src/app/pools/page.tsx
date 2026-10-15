@@ -310,7 +310,7 @@ export default function PoolsPage() {
         const error = await response.json();
         toast({
           title: "Error",
-          description: error.error || "Failed to create pool",
+          description: error.message || error.error || "Failed to create pool",
           variant: "destructive",
         });
       }
@@ -408,7 +408,7 @@ export default function PoolsPage() {
         const error = await response.json();
         toast({
           title: "Error",
-          description: error.error || "Failed to update pool",
+          description: error.message || error.error || "Failed to update pool",
           variant: "destructive",
         });
       }

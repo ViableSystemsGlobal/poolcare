@@ -931,11 +931,31 @@ Thank you for choosing PoolCare!`;
       throw new BadRequestException("Invoice is already fully paid");
     }
     const appliedCents = Math.min(creditNote.amountCents, remainingCents);
-    const newPaidCents = invoice.paidCents + appliedCents;
-    const fullyPaid = newPaidCents >= invoice.totalCents;
+    const leftoverCents = creditNote.amountCents - appliedCents;
 
-    const [, updatedInvoice] = await prisma.$transaction([
-      prisma.payment.create({
+    const { updatedInvoice, fullyPaid } = await prisma.$transaction(async (tx) => {
+      // Claim the note first so two concurrent applies can't both spend it.
+      const claimed = await tx.creditNote.updateMany({
+        where: { id: creditNoteId, appliedAt: null },
+        data: { appliedAt: new Date(), invoiceId, ...(leftoverCents > 0 ? { amountCents: appliedCents } : {}) },
+      });
+      if (claimed.count === 0) throw new BadRequestException("Credit note already applied");
+
+      // Credit larger than the balance: the unused part stays with the client
+      // as a new credit note rather than disappearing.
+      if (leftoverCents > 0) {
+        await tx.creditNote.create({
+          data: {
+            orgId,
+            clientId: creditNote.clientId,
+            reason: `Balance of credit note ${creditNote.id.slice(0, 8)}${creditNote.reason ? ` — ${creditNote.reason}` : ""}`,
+            items: [{ label: "Unused credit carried forward", qty: 1, unitPriceCents: leftoverCents }],
+            amountCents: leftoverCents,
+          },
+        });
+      }
+
+      await tx.payment.create({
         data: {
           orgId,
           invoiceId,
@@ -947,20 +967,21 @@ Thank you for choosing PoolCare!`;
           status: "completed",
           processedAt: new Date(),
         },
-      }),
-      prisma.invoice.update({
+      });
+      const inv = await tx.invoice.update({
+        where: { id: invoiceId },
+        data: { paidCents: { increment: appliedCents } },
+      });
+      const paid = inv.paidCents >= inv.totalCents;
+      const updated = await tx.invoice.update({
         where: { id: invoiceId },
         data: {
-          paidCents: newPaidCents,
-          status: fullyPaid ? "paid" : invoice.status === "draft" ? "draft" : "sent",
-          paidAt: fullyPaid ? new Date() : invoice.paidAt,
+          status: paid ? "paid" : inv.status === "draft" ? "draft" : "sent",
+          paidAt: paid ? inv.paidAt ?? new Date() : inv.paidAt,
         },
-      }),
-      prisma.creditNote.update({
-        where: { id: creditNoteId },
-        data: { appliedAt: new Date(), invoiceId },
-      }),
-    ]);
+      });
+      return { updatedInvoice: updated, fullyPaid: paid };
+    });
 
     // e.g. a credit that settles a prepaid-term invoice starts that term.
     if (fullyPaid) {

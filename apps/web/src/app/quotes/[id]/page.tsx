@@ -135,7 +135,7 @@ export default function QuoteDetailPage() {
         await fetchQuote();
       } else {
         const error = await response.json();
-        alert(`Failed to approve quote: ${error.error || "Unknown error"}`);
+        alert(`Failed to approve quote: ${error.message || error.error || "Unknown error"}`);
       }
     } catch (error) {
       console.error("Failed to approve quote:", error);
@@ -161,7 +161,7 @@ export default function QuoteDetailPage() {
         await fetchQuote();
       } else {
         const error = await response.json();
-        alert(`Failed to reject quote: ${error.error || "Unknown error"}`);
+        alert(`Failed to reject quote: ${error.message || error.error || "Unknown error"}`);
       }
     } catch (error) {
       console.error("Failed to reject quote:", error);
@@ -191,7 +191,7 @@ export default function QuoteDetailPage() {
         router.push(`/invoices/${invoice.id}`);
       } else {
         const error = await response.json();
-        alert(`Failed to create invoice: ${error.error || "Unknown error"}`);
+        alert(`Failed to create invoice: ${error.message || error.error || "Unknown error"}`);
       }
     } catch (error) {
       console.error("Failed to create invoice:", error);

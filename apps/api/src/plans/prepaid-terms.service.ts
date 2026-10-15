@@ -6,7 +6,7 @@ import { NotificationsService } from "../notifications/notifications.service";
 import { createEmailTemplate, getOrgEmailSettings } from "../email/email-template.util";
 import { nextInvoiceNumber } from "../invoices/invoice-number.util";
 import { contractedVisitsFor, settleCarryForward, summarizeTerm } from "./visit-entitlement";
-import { resolveTermOption } from "../settings/prepaid-terms";
+import { loadPrepaidTerms, resolveTermOption } from "../settings/prepaid-terms";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 // Contract cl. 4.8: renewal price must be notified at least 14 days before payment.
@@ -90,7 +90,16 @@ export class PrepaidTermsService {
     }
     // Term length and its prepaid discount come from Settings → Prepaid Terms
     // at the moment of invoicing; both are stored on the term.
-    const option = await resolveTermOption(orgId, plan.termMonths || 3);
+    // A renewal keeps the length the client bought even if that length has
+    // since been switched off in Settings; only new sales must pick an
+    // offered length.
+    const option =
+      kind === "renewal"
+        ? await resolveTermOption(orgId, plan.termMonths || 3).catch(async () => {
+            const all = await loadPrepaidTerms(orgId);
+            return all.find((t) => t.months === (plan.termMonths || 3)) || { months: plan.termMonths || 3, discountPct: 0, enabled: false };
+          })
+        : await resolveTermOption(orgId, plan.termMonths || 3);
     const months = option.months;
     const end = termEnd(start, months);
 

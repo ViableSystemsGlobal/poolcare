@@ -268,29 +268,37 @@ export class PaymentsService {
         return { success: false, message: "Payment not found" };
       }
 
-      // Update payment and invoice atomically
-      const newPaidCents = payment.invoice.paidCents + payment.amountCents;
-      const newStatus = newPaidCents >= payment.invoice.totalCents ? "paid" : "sent";
-
-      await prisma.$transaction([
-        prisma.payment.update({
-          where: { id: payment.id },
+      // Claim the payment and credit the invoice atomically. Paystack retries
+      // deliveries, so only the request that flips pending → completed may
+      // add to paidCents, and the add happens in the database, not from a
+      // stale read.
+      const newStatus = await prisma.$transaction(async (tx) => {
+        const claimed = await tx.payment.updateMany({
+          where: { id: payment!.id, status: "pending" },
           data: {
             status: "completed",
-            providerRef,
+            // Paystack's transaction id is a number; the column is a string.
+            ...(providerRef != null ? { providerRef: String(providerRef) } : {}),
             processedAt: new Date(),
             metadata: data,
           },
-        }),
-        prisma.invoice.update({
-          where: { id: payment.invoiceId },
-          data: {
-            paidCents: newPaidCents,
-            status: newStatus,
-            paidAt: newStatus === "paid" ? new Date() : payment.invoice.paidAt,
-          },
-        }),
-      ]);
+        });
+        if (claimed.count === 0) return null;
+        const inv = await tx.invoice.update({
+          where: { id: payment!.invoiceId },
+          data: { paidCents: { increment: payment!.amountCents } },
+        });
+        if (inv.paidCents < inv.totalCents) return "sent";
+        await tx.invoice.update({
+          where: { id: inv.id },
+          data: { status: "paid", paidAt: inv.paidAt ?? new Date() },
+        });
+        return "paid";
+      });
+
+      if (!newStatus) {
+        return { success: true, message: "Already processed" };
+      }
 
       // Generate receipt if fully paid
       if (newStatus === "paid") {
@@ -381,23 +389,34 @@ export class PaymentsService {
     return { success: false, message: "Unhandled event" };
   }
 
+  /**
+   * Never throws: the payment is already recorded, and a receipt failure must
+   * not skip what follows it (term activation, booking quoted work).
+   */
   private async generateReceipt(orgId: string, invoiceId: string, paymentId: string) {
+    try {
+      await this.createReceipt(orgId, invoiceId, paymentId);
+    } catch (err: any) {
+      this.logger.error(`Receipt generation failed for payment ${paymentId}: ${err.message}`);
+    }
+  }
+
+  private async createReceipt(orgId: string, invoiceId: string, paymentId: string) {
     const year = new Date().getFullYear();
     const prefix = `RCP-${year}-`;
 
-    const lastReceipt = await prisma.receipt.findFirst({
-      where: {
-        orgId,
-        receiptNumber: {
-          startsWith: prefix,
-        },
-      },
-      orderBy: { receiptNumber: "desc" },
+    // receiptNumber is unique across all orgs, so number across all orgs too,
+    // by numeric max (a lexical sort breaks past 9999).
+    const existing = await prisma.receipt.findMany({
+      where: { receiptNumber: { startsWith: prefix } },
+      select: { receiptNumber: true },
     });
-
-    const receiptNumber = lastReceipt
-      ? `${prefix}${String(parseInt(lastReceipt.receiptNumber.replace(prefix, "")) + 1).padStart(4, "0")}`
-      : `${prefix}0001`;
+    let maxNum = 0;
+    for (const { receiptNumber: n } of existing) {
+      const parsed = parseInt(n.slice(prefix.length).split("-")[0], 10);
+      if (Number.isFinite(parsed) && parsed > maxNum) maxNum = parsed;
+    }
+    const receiptNumber = `${prefix}${String(maxNum + 1).padStart(4, "0")}`;
 
     // Fetch invoice and payment details
     const invoice = await prisma.invoice.findFirst({

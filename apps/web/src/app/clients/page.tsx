@@ -263,7 +263,7 @@ export default function ClientsPage() {
         const error = await response.json();
         toast({
           title: "Error",
-          description: error.error || "Failed to create client",
+          description: error.message || error.error || "Failed to create client",
           variant: "destructive",
         });
       }
@@ -319,7 +319,7 @@ export default function ClientsPage() {
         const error = await response.json();
         toast({
           title: "Error",
-          description: error.error || "Failed to update client",
+          description: error.message || error.error || "Failed to update client",
           variant: "destructive",
         });
       }
@@ -356,7 +356,7 @@ export default function ClientsPage() {
         const error = await response.json();
         toast({
           title: "Error",
-          description: error.error || "Failed to delete client",
+          description: error.message || error.error || "Failed to delete client",
           variant: "destructive",
         });
       }

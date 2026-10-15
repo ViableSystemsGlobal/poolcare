@@ -437,7 +437,7 @@ export default function QuotesPage() {
         const error = await response.json();
         toast({
           title: "Error",
-          description: `Failed to approve quote: ${error.error || "Unknown error"}`,
+          description: `Failed to approve quote: ${error.message || error.error || "Unknown error"}`,
           variant: "destructive",
         });
       }
@@ -477,7 +477,7 @@ export default function QuotesPage() {
         const error = await response.json();
         toast({
           title: "Error",
-          description: `Failed to reject quote: ${error.error || "Unknown error"}`,
+          description: `Failed to reject quote: ${error.message || error.error || "Unknown error"}`,
           variant: "destructive",
         });
       }
