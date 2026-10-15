@@ -14,5 +14,22 @@ config.resolver.nodeModulesPaths = [
   path.resolve(workspaceRoot, 'node_modules'),
 ];
 
+// 3. react-native-maps is native-only; stub it on web so the bundle builds
+// (app/jobs/[id].tsx already falls back when the module is unavailable).
+const defaultResolveRequest = config.resolver.resolveRequest;
+config.resolver.resolveRequest = (context, moduleName, platform) => {
+  const webStubs = {
+    'react-native-maps': 'web-stubs/react-native-maps.js',
+    'expo-secure-store': 'web-stubs/expo-secure-store.js',
+  };
+  if (platform === 'web' && webStubs[moduleName]) {
+    return {
+      type: 'sourceFile',
+      filePath: path.resolve(projectRoot, webStubs[moduleName]),
+    };
+  }
+  return (defaultResolveRequest || context.resolveRequest)(context, moduleName, platform);
+};
+
 module.exports = config;
 
