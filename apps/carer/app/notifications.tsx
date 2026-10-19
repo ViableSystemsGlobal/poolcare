@@ -12,6 +12,7 @@ import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { api } from "../src/lib/api-client";
+import { getNotificationsLastSeen, isUnread, markNotificationsSeen } from "../src/lib/notifications-seen";
 import { useTheme } from "../src/contexts/ThemeContext";
 
 interface Notification {
@@ -57,13 +58,16 @@ export default function NotificationsScreen() {
     try {
       const res: any = await api.getNotifications({ limit: 50 });
       const items: any[] = Array.isArray(res) ? res : (res?.items || res?.data || []);
+      // Highlight what's new since the last visit, then mark it all seen
+      const lastSeen = await getNotificationsLastSeen();
+      markNotificationsSeen();
       setNotifications(
         items.map((n: any) => ({
           id: n.id,
           title: n.title || n.subject || "Notification",
           body: n.body || n.message || n.content || "",
           type: n.type || "general",
-          read: !!n.read,
+          read: !isUnread(n.createdAt || n.sentAt, lastSeen),
           createdAt: n.createdAt || n.sentAt || new Date().toISOString(),
         }))
       );

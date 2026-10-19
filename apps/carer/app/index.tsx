@@ -17,6 +17,7 @@ import { api, getApiUrl } from "../src/lib/api-client";
 import { fixUrlForMobile } from "../src/lib/network-utils";
 import { useTheme } from "../src/contexts/ThemeContext";
 import Loader from "../src/components/Loader";
+import { getNotificationsLastSeen, isUnread } from "../src/lib/notifications-seen";
 
 const localHomeCard = require("../assets/poolcare.png");
 
@@ -36,6 +37,10 @@ interface Earnings {
   monthlyEarningsCents: number;
   totalApprovedVisits: number;
   monthlyApprovedVisits: number;
+}
+
+function localDateString(d: Date) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
 function getGreeting() {
@@ -88,7 +93,8 @@ export default function TodayScreen() {
       if (!token) return;
       const res: any = await api.getNotifications({ limit: 50 });
       const items: any[] = Array.isArray(res) ? res : (res?.items || res?.data || []);
-      setUnreadCount(items.filter((n: any) => !n.read).length);
+      const lastSeen = await getNotificationsLastSeen();
+      setUnreadCount(items.filter((n: any) => isUnread(n.createdAt || n.sentAt, lastSeen)).length);
     } catch { /* silent */ }
   }, []);
 
@@ -107,7 +113,9 @@ export default function TodayScreen() {
       setLoading(true);
 
       const [jobsResponse, earningsResponse, carerResponse] = await Promise.all([
-        api.getJobs({}).catch(() => ({ items: [], total: 0 })),
+        // Ask for today onwards: the API pages oldest-first (50 per page), so an
+        // unfiltered request returns only history once a carer has 50+ jobs.
+        api.getJobs({ date: localDateString(new Date()), upcoming: "true" }).catch(() => ({ items: [], total: 0 })),
         api.getEarnings().catch(() => ({
           totalEarningsCents: 0,
           monthlyEarningsCents: 0,

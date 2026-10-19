@@ -132,8 +132,11 @@ export default function ProfileScreen() {
       ...(profile.imageUrl
         ? [{ text: "Remove Photo", style: "destructive" as const, onPress: handleRemovePhoto }]
         : []),
-      { text: "Cancel", style: "cancel" as const },
-    ]);
+      // Android alerts show at most three buttons; there, tapping outside cancels
+      ...(Platform.OS === "android" && profile.imageUrl
+        ? []
+        : [{ text: "Cancel", style: "cancel" as const }]),
+    ], { cancelable: true });
   };
 
   const pickImage = async (source: "camera" | "library") => {

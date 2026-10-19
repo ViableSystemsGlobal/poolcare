@@ -10,3 +10,21 @@ apps/api/uploads/
 
 # Test coverage
 coverage/
+
+# Other apps' build output (website .next alone was ~93 MB of every mobile upload)
+apps/website/.next/
+apps/client/dist/
+apps/carer/dist/
+
+# Native build artifacts — regenerated on the build server
+**/ios/Pods/
+**/ios/build/
+**/android/.gradle/
+**/android/app/build/
+**/android/build/
+
+# The carer app is built from app.config.js (EAS runs prebuild). The local
+# ios/ and android/ folders are stale July prebuilds that lacked the Google
+# Maps key, which crashed Android whenever a job's map opened.
+apps/carer/ios/
+apps/carer/android/

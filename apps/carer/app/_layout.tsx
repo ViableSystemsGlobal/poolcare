@@ -38,6 +38,10 @@ if (Platform.OS === "android") {
 // Keep the splash screen visible while we load resources
 SplashScreen.preventAutoHideAsync();
 
+// Push token is registered once per signed-in session (keyed by auth token),
+// not on every navigation; a new login registers again.
+let pushRegisteredForAuthToken: string | null = null;
+
 // Screens where the floating bottom nav is visible
 const TAB_ROUTES = ["/", "/index", "index", "/schedule", "/supplies", "/earnings", "/profile"];
 
@@ -129,19 +133,24 @@ function LayoutInner() {
     (async () => {
       try {
         const token = await api.getAuthToken();
-        if (!token) return;
+        if (!token || token === pushRegisteredForAuthToken) return;
         const { status: existing } = await Notifications.getPermissionsAsync();
         let finalStatus = existing;
         if (existing !== "granted") {
           const { status } = await Notifications.requestPermissionsAsync();
           finalStatus = status;
         }
-        if (finalStatus !== "granted") return;
+        if (finalStatus !== "granted") {
+          // Don't re-prompt on every screen change once the carer has declined
+          pushRegisteredForAuthToken = token;
+          return;
+        }
         const { data: pushToken } = await Notifications.getExpoPushTokenAsync({
           projectId: "b53852a4-0450-4e67-9690-9564c55cce66",
         });
         const platform = Platform.OS === "ios" ? "ios" : "android";
         await api.registerDeviceToken(pushToken, platform);
+        pushRegisteredForAuthToken = token;
       } catch (e) {
         console.warn("Push token registration failed:", e);
       }

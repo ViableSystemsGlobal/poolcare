@@ -8,6 +8,7 @@ import * as ImagePicker from "expo-image-picker";
 import * as FileSystem from "expo-file-system/legacy";
 import * as Sharing from "expo-sharing";
 import * as Location from "expo-location";
+import Constants from "expo-constants";
 import SwipeButton from "../../src/components/SwipeButton";
 import AccessFailureSheet from "../../src/components/AccessFailureSheet";
 import { useTheme } from "../../src/contexts/ThemeContext";
@@ -26,6 +27,17 @@ try {
 } catch (e) {
   console.warn("react-native-maps not available. Using fallback map view.");
 }
+
+// The native map must never be drawn without a provider that can render it:
+// Google Maps on Android aborts the whole app when the build has no API key,
+// and the Google provider isn't linked on iOS. iOS uses Apple Maps (no key);
+// Android uses Google only when this build was configured with a key, and
+// otherwise drops to the WebView / "open in Maps" fallbacks below.
+const ANDROID_MAPS_KEY: string =
+  (Constants.expoConfig?.android as any)?.config?.googleMaps?.apiKey || "";
+const NATIVE_MAP_AVAILABLE =
+  !!MapView && (Platform.OS === "ios" || (Platform.OS === "android" && !!ANDROID_MAPS_KEY));
+const NATIVE_MAP_PROVIDER = Platform.OS === "android" ? PROVIDER_GOOGLE : undefined;
 import { api, getApiUrl } from "../../src/lib/api-client";
 import { fixUrlForMobile } from "../../src/lib/network-utils";
 import { ChecklistWizard, ChecklistItem as WizardChecklistItem, useToast } from "../../src/components";
@@ -65,6 +77,7 @@ export default function JobDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const insets = useSafeAreaInsets();
   const { themeColor } = useTheme();
+  const { showToast } = useToast();
   const [job, setJob] = useState<any>(null);
   const [visitStarted, setVisitStarted] = useState(false);
   const [arrived, setArrived] = useState(false);
@@ -105,6 +118,10 @@ export default function JobDetailScreen() {
   const [distanceMeters, setDistanceMeters] = useState<number | null>(null);
   const [isWithinGeofence, setIsWithinGeofence] = useState(false);
   const [locationWatching, setLocationWatching] = useState(false);
+  // Why the carer's position isn't known (permission off, GPS failure) — shown
+  // instead of an endless "Getting your location..." spinner.
+  const [locationIssue, setLocationIssue] = useState<string | null>(null);
+  const [locationRetry, setLocationRetry] = useState(0);
   const [googleMapsApiKey, setGoogleMapsApiKey] = useState<string | null>(null);
   const GEOFENCE_RADIUS_METERS = 200; // 200m radius
 
@@ -156,12 +173,15 @@ export default function JobDetailScreen() {
     }
 
     let locationSubscription: Location.LocationSubscription | null = null;
+    let cancelled = false;
 
     const startLocationWatching = async () => {
       try {
+        setLocationIssue(null);
         const { status } = await Location.requestForegroundPermissionsAsync();
         if (status !== "granted") {
           console.log("Location permission denied");
+          if (!cancelled) setLocationIssue("Location access is off. Allow location for PoolCare to confirm your arrival.");
           return;
         }
 
@@ -200,7 +220,7 @@ export default function JobDetailScreen() {
         }
         
         // Then watch for updates
-        locationSubscription = await Location.watchPositionAsync(
+        const subscription = await Location.watchPositionAsync(
           {
             accuracy: Location.Accuracy.High, // Use High accuracy for better GPS
             timeInterval: 2000, // Update every 2 seconds
@@ -228,21 +248,34 @@ export default function JobDetailScreen() {
             setIsWithinGeofence(distance <= GEOFENCE_RADIUS_METERS);
           }
         );
+        // The screen may have closed while the watch was starting
+        if (cancelled) {
+          try { subscription.remove(); } catch {}
+        } else {
+          locationSubscription = subscription;
+        }
       } catch (error) {
         console.error("Error watching location:", error);
         setLocationWatching(false);
+        if (!cancelled) setLocationIssue("Couldn't get your location. Check that location services are on.");
       }
     };
 
     startLocationWatching();
 
     return () => {
+      cancelled = true;
       if (locationSubscription) {
-        locationSubscription.remove();
+        try {
+          locationSubscription.remove();
+        } catch {
+          // expo-location's web emitter lacks removeSubscription; the watch is
+          // already cleared by then, so only its stale listener is left behind.
+        }
       }
       setLocationWatching(false);
     };
-  }, [poolLocation, arrived, job?.status]);
+  }, [poolLocation, arrived, job?.status, locationRetry]);
 
   // Default wizard checklist items (used when no visit template is assigned)
   const getDefaultWizardItems = (): WizardChecklistItem[] => [
@@ -586,8 +619,7 @@ export default function JobDetailScreen() {
       // Get current location
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== "granted") {
-        Alert.alert("Location Required", "Please enable location services.");
-        throw new Error("Location permission denied");
+        throw new Error("Location is required. Please enable location services.");
       }
 
       const currentLocation = await Location.getCurrentPositionAsync({
@@ -612,6 +644,7 @@ export default function JobDetailScreen() {
     } catch (error: any) {
       setTransitioning(false);
       console.error("Error starting journey:", error);
+      showToast(error?.message || "Couldn't start the journey. Please try again.", "error");
       throw error;
     }
   };
@@ -633,8 +666,7 @@ export default function JobDetailScreen() {
       // Get current location
         const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== "granted") {
-        Alert.alert("Location Required", "Please enable location services.");
-        throw new Error("Location permission denied");
+        throw new Error("Location is required. Please enable location services.");
       }
 
           const currentLocation = await Location.getCurrentPositionAsync({
@@ -693,6 +725,7 @@ export default function JobDetailScreen() {
     } catch (error: any) {
       setTransitioning(false);
       console.error("Error confirming arrival:", error);
+      showToast(error?.message || "Couldn't confirm your arrival. Please try again.", "error");
       throw error;
     }
   };
@@ -1129,13 +1162,14 @@ export default function JobDetailScreen() {
     }
     
     try {
-      // Save before readings (without readingType - API doesn't accept it)
-      if (beforeReadingsData.ph) {
+      // Save before/after readings (without readingType - API doesn't accept it).
+      // Any entered value counts — orgs can make pH optional or hide it.
+      const hasValues = (r: Reading) =>
+        Object.values(r).some((v) => typeof v === "number" && !isNaN(v));
+      if (hasValues(beforeReadingsData)) {
         await api.saveReadings(visitId, beforeReadingsData);
       }
-      
-      // Save after readings
-      if (afterReadingsData.ph) {
+      if (hasValues(afterReadingsData)) {
         await api.saveReadings(visitId, afterReadingsData);
       }
       
@@ -1455,9 +1489,9 @@ export default function JobDetailScreen() {
                   {reportData.readings && (
                     <View style={styles.reportSection}>
                       <Text style={styles.reportSectionTitle}>Water Chemistry</Text>
-                      {reportData.readings.ph && <Text style={styles.reportText}>pH: {reportData.readings.ph}</Text>}
-                      {reportData.readings.chlorineFree && <Text style={styles.reportText}>Free Chlorine: {reportData.readings.chlorineFree} ppm</Text>}
-                      {reportData.readings.alkalinity && <Text style={styles.reportText}>Alkalinity: {reportData.readings.alkalinity} ppm</Text>}
+                      {reportData.readings.ph != null && <Text style={styles.reportText}>pH: {reportData.readings.ph}</Text>}
+                      {reportData.readings.chlorineFree != null && <Text style={styles.reportText}>Free Chlorine: {reportData.readings.chlorineFree} ppm</Text>}
+                      {reportData.readings.alkalinity != null && <Text style={styles.reportText}>Alkalinity: {reportData.readings.alkalinity} ppm</Text>}
                     </View>
                   )}
                   
@@ -1702,9 +1736,9 @@ export default function JobDetailScreen() {
           
           {/* Google Maps View */}
           <View style={styles.mapContainer}>
-            {poolLocation && MapView ? (
+            {poolLocation && NATIVE_MAP_AVAILABLE ? (
               <MapView
-                provider={PROVIDER_GOOGLE}
+                provider={NATIVE_MAP_PROVIDER}
                 style={styles.map}
                 initialRegion={{
                   latitude: carerLocation?.lat || poolLocation.lat,
@@ -2037,7 +2071,32 @@ export default function JobDetailScreen() {
         {!arrived && job.status !== "completed" && job.isScheduledForToday && (
           <View style={styles.swipeActionContainer}>
           {/* Wait for location to be determined before showing actions */}
-          {!carerLocation ? (
+          {!poolLocation ? (
+            /* No coordinates on file for this pool, so arrival can't be checked
+               against a geofence — let the carer confirm it themselves. */
+            <>
+              <View style={styles.swipeHintContainer}>
+                <Ionicons name="information-circle" size={20} color={"#6b7280"} />
+                <Text style={styles.swipeHintText}>
+                  This pool has no map location on file. Swipe when you arrive.
+                </Text>
+              </View>
+              <SwipeButton
+                title="I am here"
+                onSwipeComplete={handleIAmHere}
+                variant="success"
+                iconName="checkmark"
+              />
+            </>
+          ) : !carerLocation && locationIssue ? (
+            <View style={[styles.locationLoadingContainer, { flexDirection: "column", gap: 8 }]}>
+              <Ionicons name="location-outline" size={20} color={"#ef4444"} />
+              <Text style={[styles.locationLoadingText, { textAlign: "center" }]}>{locationIssue}</Text>
+              <TouchableOpacity onPress={() => setLocationRetry((n) => n + 1)}>
+                <Text style={[styles.locationLoadingText, { color: themeColor, fontWeight: "600" }]}>Try again</Text>
+              </TouchableOpacity>
+            </View>
+          ) : !carerLocation ? (
             <View style={styles.locationLoadingContainer}>
               <ActivityIndicator size="small" color={"#397d54"} />
               <Text style={styles.locationLoadingText}>Getting your location...</Text>
@@ -2097,7 +2156,7 @@ export default function JobDetailScreen() {
           )}
         </>
       )}
-          {carerLocation && (job.status === "scheduled" || job.status === "en_route") && (
+          {(carerLocation || !poolLocation || locationIssue) && (job.status === "scheduled" || job.status === "en_route") && (
             <TouchableOpacity style={styles.accessFailureLink} onPress={() => setShowAccessFailure(true)}>
               <Ionicons name="lock-closed-outline" size={16} color="#6b7280" />
               <Text style={styles.accessFailureLinkText}>Couldn't get access?</Text>

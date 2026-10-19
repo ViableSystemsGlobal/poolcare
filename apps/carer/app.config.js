@@ -1,5 +1,8 @@
 const base = require("./app.json");
 
+// The EAS-stored key carries a leading newline; Google rejects it untrimmed.
+const mapsKey = (process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY || "").trim();
+
 module.exports = {
   ...base,
   expo: {
@@ -8,14 +11,14 @@ module.exports = {
     ios: {
       ...base.expo.ios,
       config: {
-        googleMapsApiKey: process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY || base.expo.ios?.config?.googleMapsApiKey || "",
+        googleMapsApiKey: mapsKey || base.expo.ios?.config?.googleMapsApiKey || "",
       },
     },
     android: {
       ...base.expo.android,
       config: {
         googleMaps: {
-          apiKey: process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY || base.expo.android?.config?.googleMaps?.apiKey || "",
+          apiKey: mapsKey || base.expo.android?.config?.googleMaps?.apiKey || "",
         },
       },
     },

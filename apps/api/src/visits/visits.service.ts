@@ -416,8 +416,11 @@ export class VisitsService {
   ) {
     const visit = await this.verifyVisitAccess(orgId, userId, visitId);
 
-    // Decode base64 image data
-    const imageBuffer = Buffer.from(body.imageData, "base64");
+    // Decode base64 image data. The carer checklist wizard sends a data URI;
+    // decoding the "data:image/jpeg;base64," prefix as base64 prepends junk
+    // bytes and leaves an unreadable JPEG, so strip it first.
+    const base64 = body.imageData.replace(/^data:[^,]*,/, "");
+    const imageBuffer = Buffer.from(base64, "base64");
 
     // Generate storage key
     const fileId = uuidv4();

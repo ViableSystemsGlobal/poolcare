@@ -18,6 +18,7 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
+  Modal,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
@@ -67,7 +68,7 @@ export type ReadingMode = "required" | "optional" | "hidden";
 
 interface ChecklistWizardProps {
   items: ChecklistItem[];
-  onComplete: (items: ChecklistItem[], beforeReadings: ReadingsState, afterReadings: ReadingsState, chemicals: Chemical[]) => void;
+  onComplete: (items: ChecklistItem[], beforeReadings: ReadingsState, afterReadings: ReadingsState, chemicals: Chemical[]) => void | Promise<void>;
   onPhotoUpload?: (uri: string, itemId: string) => Promise<void>;
   onCancel: () => void;
   disabled?: boolean;
@@ -155,6 +156,11 @@ export const ChecklistWizard: React.FC<ChecklistWizardProps> = ({
     api.getChemicalRates().then(setChemicalOptions).catch(() => setChemicalOptions([]));
   }, []);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  // Guards the final submit — a second tap would save readings/chemicals twice
+  const [submitting, setSubmitting] = useState(false);
+  // "Not applicable" reason entry (Alert.prompt is iOS-only and crashes Android)
+  const [naReasonOpen, setNaReasonOpen] = useState(false);
+  const [naReason, setNaReason] = useState("");
   
   const slideAnim = useRef(new Animated.Value(0)).current;
   const progressAnim = useRef(new Animated.Value(0)).current;
@@ -189,12 +195,22 @@ export const ChecklistWizard: React.FC<ChecklistWizardProps> = ({
     ]).start();
   };
 
-  const handleNext = () => {
+  const handleNext = (items: ChecklistItem[] = checklistItems) => {
     if (currentStep < totalSteps - 1) {
       animateTransition("next");
       setCurrentStep(currentStep + 1);
     } else {
-      // Last step - show after readings
+      // Last step — required steps skipped with the arrows must be done first
+      const missingIdx = findIncompleteRequired(items);
+      if (missingIdx !== -1) {
+        Alert.alert(
+          "Steps still to do",
+          `"${items[missingIdx].label}" is required. Complete it or mark it not applicable before finishing.`,
+        );
+        animateTransition("prev");
+        setCurrentStep(missingIdx);
+        return;
+      }
       setShowReadingsPhase("after");
     }
   };
@@ -214,7 +230,7 @@ export const ChecklistWizard: React.FC<ChecklistWizardProps> = ({
     const updatedItems = [...checklistItems];
     updatedItems[currentStep] = { ...currentItem, completed: true };
     setChecklistItems(updatedItems);
-    handleNext();
+    handleNext(updatedItems);
   };
 
   const handleMarkNotApplicable = () => {
@@ -223,27 +239,20 @@ export const ChecklistWizard: React.FC<ChecklistWizardProps> = ({
       return;
     }
 
-    Alert.prompt(
-      "Not Applicable",
-      "Please provide a reason:",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Confirm",
-          onPress: (comment?: string) => {
-            const updatedItems = [...checklistItems];
-            updatedItems[currentStep] = {
-              ...currentItem,
-              notApplicable: true,
-              comment: comment || "Not applicable",
-            };
-            setChecklistItems(updatedItems);
-            handleNext();
-          },
-        },
-      ],
-      "plain-text"
-    );
+    setNaReason("");
+    setNaReasonOpen(true);
+  };
+
+  const confirmNotApplicable = () => {
+    const updatedItems = [...checklistItems];
+    updatedItems[currentStep] = {
+      ...currentItem,
+      notApplicable: true,
+      comment: naReason.trim() || "Not applicable",
+    };
+    setChecklistItems(updatedItems);
+    setNaReasonOpen(false);
+    handleNext(updatedItems);
   };
 
   const handleNumericInput = (value: string) => {
@@ -270,6 +279,17 @@ export const ChecklistWizard: React.FC<ChecklistWizardProps> = ({
         { text: "Cancel", style: "cancel" },
         { text: "Use Gallery", onPress: () => handleSelectFromGallery() },
       ],
+    );
+  };
+
+  // An unuploaded photo must not count toward a step's photo requirement
+  const dropPhoto = (uri: string) => {
+    setChecklistItems((prev) =>
+      prev.map((item, i) => {
+        if (i !== currentStep) return item;
+        const photoUris = (item.photoUris || []).filter((u) => u !== uri);
+        return { ...item, photoUris, photoUri: photoUris[0] };
+      })
     );
   };
 
@@ -301,7 +321,14 @@ export const ChecklistWizard: React.FC<ChecklistWizardProps> = ({
 
         // Upload if handler provided
         if (onPhotoUpload) {
-          await onPhotoUpload(uri, currentItem.id);
+          try {
+            await onPhotoUpload(uri, currentItem.id);
+          } catch {
+            dropPhoto(uri);
+            setUploadingPhoto(false);
+            Alert.alert("Upload failed", "The photo didn't upload. Check your connection and take it again.");
+            return;
+          }
         }
         setUploadingPhoto(false);
       }
@@ -337,7 +364,14 @@ export const ChecklistWizard: React.FC<ChecklistWizardProps> = ({
         setChecklistItems(updatedItems);
 
         if (onPhotoUpload) {
-          await onPhotoUpload(uri, currentItem.id);
+          try {
+            await onPhotoUpload(uri, currentItem.id);
+          } catch {
+            dropPhoto(uri);
+            setUploadingPhoto(false);
+            Alert.alert("Upload failed", "The photo didn't upload. Check your connection and try again.");
+            return;
+          }
         }
         setUploadingPhoto(false);
       }
@@ -354,7 +388,10 @@ export const ChecklistWizard: React.FC<ChecklistWizardProps> = ({
     } else if (showReadingsPhase === "after") {
       setShowReadingsPhase("chemicals");
     } else if (showReadingsPhase === "chemicals") {
-      onComplete(checklistItems, beforeReadings, afterReadings, chemicals);
+      if (submitting) return;
+      setSubmitting(true);
+      Promise.resolve(onComplete(checklistItems, beforeReadings, afterReadings, chemicals))
+        .finally(() => setSubmitting(false));
     }
   };
 
@@ -379,15 +416,19 @@ export const ChecklistWizard: React.FC<ChecklistWizardProps> = ({
     return true;
   };
 
-  const canFinish = () => {
-    return checklistItems.every((item) => {
-      if (item.notApplicable) return true;
-      if (!item.required && !item.completed) return true;
-      if (item.requiresNumericInput && !item.value) return false;
-      if (item.requiresPhoto && !item.photoUri && !(item.photoUris?.length)) return false;
-      return item.completed;
-    });
+  const isItemDone = (item: ChecklistItem) => {
+    if (item.notApplicable) return true;
+    if (!item.required && !item.completed) return true;
+    if (item.requiresNumericInput && !item.value) return false;
+    if (item.requiresPhoto && !item.photoUri && !(item.photoUris?.length)) return false;
+    return !!item.completed;
   };
+
+  function findIncompleteRequired(items: ChecklistItem[]) {
+    return items.findIndex((item) => !isItemDone(item));
+  }
+
+  const canFinish = () => findIncompleteRequired(checklistItems) === -1;
 
   // Render chemicals phase
   if (showReadingsPhase === "chemicals") {
@@ -523,11 +564,16 @@ export const ChecklistWizard: React.FC<ChecklistWizardProps> = ({
             <Text style={styles.secondaryButtonText}>Back to After Readings</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={styles.primaryButton}
+            style={[styles.primaryButton, submitting && styles.primaryButtonDisabled]}
             onPress={handleFinishReadings}
+            disabled={submitting}
           >
-            <Text style={styles.primaryButtonText}>Complete Visit</Text>
-            <Ionicons name="checkmark-circle" size={20} color={COLORS.text.inverse} />
+            <Text style={styles.primaryButtonText}>{submitting ? "Saving..." : "Complete Visit"}</Text>
+            {submitting ? (
+              <ActivityIndicator size="small" color={COLORS.text.inverse} />
+            ) : (
+              <Ionicons name="checkmark-circle" size={20} color={COLORS.text.inverse} />
+            )}
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
@@ -784,7 +830,7 @@ export const ChecklistWizard: React.FC<ChecklistWizardProps> = ({
 
           <TouchableOpacity
             style={styles.navButton}
-            onPress={handleNext}
+            onPress={() => handleNext()}
             disabled={currentStep === totalSteps - 1 && !canFinish()}
           >
             <Ionicons
@@ -823,6 +869,35 @@ export const ChecklistWizard: React.FC<ChecklistWizardProps> = ({
           )}
         </TouchableOpacity>
       </View>
+
+      {/* Not-applicable reason (cross-platform replacement for Alert.prompt) */}
+      <Modal visible={naReasonOpen} transparent animationType="fade" onRequestClose={() => setNaReasonOpen(false)}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          style={styles.naModalBackdrop}
+        >
+          <View style={styles.naModalCard}>
+            <Text style={styles.naModalTitle}>Not applicable</Text>
+            <Text style={styles.naModalSubtitle}>Why doesn't "{currentItem.label}" apply?</Text>
+            <TextInput
+              style={styles.textInput}
+              placeholder="Reason (optional)"
+              placeholderTextColor={COLORS.neutral[400]}
+              value={naReason}
+              onChangeText={setNaReason}
+              autoFocus
+            />
+            <View style={styles.naModalActions}>
+              <TouchableOpacity style={styles.secondaryButton} onPress={() => setNaReasonOpen(false)}>
+                <Text style={styles.secondaryButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.primaryButton} onPress={confirmNotApplicable}>
+                <Text style={styles.primaryButtonText}>Confirm</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </View>
   );
 };
@@ -1088,6 +1163,31 @@ const styles = StyleSheet.create({
   },
   navButton: {
     padding: SPACING.sm,
+  },
+  naModalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.4)",
+    justifyContent: "center",
+    padding: SPACING.lg,
+  },
+  naModalCard: {
+    backgroundColor: COLORS.background.primary,
+    borderRadius: BORDER_RADIUS.lg,
+    padding: SPACING.lg,
+    gap: SPACING.md,
+  },
+  naModalTitle: {
+    fontSize: FONT_SIZES.lg,
+    fontWeight: "600",
+    color: COLORS.text.primary,
+  },
+  naModalSubtitle: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.text.secondary,
+  },
+  naModalActions: {
+    flexDirection: "row",
+    gap: SPACING.sm,
   },
   naButton: {
     paddingHorizontal: SPACING.lg,

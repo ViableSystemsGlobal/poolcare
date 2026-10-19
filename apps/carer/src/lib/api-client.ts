@@ -1,5 +1,6 @@
 import * as SecureStore from "expo-secure-store";
 import { Platform } from "react-native";
+import { router } from "expo-router";
 import { getNetworkIp } from "./network-utils";
 
 // Get network IP for mobile devices (localhost doesn't work on physical devices)
@@ -87,10 +88,12 @@ class ApiClient {
       ...(headers as Record<string, string>),
     };
 
+    let sentToken = false;
     if (requireAuth) {
       const token = await this.getAuthToken();
       if (token) {
         requestHeaders.Authorization = `Bearer ${token}`;
+        sentToken = true;
       }
     }
 
@@ -121,6 +124,17 @@ class ApiClient {
         // Handle 401 Unauthorized: clear token so next request can show login
         if (response.status === 401 && !url.includes("/auth/otp")) {
           await this.clearAuthToken();
+        }
+
+        // A rejected token (expired after 7 days, or revoked) would otherwise
+        // leave every screen silently empty — sign out and go to login.
+        if (response.status === 401 && sentToken) {
+          await this.clearAuthToken();
+          try {
+            router.replace("/(auth)/login");
+          } catch {
+            // navigator not mounted yet; the home screen's auth check redirects
+          }
         }
 
         // Extract the actual error message
@@ -242,7 +256,7 @@ class ApiClient {
   }
 
   // Jobs
-  async getJobs(params?: { status?: string; date?: string; carerId?: string }) {
+  async getJobs(params?: { status?: string; date?: string; carerId?: string; upcoming?: "true" | "false" }) {
     const query = new URLSearchParams(params as any).toString();
     return this.request(`/jobs${query ? `?${query}` : ""}`);
   }
