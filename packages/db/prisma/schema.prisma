@@ -90,6 +90,7 @@ model Organization {
   receipts              Receipt[]
   notifications         Notification[]
   threads               Thread[]
+  mailAccounts          MailAccount[]
   participants          Participant[]
   messages              Message[]
   threadLinks           ThreadLink[]
@@ -1164,6 +1165,32 @@ model Message {
 
   @@index([threadId, createdAt(sort: Desc)])
   @@index([orgId, createdAt(sort: Desc)])
+}
+
+// A connected IMAP/SMTP mailbox (e.g. Hostinger) shown in the admin Inbox.
+// Mail itself stays on the mail server; only the connection is stored.
+model MailAccount {
+  id          String   @id @default(uuid()) @db.Uuid
+  orgId       String   @db.Uuid
+  email       String
+  displayName String?
+  username    String
+  passwordEnc String
+  imapHost    String
+  imapPort    Int      @default(993)
+  imapSecure  Boolean  @default(true)
+  smtpHost    String
+  smtpPort    Int      @default(465)
+  smtpSecure  Boolean  @default(true)
+  signature   String?
+  createdById String?  @db.Uuid
+  createdAt   DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(6)
+
+  org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@unique([orgId, email])
+  @@index([orgId])
 }
 
 model ThreadLink {

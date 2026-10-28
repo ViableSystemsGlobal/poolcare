@@ -2,33 +2,7 @@ import { Injectable, NotFoundException, BadRequestException } from "@nestjs/comm
 import { ConfigService } from "@nestjs/config";
 import { prisma } from "@poolcare/db";
 import * as crypto from 'crypto';
-import { resolveEncryptionKey } from '../utils/encryption-key.util';
-
-const ENCRYPTION_KEY = resolveEncryptionKey(); // 32 chars; throws in prod if SETTINGS_ENCRYPTION_KEY unset
-const IV_LENGTH = 16;
-
-function encrypt(text: string): string {
-  const iv = crypto.randomBytes(IV_LENGTH);
-  const cipher = crypto.createCipheriv('aes-256-cbc', Buffer.from(ENCRYPTION_KEY.padEnd(32).slice(0, 32)), iv);
-  let encrypted = cipher.update(text);
-  encrypted = Buffer.concat([encrypted, cipher.final()]);
-  return iv.toString('hex') + ':' + encrypted.toString('hex');
-}
-
-function decrypt(text: string): string {
-  try {
-    const parts = text.split(':');
-    if (parts.length !== 2) return text; // Not encrypted, return as-is (backward compat)
-    const iv = Buffer.from(parts[0], 'hex');
-    const encrypted = Buffer.from(parts[1], 'hex');
-    const decipher = crypto.createDecipheriv('aes-256-cbc', Buffer.from(ENCRYPTION_KEY.padEnd(32).slice(0, 32)), iv);
-    let decrypted = decipher.update(encrypted);
-    decrypted = Buffer.concat([decrypted, decipher.final()]);
-    return decrypted.toString();
-  } catch {
-    return text; // If decryption fails, return as-is (backward compat)
-  }
-}
+import { encryptSecret as encrypt, decryptSecret as decrypt } from '../utils/secret-crypto.util';
 
 @Injectable()
 export class SettingsService {

@@ -21,6 +21,7 @@ import { QuotesModule } from "./quotes/quotes.module";
 import { InvoicesModule } from "./invoices/invoices.module";
 import { NotificationsModule } from "./notifications/notifications.module";
 import { InboxModule } from "./inbox/inbox.module";
+import { MailModule } from "./mail/mail.module";
 import { AiModule } from "./ai/ai.module";
 import { MobileModule } from "./mobile/mobile.module";
 import { DashboardModule } from "./dashboard/dashboard.module";
@@ -69,6 +70,7 @@ import { RlsInterceptor } from "./core/rls.interceptor";
     InvoicesModule,
     NotificationsModule,
     InboxModule,
+    MailModule,
     AiModule,
     MobileModule,
     DashboardModule,

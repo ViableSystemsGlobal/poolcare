@@ -67,7 +67,7 @@ interface Thread {
   };
 }
 
-export default function InboxPage() {
+export default function MessagesInbox() {
   const router = useRouter();
   const { getThemeClasses } = useTheme();
   const theme = getThemeClasses();
@@ -462,7 +462,7 @@ export default function InboxPage() {
   const unreadCount = threads.reduce((sum, t) => sum + t.unreadCount, 0);
 
   return (
-    <div className="flex h-[calc(100vh-120px)] bg-gray-50">
+    <div className="flex h-[calc(100vh-180px)] bg-gray-50 rounded-xl overflow-hidden shadow-sm">
       {/* Left Sidebar - Folders */}
       <div className="w-64 bg-white border-r border-gray-200 flex flex-col">
         <div className="p-4 border-b border-gray-200">
