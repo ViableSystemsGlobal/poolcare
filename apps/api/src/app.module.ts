@@ -22,6 +22,7 @@ import { InvoicesModule } from "./invoices/invoices.module";
 import { NotificationsModule } from "./notifications/notifications.module";
 import { InboxModule } from "./inbox/inbox.module";
 import { MailModule } from "./mail/mail.module";
+import { DataResetModule } from "./data-reset/data-reset.module";
 import { AiModule } from "./ai/ai.module";
 import { MobileModule } from "./mobile/mobile.module";
 import { DashboardModule } from "./dashboard/dashboard.module";
@@ -71,6 +72,7 @@ import { RlsInterceptor } from "./core/rls.interceptor";
     NotificationsModule,
     InboxModule,
     MailModule,
+    DataResetModule,
     AiModule,
     MobileModule,
     DashboardModule,

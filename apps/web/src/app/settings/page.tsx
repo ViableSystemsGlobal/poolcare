@@ -13,12 +13,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Settings, Building, DollarSign, Save, Globe, MapPin, Mail, Phone, CheckCircle, Image, Palette, Map, Loader2, Send, Sparkles, FileText, Lightbulb, MessageCircleQuestion, Calendar, Inbox, BookOpen, ClipboardCheck } from "lucide-react";
+import { Settings, Building, DollarSign, Save, Globe, MapPin, Mail, Phone, CheckCircle, Image, Palette, Map, Loader2, Send, Sparkles, FileText, Lightbulb, MessageCircleQuestion, Calendar, Inbox, BookOpen, ClipboardCheck, Trash2 } from "lucide-react";
 import LeadSourcesPage from "./lead-sources/page";
 import KnowledgeBasePage from "../knowledge/page";
 import { ChemicalRatesCard } from "@/components/settings/chemical-rates-card";
 import { PrepaidTermsCard } from "@/components/settings/prepaid-terms-card";
 import { AgreementDocumentCard } from "@/components/settings/agreement-document-card";
+import { InvoiceDetailsCard } from "@/components/settings/invoice-details-card";
+import { DeleteDataPanel } from "@/components/settings/delete-data-panel";
 import {
   Dialog,
   DialogContent,
@@ -63,7 +65,7 @@ function closestThemeColor(hex: string): string {
   return bestKey.split('-')[0];
 }
 
-type SettingsTab = "org" | "tax" | "policies" | "integrations" | "tips" | "visits" | "lead-sources" | "knowledge";
+type SettingsTab = "org" | "tax" | "policies" | "integrations" | "tips" | "visits" | "lead-sources" | "knowledge" | "delete-data";
 
 // Water-chemistry readings carers can record during a visit (Settings → Visits)
 const VISIT_READING_CATALOG: { key: string; label: string; unit?: string; hint: string }[] = [
@@ -1337,7 +1339,8 @@ export default function SettingsPage() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
         },
-        body: JSON.stringify(taxSettings),
+        // invoiceDetails has its own card and save button
+        body: JSON.stringify({ ...taxSettings, invoiceDetails: undefined }),
       });
 
       const contentType = response.headers.get("content-type");
@@ -1589,6 +1592,7 @@ export default function SettingsPage() {
     { id: "knowledge" as SettingsTab, label: "Knowledge Base", icon: BookOpen },
     { id: "tips" as SettingsTab, label: "Tips", icon: Lightbulb },
     { id: "visits" as SettingsTab, label: "Visits", icon: ClipboardCheck },
+    { id: "delete-data" as SettingsTab, label: "Delete Data", icon: Trash2 },
   ];
 
   return (
@@ -2583,7 +2587,7 @@ export default function SettingsPage() {
           )}
 
           {/* Tax & Finance */}
-          {activeTab === "tax" && (
+          {activeTab === "tax" && (<>
             <Card>
               <CardHeader>
                 <CardTitle>Tax & Finance</CardTitle>
@@ -2732,7 +2736,8 @@ export default function SettingsPage() {
                 </div>
               </CardContent>
             </Card>
-          )}
+            <InvoiceDetailsCard />
+          </>)}
 
           {/* Policies */}
           {activeTab === "policies" && (<>
@@ -4225,6 +4230,8 @@ export default function SettingsPage() {
 
           {/* Knowledge Base (embedded) */}
           {activeTab === "knowledge" && <KnowledgeBasePage />}
+
+          {activeTab === "delete-data" && <DeleteDataPanel />}
         </>
       )}
 
