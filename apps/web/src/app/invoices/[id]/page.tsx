@@ -87,6 +87,11 @@ interface Invoice {
   issuedAt?: string;
   paidAt?: string;
   notes?: string;
+  invoiceExtras?: {
+    accounts: { type: "bank" | "mobile_money"; provider: string; accountName: string; accountNumber: string; branch: string; swiftCode: string }[];
+    paymentInstructions: string;
+    footerNote: string;
+  };
   createdAt: string;
   client?: {
     id: string;
@@ -672,13 +677,48 @@ export default function InvoiceDetailPage() {
             </CardContent>
           </Card>
 
-          {invoice.notes && (
+          {(invoice.notes || invoice.invoiceExtras?.footerNote) && (
             <Card>
               <CardHeader>
                 <CardTitle>Notes</CardTitle>
               </CardHeader>
-              <CardContent>
-                <p className="text-sm text-gray-600 whitespace-pre-wrap">{invoice.notes}</p>
+              <CardContent className="space-y-3">
+                {invoice.notes && <p className="text-sm text-gray-600 whitespace-pre-wrap">{invoice.notes}</p>}
+                {invoice.invoiceExtras?.footerNote && (
+                  <p className="text-sm text-gray-500 whitespace-pre-wrap">{invoice.invoiceExtras.footerNote}</p>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {!!(invoice.invoiceExtras?.accounts.length || invoice.invoiceExtras?.paymentInstructions) && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Payment Details</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {invoice.invoiceExtras!.accounts.map((a, i) => (
+                  <div key={i} className="text-sm">
+                    <p className="font-medium text-gray-900">{a.type === "mobile_money" ? "Mobile Money" : "Bank Transfer"}</p>
+                    <dl className="mt-1 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-gray-600">
+                      {(a.type === "mobile_money"
+                        ? [["Network", a.provider], ["Name", a.accountName], ["Number", a.accountNumber]]
+                        : [["Bank", a.provider], ["Account name", a.accountName], ["Account number", a.accountNumber], ["Branch", a.branch], ["SWIFT", a.swiftCode]]
+                      )
+                        .filter(([, v]) => v)
+                        .map(([l, v]) => (
+                          <div key={l} className="contents">
+                            <dt className="text-gray-500">{l}</dt>
+                            <dd className="text-gray-900">{v}</dd>
+                          </div>
+                        ))}
+                    </dl>
+                  </div>
+                ))}
+                {invoice.invoiceExtras!.paymentInstructions && (
+                  <p className="text-sm text-gray-600 whitespace-pre-wrap">{invoice.invoiceExtras!.paymentInstructions}</p>
+                )}
+                <p className="text-xs text-gray-400">Set in Settings → Tax & Finance. Hidden once the invoice is paid.</p>
               </CardContent>
             </Card>
           )}

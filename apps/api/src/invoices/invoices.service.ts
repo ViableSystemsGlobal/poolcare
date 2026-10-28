@@ -8,6 +8,13 @@ import { NotificationsService } from "../notifications/notifications.service";
 import { nextInvoiceNumber } from "./invoice-number.util";
 import { PaymentsService } from "./payments.service";
 import {
+  normalizeInvoiceDetails,
+  invoiceDetailsForDisplay,
+  paymentAccountRows,
+  paymentAccountTitle,
+  PaymentAccount,
+} from "../settings/invoice-details";
+import {
   createEmailTemplate,
   getOrgEmailSettings,
   resolveOrgPrimaryColor,
@@ -217,7 +224,12 @@ export class InvoicesService {
       }
     }
 
-    return invoice;
+    const orgSetting = await prisma.orgSetting.findUnique({ where: { orgId }, select: { tax: true } });
+    const details = normalizeInvoiceDetails((orgSetting?.tax as any)?.invoiceDetails);
+    return {
+      ...invoice,
+      invoiceExtras: invoiceDetailsForDisplay(details, invoice.totalCents - invoice.paidCents),
+    };
   }
 
   /**
@@ -355,26 +367,15 @@ export class InvoicesService {
     }
     const billToBottom = doc.y;
 
-    doc.fontSize(9).fillColor("#6b7280").text("INVOICE DATE", metaX, y, {
-      width: contentWidth / 2,
-    });
-    doc.fontSize(10).fillColor("#111111").text(date(invoice.issuedAt || invoice.createdAt), metaX, doc.y + 2, {
-      width: contentWidth / 2,
-    });
-    doc.fontSize(9).fillColor("#6b7280").text("DUE DATE", metaX, doc.y + 8, {
-      width: contentWidth / 2,
-    });
-    doc.fontSize(10).fillColor("#111111").text(date(invoice.dueDate), metaX, doc.y + 2, {
-      width: contentWidth / 2,
-    });
-    if (invoice.pool?.name) {
-      doc.fontSize(9).fillColor("#6b7280").text("POOL", metaX, doc.y + 8, {
-        width: contentWidth / 2,
-      });
-      doc.fontSize(10).fillColor("#111111").text(invoice.pool.name, metaX, doc.y + 2, {
-        width: contentWidth / 2,
-      });
-    }
+    // Dates sit flush right, under the invoice number
+    const metaWidth = contentWidth / 2;
+    const metaRow = (label: string, value: string, gap: number) => {
+      doc.fontSize(9).fillColor("#6b7280").text(label, metaX, gap, { width: metaWidth, align: "right" });
+      doc.fontSize(10).fillColor("#111111").text(value, metaX, doc.y + 2, { width: metaWidth, align: "right" });
+    };
+    metaRow("INVOICE DATE", date(invoice.issuedAt || invoice.createdAt), y);
+    metaRow("DUE DATE", date(invoice.dueDate), doc.y + 8);
+    if (invoice.pool?.name) metaRow("POOL", invoice.pool.name, doc.y + 8);
 
     y = Math.max(billToBottom, doc.y) + 28;
 
@@ -491,14 +492,53 @@ export class InvoicesService {
       }
     }
 
-    // ---- Notes
-    if (invoice.notes) {
+    // ---- Payment details (only while a balance is owed)
+    const extras = invoiceDetailsForDisplay(branding.invoiceDetails, balanceCents);
+    if (extras.accounts.length > 0 || extras.paymentInstructions) {
+      y += 20;
+      const colGap = 16;
+      const perRow = Math.min(extras.accounts.length, 3) || 1;
+      const colWidth = (contentWidth - colGap * (perRow - 1)) / perRow;
+      const accountHeight = (a: PaymentAccount) => 16 + paymentAccountRows(a).length * 14;
+      const firstRowHeight = Math.max(0, ...extras.accounts.slice(0, perRow).map(accountHeight));
+      ensureSpace(30 + firstRowHeight);
+      doc.fontSize(9).fillColor("#6b7280").text("PAYMENT DETAILS", left, y);
+      y = doc.y + 8;
+
+      for (let i = 0; i < extras.accounts.length; i += perRow) {
+        const row = extras.accounts.slice(i, i + perRow);
+        const rowHeight = Math.max(...row.map(accountHeight));
+        ensureSpace(rowHeight + 8);
+        row.forEach((a, j) => {
+          const x = left + j * (colWidth + colGap);
+          let ay = y;
+          doc.font("Helvetica-Bold").fontSize(10).fillColor(branding.primaryColor).text(paymentAccountTitle(a), x, ay, { width: colWidth });
+          ay += 16;
+          doc.font("Helvetica");
+          for (const [label, value] of paymentAccountRows(a)) {
+            doc.fontSize(9).fillColor("#6b7280").text(`${label}: `, x, ay, { width: colWidth, continued: true });
+            doc.fillColor("#111111").text(value);
+            ay += 14;
+          }
+        });
+        y += rowHeight + 8;
+      }
+
+      if (extras.paymentInstructions) {
+        ensureSpace(10 + doc.fontSize(10).heightOfString(extras.paymentInstructions, { width: contentWidth }));
+        doc.fontSize(10).fillColor("#4b5563").text(extras.paymentInstructions, left, y, { width: contentWidth });
+        y = doc.y;
+      }
+    }
+
+    // ---- Notes: this invoice's own note, then the standard invoice note
+    const noteBlocks = [invoice.notes, extras.footerNote].filter((n): n is string => !!n && !!n.trim());
+    if (noteBlocks.length > 0) {
       y += 16;
-      ensureSpace(
-        30 + doc.fontSize(10).heightOfString(invoice.notes, { width: contentWidth })
-      );
+      const noteText = noteBlocks.join("\n\n");
+      ensureSpace(30 + doc.fontSize(10).heightOfString(noteText, { width: contentWidth }));
       doc.fontSize(9).fillColor("#6b7280").text("NOTES", left, y);
-      doc.fontSize(10).fillColor("#4b5563").text(invoice.notes, left, doc.y + 4, {
+      doc.fontSize(10).fillColor("#4b5563").text(noteText, left, doc.y + 4, {
         width: contentWidth,
       });
     }
@@ -571,6 +611,7 @@ export class InvoicesService {
       supportEmail: profile.supportEmail || null,
       supportPhone: profile.supportPhone || null,
       primaryColor: resolveOrgPrimaryColor(profile),
+      invoiceDetails: normalizeInvoiceDetails((orgSetting?.tax as any)?.invoiceDetails),
       logo,
       headerBand,
       footerBand,
@@ -742,6 +783,38 @@ export class InvoicesService {
         .join("\n");
       const moreItems = items.length > 3 ? `\n... and ${items.length - 3} more item(s)` : "";
 
+      // Org payment details + standard note
+      const orgTax = await prisma.orgSetting.findUnique({ where: { orgId }, select: { tax: true } });
+      const extras = invoiceDetailsForDisplay(
+        normalizeInvoiceDetails((orgTax?.tax as any)?.invoiceDetails),
+        invoice.totalCents - invoice.paidCents
+      );
+      const esc = (v: string) => v.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+      const paymentText = extras.accounts.length || extras.paymentInstructions
+        ? `How to pay:\n${extras.accounts
+            .map((a) => `${paymentAccountTitle(a)}\n${paymentAccountRows(a).map(([l, v]) => `  ${l}: ${v}`).join("\n")}`)
+            .join("\n\n")}${extras.paymentInstructions ? `\n\n${extras.paymentInstructions}` : ""}\n\n`
+        : "";
+      const paymentHtml = extras.accounts.length || extras.paymentInstructions
+        ? `<div style="margin: 20px 0;">
+            <h3 style="margin: 0 0 12px 0; color: #374151;">How to pay</h3>
+            ${extras.accounts
+              .map(
+                (a) => `<div style="margin-bottom: 12px;">
+                  <strong style="display: block; margin-bottom: 4px;">${paymentAccountTitle(a)}</strong>
+                  ${paymentAccountRows(a)
+                    .map(([l, v]) => `<span style="display: block; color: #4b5563; font-size: 14px;">${l}: <strong style="color: #111827;">${esc(v)}</strong></span>`)
+                    .join("")}
+                </div>`
+              )
+              .join("")}
+            ${extras.paymentInstructions ? `<p style="margin: 8px 0 0 0; color: #4b5563; white-space: pre-line;">${esc(extras.paymentInstructions)}</p>` : ""}
+          </div>`
+        : "";
+      const footerNoteHtml = extras.footerNote
+        ? `<p style="margin: 16px 0; color: #4b5563; white-space: pre-line;">${esc(extras.footerNote)}</p>`
+        : "";
+
       // SMS message
       const smsBody = `Your PoolCare invoice #${invoiceNumber} for ${currency} ${totalAmount} is ready.\n\nDue: ${dueDateStr}\n\n${pool ? `Pool: ${pool.name || pool.address}` : ""}\n\nPay online or contact us for assistance.`;
 
@@ -756,7 +829,7 @@ ${pool ? `Pool: ${pool.name || pool.address}\n` : ""}Due Date: ${dueDateStr}
 Invoice Items:
 ${itemsSummary}${moreItems}
 
-${invoice.notes ? `Notes: ${invoice.notes}\n` : ""}You can pay this invoice online or contact us for assistance.
+${invoice.notes ? `Notes: ${invoice.notes}\n\n` : ""}${paymentText}${extras.footerNote ? `${extras.footerNote}\n\n` : ""}You can pay this invoice online or contact us for assistance.
 
 Thank you for choosing PoolCare!`;
 
@@ -786,6 +859,8 @@ Thank you for choosing PoolCare!`;
         </div>
         
         ${invoice.notes ? `<p style="margin: 16px 0;"><strong>Notes:</strong> ${invoice.notes}</p>` : ""}
+        ${paymentHtml}
+        ${footerNoteHtml}
         
         <p style="margin: 16px 0 0 0;">You can pay this invoice online or contact us for assistance.</p>
         <p style="margin: 16px 0 0 0;">Thank you for choosing ${orgSettings.organizationName}!</p>

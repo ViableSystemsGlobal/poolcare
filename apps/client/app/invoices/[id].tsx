@@ -34,7 +34,19 @@ interface Invoice {
   poolName?: string;
   clientName?: string;
   taxCents?: number;
+  notes?: string;
+  extras?: {
+    accounts: { type: "bank" | "mobile_money"; provider: string; accountName: string; accountNumber: string; branch: string; swiftCode: string }[];
+    paymentInstructions: string;
+    footerNote: string;
+  };
 }
+
+const accountRows = (a: NonNullable<Invoice["extras"]>["accounts"][number]): [string, string][] =>
+  (a.type === "mobile_money"
+    ? [["Network", a.provider], ["Name", a.accountName], ["Number", a.accountNumber]]
+    : [["Bank", a.provider], ["Account name", a.accountName], ["Account number", a.accountNumber], ["Branch", a.branch], ["SWIFT", a.swiftCode]]
+  ).filter(([, v]) => !!v) as [string, string][];
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; icon: string }> = {
   paid:    { label: "Paid",    color: "#059669", bg: "#d1fae5", icon: "checkmark-circle" },
@@ -92,6 +104,8 @@ export default function InvoiceDetailScreen() {
         poolName: data.pool?.name || data.pool?.address,
         clientName: data.client?.name,
         taxCents: data.taxCents || 0,
+        notes: data.notes || undefined,
+        extras: data.invoiceExtras,
       });
     } catch (error) {
       console.error("Error loading invoice:", error);
@@ -272,6 +286,36 @@ export default function InvoiceDetailScreen() {
           </TouchableOpacity>
         )}
 
+        {/* Bank / mobile money details set by the business */}
+        {invoice.status !== "draft" && !!(invoice.extras?.accounts.length || invoice.extras?.paymentInstructions) && (
+          <View style={styles.card}>
+            <Text style={styles.sectionTitle}>Other ways to pay</Text>
+            {invoice.extras!.accounts.map((a, i) => (
+              <View key={i} style={[styles.accountBlock, i > 0 && styles.accountDivider]}>
+                <View style={styles.accountTitleRow}>
+                  <Ionicons name={a.type === "mobile_money" ? "phone-portrait-outline" : "business-outline"} size={16} color={themeColor} />
+                  <Text style={styles.accountTitle}>{a.type === "mobile_money" ? "Mobile Money" : "Bank Transfer"}</Text>
+                </View>
+                {accountRows(a).map(([label, value]) => (
+                  <View key={label} style={styles.summaryRow}>
+                    <Text style={styles.summaryLabel}>{label}</Text>
+                    <Text style={styles.accountValue} selectable>{value}</Text>
+                  </View>
+                ))}
+              </View>
+            ))}
+            {!!invoice.extras!.paymentInstructions && <Text style={styles.noteText}>{invoice.extras!.paymentInstructions}</Text>}
+          </View>
+        )}
+
+        {!!(invoice.notes || invoice.extras?.footerNote) && (
+          <View style={styles.card}>
+            <Text style={styles.sectionTitle}>Notes</Text>
+            {!!invoice.notes && <Text style={styles.noteText}>{invoice.notes}</Text>}
+            {!!invoice.extras?.footerNote && <Text style={[styles.noteText, !!invoice.notes && { marginTop: 10 }]}>{invoice.extras.footerNote}</Text>}
+          </View>
+        )}
+
         {invoice.status === "paid" && (
           <View style={styles.paidBanner}>
             <Ionicons name="checkmark-circle" size={24} color="#059669" />
@@ -340,6 +384,13 @@ const styles = StyleSheet.create({
   dueDateText: { fontSize: 13, color: "#9ca3af" },
 
   sectionTitle: { fontSize: 16, fontWeight: "700", color: "#111827", marginBottom: 14 },
+
+  accountBlock: { paddingBottom: 6 },
+  accountDivider: { borderTopWidth: 1, borderTopColor: "#f3f4f6", paddingTop: 12, marginTop: 6 },
+  accountTitleRow: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 4 },
+  accountTitle: { fontSize: 14, fontWeight: "700", color: "#111827" },
+  accountValue: { fontSize: 14, fontWeight: "600", color: "#111827", flexShrink: 1, textAlign: "right", marginLeft: 12 },
+  noteText: { fontSize: 14, color: "#4b5563", lineHeight: 20 },
 
   itemRow: {
     flexDirection: "row",

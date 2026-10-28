@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, BadRequestException } from "@nestjs/comm
 import { ConfigService } from "@nestjs/config";
 import { prisma } from "@poolcare/db";
 import * as crypto from 'crypto';
+import { normalizeInvoiceDetails } from './invoice-details';
 import { encryptSecret as encrypt, decryptSecret as decrypt } from '../utils/secret-crypto.util';
 
 @Injectable()
@@ -783,6 +784,7 @@ export class SettingsService {
       },
       currency: tax.currency || "GHS",
       showTaxOnItems: tax.showTaxOnItems !== undefined ? tax.showTaxOnItems : false,
+      invoiceDetails: normalizeInvoiceDetails(tax.invoiceDetails),
     };
   }
 
@@ -791,6 +793,7 @@ export class SettingsService {
     const currentTax = (orgSetting.tax as any) || {};
 
     const updatedTax = {
+      ...currentTax,
       defaultTaxPct: data.defaultTaxPct !== undefined ? data.defaultTaxPct : (currentTax.defaultTaxPct || 0),
       taxName: data.taxName || currentTax.taxName || "VAT",
       invoiceNumbering: data.invoiceNumbering || currentTax.invoiceNumbering || {
@@ -800,6 +803,7 @@ export class SettingsService {
       },
       currency: data.currency || currentTax.currency || "GHS",
       showTaxOnItems: data.showTaxOnItems !== undefined ? data.showTaxOnItems : (currentTax.showTaxOnItems || false),
+      invoiceDetails: normalizeInvoiceDetails(data.invoiceDetails !== undefined ? data.invoiceDetails : currentTax.invoiceDetails),
     };
 
     await prisma.orgSetting.update({
