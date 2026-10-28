@@ -416,9 +416,41 @@ export class FilesService {
   }
 
   /**
+   * Store an already-validated in-memory file (e.g. a base64 photo from the
+   * carer app) with the same MinIO-or-local-disk logic as the upload routes.
+   * Returns the storage key to persist alongside a displayable URL.
+   */
+  async storeBuffer(
+    orgId: string,
+    buffer: Buffer,
+    contentType: string,
+    scope: string,
+    refId: string,
+    fileName?: string
+  ): Promise<{ url: string; storageKey: string }> {
+    const ext = fileName?.split(".").pop() || contentType.split("/")[1] || "jpg";
+    const file = {
+      buffer,
+      size: buffer.length,
+      mimetype: contentType,
+      originalname: fileName || `upload.${ext}`,
+    } as Express.Multer.File;
+    return this._storeFileWithKey(orgId, file, scope, refId);
+  }
+
+  /**
    * Core storage logic shared by uploadImage and uploadMedia.
    */
   private async _storeFile(orgId: string, file: Express.Multer.File, scope: string, refId: string): Promise<string> {
+    return (await this._storeFileWithKey(orgId, file, scope, refId)).url;
+  }
+
+  private async _storeFileWithKey(
+    orgId: string,
+    file: Express.Multer.File,
+    scope: string,
+    refId: string
+  ): Promise<{ url: string; storageKey: string }> {
     try {
       // Generate storage key
       const fileId = uuidv4();
@@ -453,7 +485,7 @@ export class FilesService {
         // Return signed URL (valid for 7 days - Max allowed by MinIO)
         const url = await this.minioClient.presignedGetObject(this.bucket, key, 7 * 24 * 60 * 60);
 
-        return url;
+        return { url, storageKey: key };
       } catch (minioError: any) {
         // Fallback to local storage if MinIO is not available
         if (minioError.code === "ECONNREFUSED" || minioError.message?.includes("connect") || minioError.code === "ENOTFOUND") {
@@ -493,7 +525,7 @@ export class FilesService {
     refId: string,
     fileId: string,
     ext: string
-  ): Promise<string> {
+  ): Promise<{ url: string; storageKey: string }> {
     // Create uploads directory based on scope
     // UPLOAD_DIR env var lets Render persistent disk path be set explicitly
     const baseUploadDir = process.env.UPLOAD_DIR || path.join(process.cwd(), "uploads");
@@ -526,7 +558,7 @@ export class FilesService {
       || this.configService.get<string>("API_URL")
       || this.configService.get<string>("NEXT_PUBLIC_APP_URL")
       || "http://localhost:4000";
-    return `${baseUrl}/api/files/local/${scope}/${fileName}`;
+    return { url: `${baseUrl}/api/files/local/${scope}/${fileName}`, storageKey: `local/${scope}/${fileName}` };
   }
 }
 

@@ -422,122 +422,43 @@ export class VisitsService {
     const base64 = body.imageData.replace(/^data:[^,]*,/, "");
     const imageBuffer = Buffer.from(base64, "base64");
 
-    // Generate storage key
-    const fileId = uuidv4();
-    const ext = body.fileName?.split(".").pop() || body.contentType.split("/")[1] || "jpg";
-    const key = `org/${orgId}/visit_photo/${visitId}/${fileId}.${ext}`;
-
-    // Upload directly to MinIO (server-side, so localhost works)
-    try {
-      const filesService = this.filesService as any;
-      const minioClient = filesService.minioClient;
-      const bucket = filesService.bucket;
-
-      if (!minioClient) {
-        throw new BadRequestException("File storage service is not available. Please ensure Docker/MinIO is running.");
-      }
-
-      // Ensure bucket exists
-      let bucketExists = false;
-      try {
-        bucketExists = await minioClient.bucketExists(bucket);
-      } catch (bucketCheckError: any) {
-        console.error("Error checking bucket existence:", bucketCheckError);
-        if (bucketCheckError.code === "ECONNREFUSED" || bucketCheckError.message?.includes("ECONNREFUSED")) {
-          throw new BadRequestException(
-            "Cannot connect to MinIO storage. Please ensure MinIO is running. " +
-            "You can start it with: ./start-minio.sh or docker start poolcare-minio"
-          );
-        }
-        throw bucketCheckError;
-      }
-
-      if (!bucketExists) {
-        try {
-        await minioClient.makeBucket(bucket, "us-east-1");
-        } catch (bucketCreateError: any) {
-          console.error("Error creating bucket:", bucketCreateError);
-          if (bucketCreateError.code === "ECONNREFUSED" || bucketCreateError.message?.includes("ECONNREFUSED")) {
-            throw new BadRequestException(
-              "Cannot connect to MinIO storage. Please ensure MinIO is running. " +
-              "You can start it with: ./start-minio.sh or docker start poolcare-minio"
-            );
-          }
-          throw bucketCreateError;
-        }
-      }
-
-      // Upload file
-      try {
-      await minioClient.putObject(bucket, key, imageBuffer, imageBuffer.length, {
-        "Content-Type": body.contentType,
-      });
-      } catch (uploadError: any) {
-        console.error("Error uploading to MinIO:", uploadError);
-        if (uploadError.code === "ECONNREFUSED" || uploadError.message?.includes("ECONNREFUSED")) {
-          throw new BadRequestException(
-            "Failed to upload photo: Cannot connect to MinIO storage. " +
-            "Please ensure MinIO is running. You can start it with: ./start-minio.sh or docker start poolcare-minio"
-          );
-        }
-        throw new BadRequestException(`Failed to upload photo: ${uploadError.message || "Unknown error"}`);
-      }
-
-      // Commit file record
-      const file = await this.filesService.commit(orgId, {
-        key,
-        scope: "visit_photo",
-        refId: visitId,
-      });
-
-      // Generate a signed URL for the uploaded photo (so it can be displayed immediately)
-      // Use the storage key directly to generate presigned URL
-      const signedUrl = await minioClient.presignedGetObject(bucket, key, 7 * 24 * 60 * 60); // 7 days
-      
-      // Replace localhost with network IP for mobile access
-      // Extract network IP from environment or use default
-      const networkIp = process.env.NETWORK_IP || 
-                       (process.env.EXPO_PUBLIC_API_URL?.match(/(\d+\.\d+\.\d+\.\d+)/)?.[1]) ||
-                       "172.20.10.2";
-      const mobileSignedUrl = signedUrl
-        .replace(/http:\/\/localhost:/g, `http://${networkIp}:`)
-        .replace(/http:\/\/127\.0\.0\.1:/g, `http://${networkIp}:`);
-
-      // Create photo record
-      const photo = await prisma.photo.create({
-        data: {
-          orgId,
-          visitId,
-          url: file.storageKey, // Store storage key
-          label: body.label,
-          takenAt: new Date(),
-          meta: {},
-        },
-      });
-
-      return {
-        ...photo,
-        url: mobileSignedUrl, // Return signed URL for immediate display
-      };
-    } catch (error: any) {
-      console.error("Error uploading photo directly:", error);
-      
-      // Provide helpful error messages for common issues
-      if (error instanceof BadRequestException) {
-        throw error; // Re-throw our custom error messages
-      }
-      
-      const errorMsg = error.message || error.code || (typeof error === 'string' ? error : JSON.stringify(error));
-      
-      if (error.code === "ECONNREFUSED" || errorMsg.includes("ECONNREFUSED")) {
-        throw new BadRequestException(
-          "Failed to upload photo: Cannot connect to MinIO storage. " +
-          "Please ensure MinIO is running. You can start it with: ./start-minio.sh or docker start poolcare-minio"
-        );
-      }
-      
-      throw new BadRequestException(`Failed to upload photo: ${errorMsg}`);
+    if (!imageBuffer.length) {
+      throw new BadRequestException("Photo data is empty");
     }
+
+    // MinIO when configured, local disk otherwise (production has no MinIO)
+    const { url, storageKey } = await this.filesService.storeBuffer(
+      orgId,
+      imageBuffer,
+      body.contentType || "image/jpeg",
+      "visit_photo",
+      visitId,
+      body.fileName
+    );
+
+    // Replace localhost with network IP for mobile access in local dev
+    const networkIp = process.env.NETWORK_IP ||
+                     (process.env.EXPO_PUBLIC_API_URL?.match(/(\d+\.\d+\.\d+\.\d+)/)?.[1]) ||
+                     "172.20.10.2";
+    const mobileUrl = url
+      .replace(/http:\/\/localhost:/g, `http://${networkIp}:`)
+      .replace(/http:\/\/127\.0\.0\.1:/g, `http://${networkIp}:`);
+
+    const photo = await prisma.photo.create({
+      data: {
+        orgId,
+        visitId,
+        url: storageKey, // resolved to a fresh URL on read
+        label: body.label,
+        takenAt: new Date(),
+        meta: {},
+      },
+    });
+
+    return {
+      ...photo,
+      url: mobileUrl, // displayable immediately
+    };
   }
 
   async complete(orgId: string, userId: string, visitId: string, dto: CompleteVisitDto) {
