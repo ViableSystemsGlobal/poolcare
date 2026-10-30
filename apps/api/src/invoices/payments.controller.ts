@@ -80,6 +80,15 @@ export class ReceiptsController {
     return this.paymentsService.sendReceipt(user.org_id, id);
   }
 
+  @Get(":id/pdf")
+  async pdf(@CurrentUser() user: { org_id: string }, @Param("id") id: string, @Res() res: Response) {
+    const { buffer, filename } = await this.receiptsService.generatePdf(user.org_id, id);
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.setHeader("Content-Length", buffer.length);
+    res.send(buffer);
+  }
+
   @Get(":id/html")
   async html(@CurrentUser() user: { org_id: string }, @Param("id") id: string, @Res() res: Response) {
     const html = await this.receiptsService.renderHtml(user.org_id, id);

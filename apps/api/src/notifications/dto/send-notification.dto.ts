@@ -29,5 +29,15 @@ export class SendNotificationDto {
   @IsOptional()
   @IsObject()
   metadata?: any;
+
+  // Internal callers only (deliberately undecorated, so the HTTP validation
+  // pipe rejects it). Email channel only; never persisted on the Notification.
+  attachments?: EmailAttachment[];
+}
+
+export interface EmailAttachment {
+  filename: string;
+  content: Buffer;
+  contentType?: string;
 }
 

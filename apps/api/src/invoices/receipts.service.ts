@@ -1,6 +1,8 @@
-import { Injectable, NotFoundException, BadRequestException } from "@nestjs/common";
+import { Injectable, NotFoundException, BadRequestException, Inject, forwardRef } from "@nestjs/common";
 import { prisma } from "@poolcare/db";
+import PDFDocument from "pdfkit";
 import { resolveOrgPrimaryColor } from "../email/email-template.util";
+import { InvoicesService } from "./invoices.service";
 
 const escapeHtml = (value: unknown) =>
   String(value ?? "").replace(/[&<>"']/g, (c) =>
@@ -12,6 +14,11 @@ const money = (cents: number, currency: string) =>
 
 @Injectable()
 export class ReceiptsService {
+  constructor(
+    @Inject(forwardRef(() => InvoicesService))
+    private readonly invoicesService: InvoicesService
+  ) {}
+
   async list(
     orgId: string,
     filters: { paymentId?: string; invoiceId?: string; page?: number; limit?: number }
@@ -90,6 +97,165 @@ export class ReceiptsService {
     }
     const { count } = await prisma.receipt.deleteMany({ where: { orgId, id: { in: ids } } });
     return { deleted: count };
+  }
+
+  /**
+   * Renders a receipt as an A4 PDF in the same letterhead and branding as the
+   * invoice PDF, so the two read as one set of documents.
+   */
+  async generatePdf(orgId: string, id: string): Promise<{ buffer: Buffer; filename: string }> {
+    const receipt = await this.getOne(orgId, id);
+    const branding = await this.invoicesService.getInvoiceBranding(orgId);
+    const { invoice, payment } = receipt;
+
+    const A4_WIDTH = 595.28;
+    const BAND_GAP = 18;
+    const MARGIN = 50;
+    const bandHeight = (band: Buffer | null): number => {
+      if (!band) return 0;
+      const size = this.invoicesService.readImageSize(band);
+      return size?.width ? (A4_WIDTH * size.height) / size.width : 0;
+    };
+    const headerBandH = bandHeight(branding.headerBand);
+    const footerBandH = bandHeight(branding.footerBand);
+
+    const doc = new PDFDocument({
+      size: "A4",
+      margins: {
+        top: headerBandH ? headerBandH + BAND_GAP : MARGIN,
+        bottom: footerBandH ? footerBandH + BAND_GAP : MARGIN,
+        left: MARGIN,
+        right: MARGIN,
+      },
+    });
+    const buffers: Buffer[] = [];
+    doc.on("data", buffers.push.bind(buffers));
+
+    // Currency codes, not symbols: pdfkit's built-in fonts can't encode ₵.
+    const currency = payment?.currency || invoice.currency || "GHS";
+    const money = (cents: number) =>
+      `${currency} ${(cents / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    const date = (value: Date | string) =>
+      new Date(value).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+
+    const left = doc.page.margins.left;
+    const right = doc.page.width - doc.page.margins.right;
+    const contentWidth = right - left;
+
+    // ---- Header: org identity left, receipt identity right
+    let headerBottom = doc.y;
+    let logoDrawn = false;
+    if (branding.logo) {
+      try {
+        doc.image(branding.logo, left, doc.y, { fit: [130, 48] });
+        headerBottom = doc.y + 48;
+        logoDrawn = true;
+      } catch {
+        // An unreadable logo shouldn't fail the receipt
+      }
+    }
+    if (!logoDrawn) {
+      doc.fontSize(18).fillColor("#111111").text(branding.name, left, doc.y, { width: 280 });
+      headerBottom = doc.y;
+    }
+    doc.fontSize(10).fillColor("#666666");
+    let contactY = headerBottom + 8;
+    for (const line of [branding.address, branding.supportEmail, branding.supportPhone]) {
+      if (!line) continue;
+      doc.text(line, left, contactY, { width: 260 });
+      contactY = doc.y;
+      headerBottom = doc.y;
+    }
+
+    doc.fontSize(26).fillColor(branding.primaryColor).text("RECEIPT", left, doc.page.margins.top, {
+      width: contentWidth,
+      align: "right",
+    });
+    doc.fontSize(11).fillColor("#111111").text(receipt.receiptNumber, left, doc.y + 2, {
+      width: contentWidth,
+      align: "right",
+    });
+    doc.fontSize(10).fillColor("#666666").text(date(receipt.issuedAt), left, doc.y + 2, {
+      width: contentWidth,
+      align: "right",
+    });
+
+    let y = Math.max(headerBottom, doc.y) + 24;
+    doc.moveTo(left, y).lineTo(right, y).lineWidth(1).strokeColor("#e5e7eb").stroke();
+    y += 20;
+
+    // ---- Received from
+    doc.fontSize(9).fillColor("#6b7280").text("RECEIVED FROM", left, y);
+    doc.fontSize(11).fillColor("#111111").text(invoice.client?.name || "-", left, doc.y + 4, { width: contentWidth });
+    doc.fontSize(10).fillColor("#4b5563");
+    for (const line of [invoice.client?.billingAddress, invoice.client?.email, invoice.client?.phone]) {
+      if (line) doc.text(line, left, doc.y + 2, { width: contentWidth });
+    }
+    y = doc.y + 28;
+
+    // ---- Amount received
+    doc.fontSize(9).fillColor("#6b7280").text("AMOUNT RECEIVED", left, y);
+    doc
+      .fontSize(28)
+      .fillColor(branding.primaryColor)
+      .text(money(payment?.amountCents ?? invoice.paidCents), left, doc.y + 4, { width: contentWidth });
+    y = doc.y + 24;
+
+    // ---- Details
+    const balanceCents = Math.max(0, invoice.totalCents - invoice.paidCents);
+    const rows: Array<[string, string]> = [
+      ["Invoice", invoice.invoiceNumber],
+      ...(invoice.pool?.name ? [["Pool", invoice.pool.name] as [string, string]] : []),
+      ["Payment date", date(payment?.processedAt || receipt.issuedAt)],
+      ...(payment?.method
+        ? [["Payment method", payment.method.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())] as [string, string]]
+        : []),
+      ...(payment?.providerRef ? [["Reference", payment.providerRef] as [string, string]] : []),
+      ["Invoice total", money(invoice.totalCents)],
+      ["Total paid to date", money(invoice.paidCents)],
+      ["Balance due", money(balanceCents)],
+    ];
+    for (const [label, value] of rows) {
+      doc.moveTo(left, y).lineTo(right, y).lineWidth(0.5).strokeColor("#e5e7eb").stroke();
+      y += 9;
+      doc.fontSize(10).fillColor("#6b7280").text(label, left, y, { width: contentWidth / 2 });
+      doc.fillColor("#111111").text(value, left + contentWidth / 2, y, { width: contentWidth / 2, align: "right" });
+      y += 22;
+    }
+    doc.moveTo(left, y).lineTo(right, y).lineWidth(0.5).strokeColor("#e5e7eb").stroke();
+    y += 20;
+
+    doc
+      .fontSize(10)
+      .fillColor("#4b5563")
+      .text(balanceCents > 0 ? "Thank you for your payment." : "This invoice is now fully paid. Thank you for your business.", left, y, {
+        width: contentWidth,
+      });
+
+    // ---- Letterhead bands + footer line (single page)
+    doc.page.margins.bottom = 0;
+    if (branding.headerBand && headerBandH) {
+      doc.image(branding.headerBand, 0, 0, { width: doc.page.width, height: headerBandH });
+    }
+    if (branding.footerBand && footerBandH) {
+      doc.image(branding.footerBand, 0, doc.page.height - footerBandH, { width: doc.page.width, height: footerBandH });
+    }
+    doc
+      .fontSize(8)
+      .fillColor("#9ca3af")
+      .text(
+        `${branding.name} · ${receipt.receiptNumber}`,
+        left,
+        footerBandH ? doc.page.height - footerBandH - 13 : doc.page.height - MARGIN + 12,
+        { width: contentWidth, align: "center" }
+      );
+
+    doc.end();
+    const buffer = await new Promise<Buffer>((resolve, reject) => {
+      doc.on("end", () => resolve(Buffer.concat(buffers)));
+      doc.on("error", reject);
+    });
+    return { buffer, filename: `${receipt.receiptNumber}.pdf` };
   }
 
   /** A self-contained, printable receipt page in the org's branding. */

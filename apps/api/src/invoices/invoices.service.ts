@@ -591,7 +591,7 @@ export class InvoicesService {
     return { buffer, filename: `${invoice.invoiceNumber}.pdf` };
   }
 
-  private async getInvoiceBranding(orgId: string) {
+  async getInvoiceBranding(orgId: string) {
     const [org, orgSetting] = await Promise.all([
       prisma.organization.findUnique({ where: { id: orgId } }),
       prisma.orgSetting.findUnique({ where: { orgId } }),
@@ -666,7 +666,7 @@ export class InvoicesService {
    * into a height. Returns null for anything unrecognised, which callers treat
    * as "no band".
    */
-  private readImageSize(buf: Buffer): { width: number; height: number } | null {
+  readImageSize(buf: Buffer): { width: number; height: number } | null {
     if (buf.length < 24) return null;
 
     // PNG: IHDR width/height are the two big-endian u32s at offset 16.

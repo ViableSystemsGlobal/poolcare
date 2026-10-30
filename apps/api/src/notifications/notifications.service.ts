@@ -33,7 +33,7 @@ export class NotificationsService {
     });
 
     try {
-      const providerRef = await this.deliverNotification({ ...notification, to: dto.to });
+      const providerRef = await this.deliverNotification({ ...notification, to: dto.to, attachments: dto.attachments });
 
       await prisma.notification.update({
         where: { id: notification.id },
@@ -75,7 +75,7 @@ export class NotificationsService {
         metadata && typeof metadata === "object" && typeof metadata.html === "string"
           ? metadata.html
           : undefined;
-      return this.emailAdapter.send(email, subject || template || "PoolCare Notification", body, html, orgId);
+      return this.emailAdapter.send(email, subject || template || "PoolCare Notification", body, html, orgId, notification.attachments);
     }
 
     if (channel === "push") {

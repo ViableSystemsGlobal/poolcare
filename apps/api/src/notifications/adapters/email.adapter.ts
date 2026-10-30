@@ -5,6 +5,7 @@ import * as nodemailer from "nodemailer";
 import { Transporter } from "nodemailer";
 import * as crypto from 'crypto';
 import { resolveEncryptionKey } from '../../utils/encryption-key.util';
+import { EmailAttachment } from "../dto/send-notification.dto";
 
 const ENCRYPTION_KEY = resolveEncryptionKey();
 
@@ -166,7 +167,8 @@ export class EmailAdapter {
     subject: string,
     text: string,
     html?: string,
-    orgId?: string
+    orgId?: string,
+    attachments?: EmailAttachment[]
   ): Promise<string> {
     // Get SMTP config (from database or environment)
     const config = await this.getSmtpConfig(orgId);
@@ -193,6 +195,7 @@ export class EmailAdapter {
         subject,
         text,
         html: html || text,
+        ...(attachments?.length ? { attachments } : {}),
       });
 
       this.logger.log(`Email sent successfully to ${to}: ${info.messageId}`);

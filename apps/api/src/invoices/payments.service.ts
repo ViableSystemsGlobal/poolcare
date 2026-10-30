@@ -5,6 +5,7 @@ import { NotificationsService } from "../notifications/notifications.service";
 import { PrepaidTermsService } from "../plans/prepaid-terms.service";
 import { QuotesService } from "../quotes/quotes.service";
 import { createEmailTemplate, getOrgEmailSettings } from "../email/email-template.util";
+import { ReceiptsService } from "./receipts.service";
 import { InitPaymentDto, CreateRefundDto } from "./dto";
 import * as crypto from "crypto";
 import PDFDocument from "pdfkit";
@@ -24,6 +25,8 @@ export class PaymentsService {
     private readonly prepaidTerms: PrepaidTermsService,
     @Inject(forwardRef(() => QuotesService))
     private readonly quotesService: QuotesService,
+    @Inject(forwardRef(() => ReceiptsService))
+    private readonly receiptsService: ReceiptsService,
   ) {
     this.minioClient = new MinIO.Client({
       endPoint: this.configService.get<string>("MINIO_ENDPOINT") || "localhost",
@@ -478,7 +481,7 @@ export class PaymentsService {
       const emailContent = `
         <h2 style="color: #333333; margin-top: 0; margin-bottom: 16px;">Payment received</h2>
         <p style="margin: 0 0 16px 0;">Dear ${esc(client.name || "Valued Client")},</p>
-        <p style="margin: 0 0 16px 0;">Thank you — we've received your payment of <strong>${currency} ${amount}</strong>. Your receipt is below.</p>
+        <p style="margin: 0 0 16px 0;">Thank you — we've received your payment of <strong>${currency} ${amount}</strong>. Your receipt is below and attached as a PDF.</p>
         <div style="background-color: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
           ${rows
             .map(
@@ -502,6 +505,14 @@ ${balanceLine}
 
 Thank you for choosing ${orgName}!`;
 
+      // The PDF is a nice-to-have: if it can't be drawn, still send the email.
+      let pdf: { buffer: Buffer; filename: string } | null = null;
+      try {
+        pdf = await this.receiptsService.generatePdf(orgId, receipt.id);
+      } catch (err: any) {
+        this.logger.error(`Failed to render receipt PDF ${receipt.receiptNumber}: ${err.message}`);
+      }
+
       try {
         await this.notificationsService.send(orgId, {
           recipientId: client.id,
@@ -509,6 +520,9 @@ Thank you for choosing ${orgName}!`;
           channel: "email",
           to: client.email,
           template: "receipt_sent",
+          ...(pdf
+            ? { attachments: [{ filename: pdf.filename, content: pdf.buffer, contentType: "application/pdf" }] }
+            : {}),
           subject: `Receipt ${receipt.receiptNumber} - ${currency} ${amount}`,
           body: emailBody,
           metadata: { ...metadata, html: createEmailTemplate(emailContent, orgSettings) },
