@@ -4,6 +4,7 @@ import { prisma } from "@poolcare/db";
 import { NotificationsService } from "../notifications/notifications.service";
 import { PrepaidTermsService } from "../plans/prepaid-terms.service";
 import { QuotesService } from "../quotes/quotes.service";
+import { createEmailTemplate, getOrgEmailSettings } from "../email/email-template.util";
 import { InitPaymentDto, CreateRefundDto } from "./dto";
 import * as crypto from "crypto";
 import PDFDocument from "pdfkit";
@@ -300,9 +301,9 @@ export class PaymentsService {
         return { success: true, message: "Already processed" };
       }
 
-      // Generate receipt if fully paid
+      // Every completed payment gets a receipt, sent to the client
+      await this.generateReceipt(payment.orgId, payment.invoiceId, payment.id);
       if (newStatus === "paid") {
-        await this.generateReceipt(payment.orgId, payment.invoiceId, payment.id);
         await this.onInvoicePaid(payment.invoiceId);
       }
 
@@ -395,10 +396,130 @@ export class PaymentsService {
    */
   private async generateReceipt(orgId: string, invoiceId: string, paymentId: string) {
     try {
-      await this.createReceipt(orgId, invoiceId, paymentId);
+      const receipt = await this.createReceipt(orgId, invoiceId, paymentId);
+      if (receipt) await this.sendReceipt(orgId, receipt.id);
     } catch (err: any) {
       this.logger.error(`Receipt generation failed for payment ${paymentId}: ${err.message}`);
     }
+  }
+
+  /**
+   * Emails and texts a receipt to the invoice's client, on whichever channels
+   * they have contact details for. Each channel fails independently.
+   */
+  async sendReceipt(orgId: string, receiptId: string) {
+    const receipt = await prisma.receipt.findFirst({
+      where: { id: receiptId, orgId },
+      include: { invoice: { include: { client: true, pool: true } }, payment: true },
+    });
+    if (!receipt) {
+      throw new NotFoundException("Receipt not found");
+    }
+
+    const { invoice, payment } = receipt;
+    const client = invoice.client;
+    const currency = payment?.currency || invoice.currency || "GHS";
+    const fmt = (cents: number) =>
+      (cents / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const amount = fmt(payment?.amountCents ?? invoice.paidCents);
+    const balanceCents = Math.max(0, invoice.totalCents - invoice.paidCents);
+    const paidOn = (payment?.processedAt || receipt.issuedAt).toLocaleDateString("en-GB", {
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+    });
+    const method = (payment?.method || "").replace(/_/g, " ");
+    const esc = (v: string) => v.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const orgSettings = await getOrgEmailSettings(orgId);
+    const orgName = orgSettings.organizationName || "PoolCare";
+    const balanceLine = balanceCents > 0
+      ? `Balance due: ${currency} ${fmt(balanceCents)}`
+      : "This invoice is now fully paid.";
+    const metadata = {
+      type: "receipt",
+      receiptId: receipt.id,
+      receiptNumber: receipt.receiptNumber,
+      invoiceId: invoice.id,
+      invoiceNumber: invoice.invoiceNumber,
+      amount: payment?.amountCents ?? invoice.paidCents,
+      currency,
+    };
+
+    const sent = { email: false, sms: false };
+
+    if (client.phone) {
+      try {
+        await this.notificationsService.send(orgId, {
+          recipientId: client.id,
+          recipientType: "client",
+          channel: "sms",
+          to: client.phone,
+          template: "receipt_sent",
+          body: `${orgName}: payment of ${currency} ${amount} received for invoice #${invoice.invoiceNumber}. Receipt ${receipt.receiptNumber}. ${balanceLine} Thank you!`,
+          metadata,
+        });
+        sent.sms = true;
+      } catch (err: any) {
+        this.logger.error(`Failed to text receipt ${receipt.receiptNumber}: ${err.message}`);
+      }
+    }
+
+    if (client.email) {
+      const rows: Array<[string, string]> = [
+        ["Receipt number", receipt.receiptNumber],
+        ["Invoice", `#${invoice.invoiceNumber}`],
+        ["Payment date", paidOn],
+        ...(method ? [["Payment method", method] as [string, string]] : []),
+        ...(payment?.providerRef ? [["Reference", payment.providerRef] as [string, string]] : []),
+        ...(invoice.pool ? [["Pool", invoice.pool.name || ""] as [string, string]] : []),
+        ["Invoice total", `${currency} ${fmt(invoice.totalCents)}`],
+        ["Balance due", `${currency} ${fmt(balanceCents)}`],
+      ];
+      const emailContent = `
+        <h2 style="color: #333333; margin-top: 0; margin-bottom: 16px;">Payment received</h2>
+        <p style="margin: 0 0 16px 0;">Dear ${esc(client.name || "Valued Client")},</p>
+        <p style="margin: 0 0 16px 0;">Thank you — we've received your payment of <strong>${currency} ${amount}</strong>. Your receipt is below.</p>
+        <div style="background-color: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
+          ${rows
+            .map(
+              ([l, v]) => `<div style="display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #e5e5e5;">
+                <span style="color: #666666;">${esc(l)}</span><strong style="text-transform: ${l === "Payment method" ? "capitalize" : "none"};">${esc(v)}</strong>
+              </div>`
+            )
+            .join("")}
+          <div style="margin-top: 16px; font-size: 18px; font-weight: bold; color: ${orgSettings.primaryColor};">Amount paid: ${currency} ${amount}</div>
+        </div>
+        <p style="margin: 16px 0 0 0;">${esc(balanceLine)}</p>
+        <p style="margin: 16px 0 0 0;">Thank you for choosing ${esc(orgName)}!</p>
+      `;
+      const emailBody = `Dear ${client.name || "Valued Client"},
+
+Thank you — we've received your payment of ${currency} ${amount}.
+
+${rows.map(([l, v]) => `${l}: ${v}`).join("\n")}
+
+${balanceLine}
+
+Thank you for choosing ${orgName}!`;
+
+      try {
+        await this.notificationsService.send(orgId, {
+          recipientId: client.id,
+          recipientType: "client",
+          channel: "email",
+          to: client.email,
+          template: "receipt_sent",
+          subject: `Receipt ${receipt.receiptNumber} - ${currency} ${amount}`,
+          body: emailBody,
+          metadata: { ...metadata, html: createEmailTemplate(emailContent, orgSettings) },
+        });
+        sent.email = true;
+      } catch (err: any) {
+        this.logger.error(`Failed to email receipt ${receipt.receiptNumber}: ${err.message}`);
+      }
+    }
+
+    return { ...sent, hasEmail: !!client.email, hasPhone: !!client.phone };
   }
 
   /**
@@ -652,8 +773,9 @@ export class PaymentsService {
       }),
     ]);
 
+    // Every completed payment gets a receipt, sent to the client
+    await this.generateReceipt(orgId, dto.invoiceId, payment.id);
     if (newStatus === "paid") {
-      await this.generateReceipt(orgId, dto.invoiceId, payment.id);
       await this.onInvoicePaid(dto.invoiceId);
     }
 

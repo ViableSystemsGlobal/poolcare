@@ -43,7 +43,10 @@ export class PaymentsController {
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles("ADMIN", "MANAGER")
 export class ReceiptsController {
-  constructor(private readonly receiptsService: ReceiptsService) {}
+  constructor(
+    private readonly receiptsService: ReceiptsService,
+    private readonly paymentsService: PaymentsService
+  ) {}
 
   @Get()
   async list(
@@ -70,6 +73,11 @@ export class ReceiptsController {
   @Get(":id")
   async getOne(@CurrentUser() user: { org_id: string }, @Param("id") id: string) {
     return this.receiptsService.getOne(user.org_id, id);
+  }
+
+  @Post(":id/send")
+  async send(@CurrentUser() user: { org_id: string }, @Param("id") id: string) {
+    return this.paymentsService.sendReceipt(user.org_id, id);
   }
 
   @Get(":id/html")

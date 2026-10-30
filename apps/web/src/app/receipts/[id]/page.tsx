@@ -15,6 +15,7 @@ import {
   DollarSign,
   Calendar,
   ExternalLink,
+  Send,
 } from "lucide-react";
 import {
   Table,
@@ -79,6 +80,7 @@ export default function ReceiptDetailPage() {
 
   const [receipt, setReceipt] = useState<ReceiptData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(false);
 
   const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
 
@@ -115,6 +117,30 @@ export default function ReceiptDetailPage() {
 
   const formatCurrency = (cents: number, currency = "GHS") => {
     return `${formatCurrencyForDisplay(currency)}${(cents / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  };
+
+  const handleSend = async () => {
+    setSending(true);
+    try {
+      const res = await fetch(`${API_URL}/receipts/${receiptId}/send`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${localStorage.getItem("auth_token")}` },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.message || "Failed to send receipt");
+      const channels = [data.email && "email", data.sms && "SMS"].filter(Boolean).join(" and ");
+      if (channels) {
+        toast({ title: "Receipt sent", description: `Sent to the client by ${channels}.` });
+      } else if (!data.hasEmail && !data.hasPhone) {
+        toast({ title: "Not sent", description: "This client has no email or phone number on file.", variant: "destructive" });
+      } else {
+        toast({ title: "Not sent", description: "Delivery failed — check the email and SMS settings.", variant: "destructive" });
+      }
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message || "Failed to send receipt", variant: "destructive" });
+    } finally {
+      setSending(false);
+    }
   };
 
   const handleDownload = async () => {
@@ -178,6 +204,10 @@ export default function ReceiptDetailPage() {
           </div>
         </div>
         <div className="flex items-center space-x-2">
+          <Button variant="outline" onClick={handleSend} disabled={sending}>
+            <Send className="h-4 w-4 mr-2" />
+            {sending ? "Sending…" : "Send to client"}
+          </Button>
           <Button
             onClick={handleDownload}
             style={{ backgroundColor: theme.primary, color: "white" }}
