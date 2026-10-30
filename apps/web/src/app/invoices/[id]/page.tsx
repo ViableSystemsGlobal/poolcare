@@ -1,5 +1,6 @@
 "use client";
 
+import { openReceipt } from "@/lib/receipts";
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useToast } from "@/hooks/use-toast";
@@ -848,6 +849,8 @@ export default function InvoiceDetailPage() {
                               variant="ghost"
                               size="sm"
                               onClick={async () => {
+                                // Opened before any await so the browser still treats it as a click-initiated popup.
+                                const receiptTab = window.open("", "_blank");
                                 try {
                                   const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
                                   // Find or generate receipt for this payment
@@ -856,30 +859,26 @@ export default function InvoiceDetailPage() {
                                       Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
                                     },
                                   });
-                                  let receipt;
-                                  if (receiptResponse.ok) {
-                                    const data = await receiptResponse.json();
-                                    receipt = data.items?.[0];
-                                    if (!receipt) {
-                                      // Generate receipt
-                                      const generateResponse = await fetch(`${API_URL}/payments/${payment.id}/receipt`, {
-                                        method: "POST",
-                                        headers: {
-                                          Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
-                                        },
-                                      });
-                                      if (generateResponse.ok) {
-                                        receipt = await generateResponse.json();
-                                      }
-                                    }
-                                    if (receipt) {
-                                      // Open receipt in new tab
-                                      window.open(`${API_URL}/receipts/${receipt.id}/html`, "_blank");
-                                    }
+                                  if (!receiptResponse.ok) throw new Error(`Receipt lookup failed (${receiptResponse.status})`);
+                                  const data = await receiptResponse.json();
+                                  let receipt = data.items?.[0];
+                                  if (!receipt) {
+                                    // Part-payments aren't auto-receipted; issue one now
+                                    const generateResponse = await fetch(`${API_URL}/payments/${payment.id}/receipt`, {
+                                      method: "POST",
+                                      headers: {
+                                        Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
+                                      },
+                                    });
+                                    if (!generateResponse.ok) throw new Error(`Receipt generation failed (${generateResponse.status})`);
+                                    receipt = await generateResponse.json();
                                   }
+                                  // Open receipt in the tab opened at click time
+                                  await openReceipt(receipt.id, receiptTab);
                                 } catch (error) {
                                   console.error("Failed to get receipt:", error);
-                                  alert("Failed to load receipt");
+                                  receiptTab?.close();
+                                  toast({ title: "Error", description: "Failed to load receipt", variant: "destructive" });
                                 }
                               }}
                             >

@@ -1,5 +1,6 @@
 "use client";
 
+import { openReceipt } from "@/lib/receipts";
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -116,8 +117,12 @@ export default function ReceiptDetailPage() {
     return `${formatCurrencyForDisplay(currency)}${(cents / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
 
-  const handleDownload = () => {
-    window.open(`${API_URL}/receipts/${receiptId}/html`, "_blank");
+  const handleDownload = async () => {
+    try {
+      await openReceipt(receiptId);
+    } catch {
+      toast({ title: "Error", description: "Failed to open receipt", variant: "destructive" });
+    }
   };
 
   if (loading) {

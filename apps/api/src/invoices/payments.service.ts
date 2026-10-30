@@ -401,6 +401,60 @@ export class PaymentsService {
     }
   }
 
+  /**
+   * Returns the payment's receipt, creating one if it has none yet. Receipts are
+   * only auto-issued when an invoice is settled in full, so this is how a
+   * part-payment gets one on request.
+   */
+  async ensureReceipt(orgId: string, paymentId: string) {
+    const payment = await prisma.payment.findFirst({
+      where: { id: paymentId, orgId },
+      include: { receipt: true },
+    });
+    if (!payment) {
+      throw new NotFoundException("Payment not found");
+    }
+    if (payment.receipt) return payment.receipt;
+    if (payment.status !== "completed") {
+      throw new BadRequestException("Receipts can only be issued for completed payments");
+    }
+    const receipt = await this.createReceipt(orgId, payment.invoiceId, payment.id);
+    if (!receipt) {
+      throw new BadRequestException("Could not issue a receipt for this payment");
+    }
+    return receipt;
+  }
+
+  async list(
+    orgId: string,
+    filters: { status?: string; method?: string; invoiceId?: string; page?: number; limit?: number }
+  ) {
+    const page = Math.max(1, filters.page || 1);
+    const limit = Math.min(200, Math.max(1, filters.limit || 50));
+    const where: any = { orgId };
+    if (filters.status) where.status = filters.status;
+    if (filters.method) where.method = filters.method;
+    if (filters.invoiceId) where.invoiceId = filters.invoiceId;
+
+    const [items, total] = await Promise.all([
+      prisma.payment.findMany({
+        where,
+        include: {
+          invoice: {
+            select: { id: true, invoiceNumber: true, client: { select: { id: true, name: true } } },
+          },
+          receipt: { select: { id: true, receiptNumber: true } },
+        },
+        orderBy: { createdAt: "desc" },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      prisma.payment.count({ where }),
+    ]);
+
+    return { items, total, page, limit };
+  }
+
   private async createReceipt(orgId: string, invoiceId: string, paymentId: string) {
     const year = new Date().getFullYear();
     const prefix = `RCP-${year}-`;
@@ -434,7 +488,7 @@ export class PaymentsService {
 
     if (!invoice || !payment) {
       this.logger.error(`Failed to generate receipt: invoice or payment not found`);
-      return;
+      return null;
     }
 
     // Generate PDF
@@ -500,22 +554,22 @@ export class PaymentsService {
       const pdfUrl = await this.minioClient.presignedGetObject(this.bucket, key, 365 * 24 * 60 * 60);
 
       // Create receipt record
-      await prisma.receipt.create({
+      const receipt = await prisma.receipt.create({
         data: {
           orgId,
           invoiceId,
           paymentId,
           receiptNumber,
           pdfUrl,
-          storageKey: key,
         },
       });
 
       this.logger.log(`Receipt ${receiptNumber} generated and uploaded successfully`);
+      return receipt;
     } catch (error: any) {
       this.logger.error(`Failed to upload receipt PDF: ${error.message}`, error);
       // Still create receipt record without PDF URL
-      await prisma.receipt.create({
+      return prisma.receipt.create({
         data: {
           orgId,
           invoiceId,

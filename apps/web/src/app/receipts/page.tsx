@@ -1,5 +1,6 @@
 "use client";
 
+import { openReceipt } from "@/lib/receipts";
 import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -100,6 +101,8 @@ export default function ReceiptsPage() {
         const data = await response.json();
         setReceipts(data.items || []);
         calculateMetrics(data.items || []);
+      } else {
+        toast({ title: "Couldn't load receipts", description: `The server returned ${response.status}.`, variant: "destructive" });
       }
     } catch (error) {
       console.error("Failed to fetch receipts:", error);
@@ -193,7 +196,7 @@ export default function ReceiptsPage() {
 
   const handleDownload = async (receiptId: string) => {
     try {
-      window.open(`${API_URL}/receipts/${receiptId}/html`, "_blank");
+      await openReceipt(receiptId);
     } catch (error) {
       console.error("Failed to download receipt:", error);
       toast({ title: "Error", description: "Failed to download receipt", variant: "destructive" });
@@ -205,12 +208,12 @@ export default function ReceiptsPage() {
       toast({ title: "No receipts selected", description: "Select at least one receipt to download.", variant: "destructive" });
       return;
     }
+    // Open every tab now, while the click still allows popups; fill them as each loads.
     const ids = Array.from(selectedReceipts);
-    ids.forEach((receiptId, i) => {
-      setTimeout(() => {
-        window.open(`${API_URL}/receipts/${receiptId}/html`, "_blank");
-      }, i * 400);
-    });
+    const results = await Promise.allSettled(ids.map((id) => openReceipt(id, window.open("", "_blank"))));
+    if (results.some((r) => r.status === "rejected")) {
+      toast({ title: "Error", description: "Some receipts could not be opened.", variant: "destructive" });
+    }
   };
 
   const handleBulkDelete = async () => {
