@@ -84,93 +84,64 @@ function statusLabel(status: string) {
 }
 
 // Built once per pool; the carer's position is pushed in with injectJavaScript
-// so GPS updates move a marker instead of reloading Google Maps every few seconds.
+// so GPS updates move a marker instead of reloading the map every few seconds.
+// Uses Leaflet + OpenStreetMap tiles: no API key, so it can't fail on Google key
+// restrictions (a WebView page has no allowed referrer) or Maps billing.
 function buildMapHtml(
   pool: { lat: number; lng: number },
   carer: { lat: number; lng: number } | null,
-  radius: number,
-  apiKey: string
+  radius: number
 ) {
   return `<!DOCTYPE html>
 <html>
   <head>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
       * { margin: 0; padding: 0; box-sizing: border-box; }
-      body, html { height: 100%; width: 100%; overflow: hidden; }
-      #map { height: 100%; width: 100%; }
-      #error { display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-        text-align: center; padding: 20px; background: white; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+      body, html, #map { height: 100%; width: 100%; overflow: hidden; background: #e5e7eb; }
+      #error { display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 1000;
+        text-align: center; padding: 16px; background: white; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        font-family: -apple-system, Roboto, sans-serif; color: #6b7280; font-size: 13px; }
     </style>
   </head>
   <body>
     <div id="map"></div>
-    <div id="error">
-      <p style="color: #ef4444; font-weight: bold; margin-bottom: 8px;">Map Error</p>
-      <p style="color: #6b7280; font-size: 12px;" id="errorMsg"></p>
-    </div>
+    <div id="error">Map couldn't load. Use "Open in Maps" below.</div>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script>
       var map = null, carerMarker = null, fitted = false;
-      var poolLocation = { lat: ${pool.lat}, lng: ${pool.lng} };
-      var pendingCarer = ${carer ? `{ lat: ${carer.lat}, lng: ${carer.lng} }` : "null"};
-      var geofenceRadius = ${radius};
-
-      function showError(msg) {
-        document.getElementById('error').style.display = 'block';
-        document.getElementById('errorMsg').textContent = msg;
-      }
+      var poolLocation = [${pool.lat}, ${pool.lng}];
+      var pendingCarer = ${carer ? `[${carer.lat}, ${carer.lng}]` : "null"};
 
       window.updateCarer = function(lat, lng) {
-        pendingCarer = { lat: lat, lng: lng };
+        pendingCarer = [lat, lng];
         if (!map) return;
         if (!carerMarker) {
-          carerMarker = new google.maps.Marker({
-            position: pendingCarer, map: map, title: 'Your Location',
-            icon: { path: google.maps.SymbolPath.CIRCLE, scale: 8, fillColor: '#ef4444', fillOpacity: 1, strokeColor: '#ffffff', strokeWeight: 2 }
-          });
+          carerMarker = L.circleMarker(pendingCarer, { radius: 8, color: '#ffffff', weight: 2, fillColor: '#ef4444', fillOpacity: 1 }).addTo(map);
         } else {
-          carerMarker.setPosition(pendingCarer);
+          carerMarker.setLatLng(pendingCarer);
         }
         if (!fitted) {
-          var bounds = new google.maps.LatLngBounds();
-          bounds.extend(poolLocation);
-          bounds.extend(pendingCarer);
-          map.fitBounds(bounds);
+          map.fitBounds(L.latLngBounds([poolLocation, pendingCarer]), { padding: [40, 40], maxZoom: 17 });
           fitted = true;
         }
       };
 
-      window.initMap = function() {
-        try {
-          if (map) return;
-          if (typeof google === 'undefined' || !google.maps) throw new Error('Google Maps API not loaded');
-          map = new google.maps.Map(document.getElementById('map'), {
-            center: poolLocation, zoom: 15, mapTypeId: 'roadmap', disableDefaultUI: false,
-            zoomControl: true, mapTypeControl: false, streetViewControl: false, fullscreenControl: true
-          });
-          new google.maps.Marker({
-            position: poolLocation, map: map, title: 'Pool Location',
-            icon: { path: google.maps.SymbolPath.CIRCLE, scale: 10, fillColor: '#397d54', fillOpacity: 1, strokeColor: '#ffffff', strokeWeight: 2 }
-          });
-          new google.maps.Circle({
-            strokeColor: '#ef4444', strokeOpacity: 0.8, strokeWeight: 2, fillColor: '#ef4444', fillOpacity: 0.15,
-            map: map, center: poolLocation, radius: geofenceRadius
-          });
-          if (pendingCarer) window.updateCarer(pendingCarer.lat, pendingCarer.lng);
-        } catch (error) {
-          showError(error.message || 'Failed to load map');
-        }
-      };
-
-      setTimeout(function() {
-        if (typeof google !== 'undefined' && google.maps && !map) window.initMap();
-      }, 2000);
-
-      window.gm_authFailure = function() {
-        showError('Google Maps API authentication failed. Please check API key configuration in Settings → Integrations → Google Maps.');
-      };
+      try {
+        if (typeof L === 'undefined') throw new Error('Leaflet not loaded');
+        map = L.map('map', { zoomControl: true, attributionControl: true }).setView(poolLocation, 16);
+        L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          maxZoom: 19,
+          attribution: '&copy; OpenStreetMap contributors'
+        }).addTo(map);
+        L.circle(poolLocation, { radius: ${radius}, color: '#ef4444', weight: 2, fillColor: '#ef4444', fillOpacity: 0.15 }).addTo(map);
+        L.circleMarker(poolLocation, { radius: 10, color: '#ffffff', weight: 2, fillColor: '#397d54', fillOpacity: 1 }).addTo(map);
+        if (pendingCarer) window.updateCarer(pendingCarer[0], pendingCarer[1]);
+      } catch (e) {
+        document.getElementById('error').style.display = 'block';
+      }
     </script>
-    <script src="https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=geometry&callback=initMap"></script>
   </body>
 </html>`;
 }
@@ -238,10 +209,10 @@ export default function JobDetailScreen() {
 
   const mapHtml = useMemo(
     () =>
-      poolLocation && googleMapsApiKey
-        ? buildMapHtml(poolLocation, carerLocationRef.current, GEOFENCE_RADIUS_METERS, googleMapsApiKey)
+      poolLocation
+        ? buildMapHtml(poolLocation, carerLocationRef.current, GEOFENCE_RADIUS_METERS)
         : null,
-    [poolLocation, googleMapsApiKey, GEOFENCE_RADIUS_METERS]
+    [poolLocation, GEOFENCE_RADIUS_METERS]
   );
 
   useEffect(() => {
@@ -1951,12 +1922,13 @@ export default function JobDetailScreen() {
                 />
               </MapView>
             ) : poolLocation ? (
-              // WebView-based Google Maps (works in Expo Go)
-              googleMapsApiKey ? (
+              // WebView map (Leaflet/OpenStreetMap — no key needed)
+              mapHtml ? (
                 <WebView
                   style={styles.map}
                   ref={mapWebViewRef}
-                  source={{ html: mapHtml || "" }}
+                  // A real origin so the tile server accepts the requests
+                  source={{ html: mapHtml, baseUrl: "https://poolcare.africa" }}
                   javaScriptEnabled={true}
                   onError={(syntheticEvent) => {
                     const { nativeEvent } = syntheticEvent;

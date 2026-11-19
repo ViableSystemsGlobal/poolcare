@@ -320,7 +320,11 @@ export class AuthService {
         // Collect all roles in this org
         const orgMemberships = allMemberships.filter((m) => m.orgId === membership!.orgId);
         const allRoles = orgMemberships.map((m) => m.role);
-        const primaryRole = app === "client" ? "CLIENT" : this.getHighestPrivilegeRole(allRoles);
+        // The app decides the acting role: an admin who is also a carer must see
+        // only their own assigned jobs in the carer app (job/visit scoping keys
+        // off `role`). `roles` still lists every membership for the RolesGuard.
+        const primaryRole =
+          app === "client" ? "CLIENT" : app === "carer" ? "CARER" : this.getHighestPrivilegeRole(allRoles);
 
         // Resolve display name: User.name → Client.name → Carer.name
         const [relatedClientA, relatedCarerA] = await Promise.all([
