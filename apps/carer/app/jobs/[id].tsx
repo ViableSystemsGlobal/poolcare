@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, TextInput, Alert, Modal, ActivityIndicator, Image, Platform, Linking, KeyboardAvoidingView, TouchableWithoutFeedback, Keyboard, Dimensions } from "react-native";
 import { WebView } from "react-native-webview";
 import { useLocalSearchParams, router } from "expo-router";
@@ -40,7 +40,7 @@ const NATIVE_MAP_AVAILABLE =
 const NATIVE_MAP_PROVIDER = Platform.OS === "android" ? PROVIDER_GOOGLE : undefined;
 import { api, getApiUrl } from "../../src/lib/api-client";
 import { fixUrlForMobile } from "../../src/lib/network-utils";
-import { ChecklistWizard, ChecklistItem as WizardChecklistItem, useToast } from "../../src/components";
+import { ChecklistWizard, ChecklistItem as WizardChecklistItem, useToast, wizardProgressKey, clearWizardProgress } from "../../src/components";
 // COLORS removed — replaced with literals below
 
 interface ChecklistItem {
@@ -72,6 +72,108 @@ const SITE_HAZARD_LABELS: Record<string, string> = {
   security: "Security / access control",
   other: "Other (see details)",
 };
+
+const ACTIVE_STATUSES = ["scheduled", "en_route", "on_site"];
+
+function statusLabel(status: string) {
+  const labels: Record<string, string> = {
+    scheduled: "scheduled", en_route: "en route", on_site: "on site",
+    completed: "completed", failed: "marked as failed", cancelled: "cancelled",
+  };
+  return labels[status] || status;
+}
+
+// Built once per pool; the carer's position is pushed in with injectJavaScript
+// so GPS updates move a marker instead of reloading Google Maps every few seconds.
+function buildMapHtml(
+  pool: { lat: number; lng: number },
+  carer: { lat: number; lng: number } | null,
+  radius: number,
+  apiKey: string
+) {
+  return `<!DOCTYPE html>
+<html>
+  <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      body, html { height: 100%; width: 100%; overflow: hidden; }
+      #map { height: 100%; width: 100%; }
+      #error { display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+        text-align: center; padding: 20px; background: white; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+    </style>
+  </head>
+  <body>
+    <div id="map"></div>
+    <div id="error">
+      <p style="color: #ef4444; font-weight: bold; margin-bottom: 8px;">Map Error</p>
+      <p style="color: #6b7280; font-size: 12px;" id="errorMsg"></p>
+    </div>
+    <script>
+      var map = null, carerMarker = null, fitted = false;
+      var poolLocation = { lat: ${pool.lat}, lng: ${pool.lng} };
+      var pendingCarer = ${carer ? `{ lat: ${carer.lat}, lng: ${carer.lng} }` : "null"};
+      var geofenceRadius = ${radius};
+
+      function showError(msg) {
+        document.getElementById('error').style.display = 'block';
+        document.getElementById('errorMsg').textContent = msg;
+      }
+
+      window.updateCarer = function(lat, lng) {
+        pendingCarer = { lat: lat, lng: lng };
+        if (!map) return;
+        if (!carerMarker) {
+          carerMarker = new google.maps.Marker({
+            position: pendingCarer, map: map, title: 'Your Location',
+            icon: { path: google.maps.SymbolPath.CIRCLE, scale: 8, fillColor: '#ef4444', fillOpacity: 1, strokeColor: '#ffffff', strokeWeight: 2 }
+          });
+        } else {
+          carerMarker.setPosition(pendingCarer);
+        }
+        if (!fitted) {
+          var bounds = new google.maps.LatLngBounds();
+          bounds.extend(poolLocation);
+          bounds.extend(pendingCarer);
+          map.fitBounds(bounds);
+          fitted = true;
+        }
+      };
+
+      window.initMap = function() {
+        try {
+          if (map) return;
+          if (typeof google === 'undefined' || !google.maps) throw new Error('Google Maps API not loaded');
+          map = new google.maps.Map(document.getElementById('map'), {
+            center: poolLocation, zoom: 15, mapTypeId: 'roadmap', disableDefaultUI: false,
+            zoomControl: true, mapTypeControl: false, streetViewControl: false, fullscreenControl: true
+          });
+          new google.maps.Marker({
+            position: poolLocation, map: map, title: 'Pool Location',
+            icon: { path: google.maps.SymbolPath.CIRCLE, scale: 10, fillColor: '#397d54', fillOpacity: 1, strokeColor: '#ffffff', strokeWeight: 2 }
+          });
+          new google.maps.Circle({
+            strokeColor: '#ef4444', strokeOpacity: 0.8, strokeWeight: 2, fillColor: '#ef4444', fillOpacity: 0.15,
+            map: map, center: poolLocation, radius: geofenceRadius
+          });
+          if (pendingCarer) window.updateCarer(pendingCarer.lat, pendingCarer.lng);
+        } catch (error) {
+          showError(error.message || 'Failed to load map');
+        }
+      };
+
+      setTimeout(function() {
+        if (typeof google !== 'undefined' && google.maps && !map) window.initMap();
+      }, 2000);
+
+      window.gm_authFailure = function() {
+        showError('Google Maps API authentication failed. Please check API key configuration in Settings → Integrations → Google Maps.');
+      };
+    </script>
+    <script src="https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=geometry&callback=initMap"></script>
+  </body>
+</html>`;
+}
 
 export default function JobDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -123,7 +225,31 @@ export default function JobDetailScreen() {
   const [locationIssue, setLocationIssue] = useState<string | null>(null);
   const [locationRetry, setLocationRetry] = useState(0);
   const [googleMapsApiKey, setGoogleMapsApiKey] = useState<string | null>(null);
-  const GEOFENCE_RADIUS_METERS = 200; // 200m radius
+  // Same radius the server enforces on arrival (sent with the job; 100m default)
+  const [GEOFENCE_RADIUS_METERS, setGeofenceRadius] = useState(100);
+  const mapWebViewRef = useRef<WebView>(null);
+  const carerLocationRef = useRef<{ lat: number; lng: number } | null>(null);
+  carerLocationRef.current = carerLocation;
+  // What's already been saved for this visit — a retried "Complete Visit" must
+  // not post readings/chemicals again (chemicals also draw down client stock).
+  const savedStagesRef = useRef<{ visitId: string | null; before: boolean; after: boolean; chemicalsSaved: number }>({
+    visitId: null, before: false, after: false, chemicalsSaved: 0,
+  });
+
+  const mapHtml = useMemo(
+    () =>
+      poolLocation && googleMapsApiKey
+        ? buildMapHtml(poolLocation, carerLocationRef.current, GEOFENCE_RADIUS_METERS, googleMapsApiKey)
+        : null,
+    [poolLocation, googleMapsApiKey, GEOFENCE_RADIUS_METERS]
+  );
+
+  useEffect(() => {
+    if (!carerLocation || !mapWebViewRef.current) return;
+    mapWebViewRef.current.injectJavaScript(
+      `window.updateCarer && window.updateCarer(${carerLocation.lat}, ${carerLocation.lng}); true;`
+    );
+  }, [carerLocation]);
 
   // New wizard mode for step-by-step checklist
   // Wizard mode is now the only mode - no classic view
@@ -342,7 +468,12 @@ export default function JobDetailScreen() {
       const jobData: any = await api.getJob(id);
 
       // Extract visit template checklist from the service plan's visit template
-      const visitTemplateChecklist = jobData?.plan?.visitTemplate?.checklist || null;
+      // The API resolves the job's own template first, then the plan's
+      const visitTemplateChecklist =
+        jobData?.visitTemplate?.checklist || jobData?.plan?.visitTemplate?.checklist || null;
+      if (typeof jobData?.arrivalRadiusMeters === "number" && jobData.arrivalRadiusMeters > 0) {
+        setGeofenceRadius(jobData.arrivalRadiusMeters);
+      }
       const templateChecklistArray = visitTemplateChecklist
         ? (Array.isArray(visitTemplateChecklist)
             ? visitTemplateChecklist
@@ -616,6 +747,13 @@ export default function JobDetailScreen() {
   // Handle "I'm on my way" swipe - only mark as en_route
   const handleOnMyWay = async () => {
     try {
+      if (job.status !== "scheduled") {
+        throw new Error(`This job is ${statusLabel(job.status)} and can't be started.`);
+      }
+      if (!job.isScheduledForToday) {
+        const scheduledDate = job.scheduledDate?.toLocaleDateString() || "another day";
+        throw new Error(`This job is scheduled for ${scheduledDate}. You can only start jobs on their scheduled date.`);
+      }
       // Get current location
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== "granted") {
@@ -652,6 +790,11 @@ export default function JobDetailScreen() {
   // Handle "I am here" swipe - start job (if needed) + mark as arrived in one go
   const handleIAmHere = async () => {
     try {
+      // A failed/cancelled job must never drop into the checklist
+      if (!ACTIVE_STATUSES.includes(job.status)) {
+        Alert.alert("Job not active", `This job is ${statusLabel(job.status)} and can't be started.`);
+        return;
+      }
       // Check if job is scheduled for today
       if (!job.isScheduledForToday) {
         const scheduledDate = job.scheduledDate?.toLocaleDateString() || "another day";
@@ -689,7 +832,8 @@ export default function JobDetailScreen() {
           setJob({ ...job, status: "en_route" });
         } catch (e: any) {
           // Ignore if already started or other minor errors
-          if (!e.message?.includes("must be scheduled") && !e.message?.includes("already")) {
+          // Only an already-started job is fine; cancelled/failed must surface
+          if (!e.message?.includes("Current status: en_route") && !e.message?.includes("already")) {
             throw e;
           }
         }
@@ -701,7 +845,7 @@ export default function JobDetailScreen() {
           await api.arriveAtJob(id, { location });
         } catch (e: any) {
           // If already on_site, that's fine - continue
-          if (!e.message?.includes("already on_site") && !e.message?.includes("must be en_route")) {
+          if (!e.message?.includes("already on_site")) {
             throw e;
           }
         }
@@ -1166,24 +1310,29 @@ export default function JobDetailScreen() {
       // Any entered value counts — orgs can make pH optional or hide it.
       const hasValues = (r: Reading) =>
         Object.values(r).some((v) => typeof v === "number" && !isNaN(v));
-      if (hasValues(beforeReadingsData)) {
-        await api.saveReadings(visitId, beforeReadingsData);
+      if (savedStagesRef.current.visitId !== visitId) {
+        savedStagesRef.current = { visitId, before: false, after: false, chemicalsSaved: 0 };
       }
-      if (hasValues(afterReadingsData)) {
-        await api.saveReadings(visitId, afterReadingsData);
+      const stages = savedStagesRef.current;
+      if (!stages.before) {
+        if (hasValues(beforeReadingsData)) await api.saveReadings(visitId, beforeReadingsData);
+        stages.before = true;
       }
-      
-      // Save chemicals
-      if (chemicalsData && chemicalsData.length > 0) {
-        for (const chemical of chemicalsData) {
-          if (chemical.name && chemical.qty) {
-            await api.addChemical(visitId, {
-              chemical: chemical.name,
-              qty: parseFloat(chemical.qty) || 0,
-              unit: chemical.unit || "ml",
-            });
-          }
-        }
+      if (!stages.after) {
+        if (hasValues(afterReadingsData)) await api.saveReadings(visitId, afterReadingsData);
+        stages.after = true;
+      }
+
+      // Save chemicals — a retry resumes after the last one that went through
+      const chemicalsToSave = (chemicalsData || []).filter((c) => c.name && c.qty);
+      for (let i = stages.chemicalsSaved; i < chemicalsToSave.length; i++) {
+        const chemical = chemicalsToSave[i];
+        await api.addChemical(visitId, {
+          chemical: chemical.name,
+          qty: parseFloat(chemical.qty) || 0,
+          unit: chemical.unit || "ml",
+        });
+        stages.chemicalsSaved = i + 1;
       }
       
       // Convert wizard items to checklist format for saving
@@ -1201,6 +1350,7 @@ export default function JobDetailScreen() {
       await api.completeVisit(visitId, {
         checklist: checklistForSave,
       });
+      clearWizardProgress(visitId);
       
       // Update local state
       setAfterReadings(afterReadingsData);
@@ -1538,6 +1688,8 @@ export default function JobDetailScreen() {
         </View>
         
         <ChecklistWizard
+          key={visitId || "no-visit"}
+          persistKey={visitId ? wizardProgressKey(visitId) : undefined}
           items={wizardChecklist}
           onComplete={handleWizardComplete}
           onPhotoUpload={handleWizardPhotoUpload}
@@ -1803,135 +1955,8 @@ export default function JobDetailScreen() {
               googleMapsApiKey ? (
                 <WebView
                   style={styles.map}
-                  source={{
-                    html: `
-                      <!DOCTYPE html>
-                      <html>
-                        <head>
-                          <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-                          <style>
-                            * { margin: 0; padding: 0; box-sizing: border-box; }
-                            body, html { height: 100%; width: 100%; overflow: hidden; }
-                            #map { height: 100%; width: 100%; }
-                            #error { 
-                              display: none; 
-                              position: absolute; 
-                              top: 50%; 
-                              left: 50%; 
-                              transform: translate(-50%, -50%); 
-                              text-align: center; 
-                              padding: 20px;
-                              background: white;
-                              border-radius: 8px;
-                              box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-                            }
-                          </style>
-                        </head>
-                        <body>
-                          <div id="map"></div>
-                          <div id="error">
-                            <p style="color: #ef4444; font-weight: bold; margin-bottom: 8px;">Map Error</p>
-                            <p style="color: #6b7280; font-size: 12px;" id="errorMsg"></p>
-                          </div>
-                          <script>
-                            let map;
-                            const poolLocation = { lat: ${poolLocation.lat}, lng: ${poolLocation.lng} };
-                            const carerLocation = ${carerLocation ? `{ lat: ${carerLocation.lat}, lng: ${carerLocation.lng} }` : 'null'};
-                            const geofenceRadius = ${GEOFENCE_RADIUS_METERS};
-                            
-                            // Define initMap globally for Google Maps callback
-                            window.initMap = function() {
-                              try {
-                                if (typeof google === 'undefined' || !google.maps) {
-                                  throw new Error('Google Maps API not loaded');
-                                }
-                                
-                                const center = carerLocation || poolLocation;
-                                map = new google.maps.Map(document.getElementById('map'), {
-                                  center: center,
-                                  zoom: carerLocation ? 16 : 15,
-                                  mapTypeId: 'roadmap',
-                                  disableDefaultUI: false,
-                                  zoomControl: true,
-                                  mapTypeControl: false,
-                                  streetViewControl: false,
-                                  fullscreenControl: true
-                                });
-                                
-                                // Pool marker
-                                new google.maps.Marker({
-                                  position: poolLocation,
-                                  map: map,
-                                  title: 'Pool Location',
-                                  icon: {
-                                    path: google.maps.SymbolPath.CIRCLE,
-                                    scale: 10,
-                                    fillColor: '#397d54',
-                                    fillOpacity: 1,
-                                    strokeColor: '#ffffff',
-                                    strokeWeight: 2
-                                  }
-                                });
-                                
-                                // Carer marker
-                                if (carerLocation) {
-                                  new google.maps.Marker({
-                                    position: carerLocation,
-                                    map: map,
-                                    title: 'Your Location',
-                                    icon: {
-                                      path: google.maps.SymbolPath.CIRCLE,
-                                      scale: 8,
-                                      fillColor: '#ef4444',
-                                      fillOpacity: 1,
-                                      strokeColor: '#ffffff',
-                                      strokeWeight: 2
-                                    }
-                                  });
-                                  
-                                  // Fit bounds to show both locations
-                                  const bounds = new google.maps.LatLngBounds();
-                                  bounds.extend(new google.maps.LatLng(poolLocation.lat, poolLocation.lng));
-                                  bounds.extend(new google.maps.LatLng(carerLocation.lat, carerLocation.lng));
-                                  map.fitBounds(bounds);
-                                }
-                                
-                                // Geofence circle
-                                new google.maps.Circle({
-                                  strokeColor: '#ef4444',
-                                  strokeOpacity: 0.8,
-                                  strokeWeight: 2,
-                                  fillColor: '#ef4444',
-                                  fillOpacity: 0.15,
-                                  map: map,
-                                  center: poolLocation,
-                                  radius: geofenceRadius
-                                });
-                              } catch (error) {
-                                console.error('Map initialization error:', error);
-                                document.getElementById('error').style.display = 'block';
-                                document.getElementById('errorMsg').textContent = error.message || 'Failed to load map';
-                              }
-                            };
-                            
-                            // Fallback if callback doesn't fire
-                            setTimeout(function() {
-                              if (typeof google !== 'undefined' && google.maps && !map) {
-                                window.initMap();
-                              }
-                            }, 2000);
-                            
-                            // Error handler
-                            window.gm_authFailure = function() {
-                              document.getElementById('error').style.display = 'block';
-                              document.getElementById('errorMsg').textContent = 'Google Maps API authentication failed. Please check API key configuration in Settings → Integrations → Google Maps.';
-                            };
-                          </script>
-                          <script src="https://maps.googleapis.com/maps/api/js?key=${googleMapsApiKey}&libraries=geometry&callback=initMap"></script>
-                        </body>
-                      </html>
-                    `,
-                  }}
+                  ref={mapWebViewRef}
+                  source={{ html: mapHtml || "" }}
                   javaScriptEnabled={true}
                   onError={(syntheticEvent) => {
                     const { nativeEvent } = syntheticEvent;
@@ -2068,7 +2093,7 @@ export default function JobDetailScreen() {
         )}
 
         {/* Swipe Action Buttons */}
-        {!arrived && job.status !== "completed" && job.isScheduledForToday && (
+        {!arrived && ACTIVE_STATUSES.includes(job.status) && job.isScheduledForToday && (
           <View style={styles.swipeActionContainer}>
           {/* Wait for location to be determined before showing actions */}
           {!poolLocation ? (
@@ -2178,7 +2203,7 @@ export default function JobDetailScreen() {
       )}
       
         {/* Date warning for jobs not scheduled today */}
-        {!arrived && job.status !== "completed" && !job.isScheduledForToday && (
+        {!arrived && ACTIVE_STATUSES.includes(job.status) && !job.isScheduledForToday && (
           <View style={styles.dateWarningCard}>
             <Ionicons name="calendar-outline" size={20} color="#f59e0b" />
             <Text style={styles.dateWarningText}>

@@ -35,6 +35,24 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; 
   paid:     { label: "Paid",     color: "#1e40af", bg: "#dbeafe", icon: "wallet-outline" },
 };
 
+// Visits come newest-first, 200 a page. Keep paging until we're past the start
+// of the month being viewed, so older months aren't cut off for busy carers.
+// A visit is created before it's approved, so createdAt bounds the search.
+async function fetchVisitsBackTo(monthStart: Date): Promise<any[]> {
+  const PAGE = 200;
+  const all: any[] = [];
+  for (let page = 1; page <= 15; page++) {
+    const res: any = await api.getVisits({ limit: PAGE, page });
+    const items: any[] = Array.isArray(res) ? res : (res?.items ?? res?.data ?? []);
+    all.push(...items);
+    if (items.length < PAGE) break;
+    const oldest = items[items.length - 1]?.createdAt;
+    // Approval can land weeks after the visit, so look a month further back
+    if (oldest && new Date(oldest).getTime() < monthStart.getTime() - 31 * 86400000) break;
+  }
+  return all;
+}
+
 export default function EarningsScreen() {
   const insets = useSafeAreaInsets();
   const { themeColor } = useTheme();
@@ -50,15 +68,11 @@ export default function EarningsScreen() {
 
   const load = useCallback(async (m: number, y: number) => {
     try {
-      const [earningsData, visitsData]: [any, any] = await Promise.all([
+      const [earningsData, allVisits]: [any, any[]] = await Promise.all([
         api.getEarnings({ month: String(m), year: String(y) }),
-        api.getVisits({ limit: 200 }),
+        fetchVisitsBackTo(new Date(y, m - 1, 1)),
       ]);
       setSummary(earningsData);
-
-      const allVisits: any[] = Array.isArray(visitsData)
-        ? visitsData
-        : (visitsData?.items ?? visitsData?.data ?? []);
 
       const filtered = allVisits.filter((v: any) => {
         const dateStr = v.approvedAt || v.completedAt || v.createdAt;

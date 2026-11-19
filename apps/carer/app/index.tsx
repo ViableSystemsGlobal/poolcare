@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   View,
   Text,
@@ -10,7 +10,7 @@ import {
   AppState,
   Image,
 } from "react-native";
-import { router, usePathname } from "expo-router";
+import { router, usePathname, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { api, getApiUrl } from "../src/lib/api-client";
@@ -108,9 +108,9 @@ export default function TodayScreen() {
     return () => sub.remove();
   }, [fetchUnreadCount]);
 
-  const fetchData = async () => {
+  const fetchData = async (silent = false) => {
     try {
-      setLoading(true);
+      if (!silent) setLoading(true);
 
       const [jobsResponse, earningsResponse, carerResponse] = await Promise.all([
         // Ask for today onwards: the API pages oldest-first (50 per page), so an
@@ -148,7 +148,7 @@ export default function TodayScreen() {
 
       const futureJobs = jobsData
         .filter((job: any) => {
-          if (job.status === "cancelled" || job.status === "completed") return false;
+          if (job.status === "cancelled" || job.status === "completed" || job.status === "failed") return false;
           return new Date(job.windowStart).getTime() >= todayStart.getTime();
         })
         .sort((a: any, b: any) => {
@@ -225,6 +225,19 @@ export default function TodayScreen() {
     };
     checkAuth();
   }, []);
+
+  // Coming back from a job (or anywhere pushed on top) must show its new status
+  const firstFocus = useRef(true);
+  useFocusEffect(
+    useCallback(() => {
+      if (firstFocus.current) {
+        firstFocus.current = false;
+        return;
+      }
+      fetchData(true);
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [])
+  );
 
   const onRefresh = () => {
     setRefreshing(true);

@@ -435,7 +435,25 @@ export class JobsService {
       }
     }
 
-    return job;
+    // The job's own template wins over the plan's (same rule arrive() uses to
+    // build the visit checklist), so the carer app shows the right steps.
+    let visitTemplate: any = null;
+    if (job.templateId) {
+      visitTemplate = await prisma.visitTemplate.findFirst({ where: { id: job.templateId, orgId } });
+    }
+    if (!visitTemplate) visitTemplate = (job as any).plan?.visitTemplate || null;
+
+    return {
+      ...job,
+      visitTemplate,
+      // Lets the carer app use the same arrival radius the server enforces
+      arrivalRadiusMeters: this.arrivalRadiusMeters(),
+    };
+  }
+
+  private arrivalRadiusMeters(): number {
+    const n = parseInt(process.env.GEOFENCE_ARRIVAL_RADIUS_METERS || "100", 10);
+    return Number.isFinite(n) && n > 0 ? n : 100;
   }
 
   async assign(orgId: string, jobId: string, dto: AssignJobDto) {
@@ -1183,7 +1201,7 @@ export class JobsService {
 
     // Check proximity if location is provided and pool has coordinates
     // Configurable geofencing radius (default: 100m for arrival - stricter than start)
-    const PROXIMITY_RADIUS_METERS = parseInt(process.env.GEOFENCE_ARRIVAL_RADIUS_METERS || "100", 10);
+    const PROXIMITY_RADIUS_METERS = this.arrivalRadiusMeters();
 
     if (dto.location && job.pool.lat && job.pool.lng) {
       // Try to use Google Maps for more accurate distance calculation

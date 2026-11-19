@@ -5,6 +5,7 @@
 
 import React, { useState, useRef, useEffect } from "react";
 import { api } from "../lib/api-client";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   View,
   Text,
@@ -78,6 +79,13 @@ interface ChecklistWizardProps {
   readingsConfig?: Record<string, ReadingMode>;
   /** Whether carers may pick visit photos from the gallery (Settings → Visits). */
   allowGalleryPhotos?: boolean;
+  /**
+   * Storage key for in-progress state. The checklist is only sent to the server
+   * on completion, so without this a killed app (common on Android while the
+   * camera is open) loses every ticked step and photo. Cleared by the parent
+   * once the visit completes — see clearWizardProgress().
+   */
+  persistKey?: string;
 }
 
 // Catalog of all supported readings; the org config decides which are shown/required
@@ -127,6 +135,13 @@ const CATEGORY_COLORS: Record<string, string> = {
   documentation: COLORS.primary[400],
 };
 
+// 0 is a real reading (e.g. no free chlorine) — only blank counts as missing
+const isEntered = (v: unknown) => v !== undefined && v !== null && v !== "" && !(typeof v === "number" && isNaN(v));
+
+export const wizardProgressKey = (visitId: string) => `wizard_progress:${visitId}`;
+export const clearWizardProgress = (visitId: string) =>
+  AsyncStorage.removeItem(wizardProgressKey(visitId)).catch(() => {});
+
 export const ChecklistWizard: React.FC<ChecklistWizardProps> = ({
   items,
   onComplete,
@@ -137,6 +152,7 @@ export const ChecklistWizard: React.FC<ChecklistWizardProps> = ({
   initialAfterReadings = {},
   readingsConfig,
   allowGalleryPhotos = true,
+  persistKey,
 }) => {
   const readingModes = { ...DEFAULT_READINGS_CONFIG, ...(readingsConfig || {}) };
   const visibleReadingFields = READING_FIELDS.filter((f) => readingModes[f.key] !== "hidden");
@@ -161,6 +177,56 @@ export const ChecklistWizard: React.FC<ChecklistWizardProps> = ({
   // "Not applicable" reason entry (Alert.prompt is iOS-only and crashes Android)
   const [naReasonOpen, setNaReasonOpen] = useState(false);
   const [naReason, setNaReason] = useState("");
+
+  // Restore saved progress once, then save every change
+  const [restored, setRestored] = useState(!persistKey);
+  useEffect(() => {
+    if (!persistKey) return;
+    let cancelled = false;
+    AsyncStorage.getItem(persistKey)
+      .then((raw) => {
+        if (cancelled || !raw) return;
+        const saved = JSON.parse(raw);
+        if (Array.isArray(saved.items)) {
+          const byId = new Map<string, any>(saved.items.map((i: any) => [i.id, i]));
+          setChecklistItems((prev) =>
+            prev.map((item) => {
+              const s = byId.get(item.id);
+              if (!s) return item;
+              return {
+                ...item,
+                completed: s.completed,
+                notApplicable: s.notApplicable,
+                comment: s.comment,
+                value: s.value,
+                photoUri: s.photoUri,
+                photoUris: s.photoUris,
+              };
+            })
+          );
+        }
+        if (saved.beforeReadings) setBeforeReadings(saved.beforeReadings);
+        if (saved.afterReadings) setAfterReadings(saved.afterReadings);
+        if (Array.isArray(saved.chemicals)) setChemicals(saved.chemicals);
+        if (typeof saved.currentStep === "number") setCurrentStep(saved.currentStep);
+        if (saved.phase !== undefined) setShowReadingsPhase(saved.phase);
+      })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setRestored(true); });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [persistKey]);
+
+  useEffect(() => {
+    if (!persistKey || !restored) return;
+    const items = checklistItems.map(({ id, completed, notApplicable, comment, value, photoUri, photoUris }) => ({
+      id, completed, notApplicable, comment, value, photoUri, photoUris,
+    }));
+    AsyncStorage.setItem(
+      persistKey,
+      JSON.stringify({ items, beforeReadings, afterReadings, chemicals, currentStep, phase: showReadingsPhase })
+    ).catch(() => {});
+  }, [persistKey, restored, checklistItems, beforeReadings, afterReadings, chemicals, currentStep, showReadingsPhase]);
   
   const slideAnim = useRef(new Animated.Value(0)).current;
   const progressAnim = useRef(new Animated.Value(0)).current;
@@ -411,7 +477,7 @@ export const ChecklistWizard: React.FC<ChecklistWizardProps> = ({
 
   const isCurrentItemValid = () => {
     if (currentItem.notApplicable) return true;
-    if (currentItem.requiresNumericInput && !currentItem.value) return false;
+    if (currentItem.requiresNumericInput && !isEntered(currentItem.value)) return false;
     if (currentItem.requiresPhoto && !currentItem.photoUri && !(currentItem.photoUris?.length)) return false;
     return true;
   };
@@ -419,7 +485,7 @@ export const ChecklistWizard: React.FC<ChecklistWizardProps> = ({
   const isItemDone = (item: ChecklistItem) => {
     if (item.notApplicable) return true;
     if (!item.required && !item.completed) return true;
-    if (item.requiresNumericInput && !item.value) return false;
+    if (item.requiresNumericInput && !isEntered(item.value)) return false;
     if (item.requiresPhoto && !item.photoUri && !(item.photoUris?.length)) return false;
     return !!item.completed;
   };
@@ -518,7 +584,7 @@ export const ChecklistWizard: React.FC<ChecklistWizardProps> = ({
                     <View style={styles.chemicalUnitInput}>
                       <Text style={styles.inputLabel}>Unit</Text>
                       <View style={styles.unitSelector}>
-                        {["ml", "L", "kg", "g", "oz"].map((unit) => (
+                        {["ml", "L", "kg", "g"].map((unit) => (
                           <TouchableOpacity
                             key={unit}
                             style={[
@@ -585,7 +651,7 @@ export const ChecklistWizard: React.FC<ChecklistWizardProps> = ({
     const isAfter = showReadingsPhase === "after";
     const readings = isAfter ? afterReadings : beforeReadings;
     const setReadings = isAfter ? setAfterReadings : setBeforeReadings;
-    const missingRequired = requiredReadingKeys.some((k) => !(readings as any)[k]);
+    const missingRequired = requiredReadingKeys.some((k) => !isEntered((readings as any)[k]));
 
     return (
       <KeyboardAvoidingView

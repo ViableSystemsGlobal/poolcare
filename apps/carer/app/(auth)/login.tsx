@@ -17,6 +17,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { api } from "../../src/lib/api-client";
 import { fixUrlForMobile } from "../../src/lib/network-utils";
+import { useTheme } from "../../src/contexts/ThemeContext";
 
 const BRAND_COLOR = "#397d54";
 const loginBg = require("../../assets/login-bg.png");
@@ -24,6 +25,7 @@ const localLogo = require("../../assets/poolcare.png");
 
 export default function LoginScreen() {
   const insets = useSafeAreaInsets();
+  const { refreshTheme } = useTheme();
   const [phone, setPhone] = useState("");
   const [otp, setOtp] = useState("");
   const [step, setStep] = useState<"phone" | "otp">("phone");
@@ -102,6 +104,7 @@ export default function LoginScreen() {
     try {
       const result = await api.verifyOtp("phone", phone.trim(), otp.trim());
       if (result.token) {
+        refreshTheme();
         router.replace("/");
       } else {
         throw new Error("Authentication failed");
@@ -244,7 +247,7 @@ export default function LoginScreen() {
                 </Text>
               </TouchableOpacity>
 
-              <TouchableOpacity style={styles.linkBtn} onPress={() => { setStep("phone"); setOtp(""); }}>
+              <TouchableOpacity style={styles.linkBtn} onPress={() => { setStep("phone"); setOtp(""); setDevOtpCode(null); }}>
                 <Ionicons name="arrow-back" size={14} color={themeColor} />
                 <Text style={[styles.linkText, { color: themeColor }]}>Change number</Text>
               </TouchableOpacity>

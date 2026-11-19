@@ -41,6 +41,8 @@ SplashScreen.preventAutoHideAsync();
 // Push token is registered once per signed-in session (keyed by auth token),
 // not on every navigation; a new login registers again.
 let pushRegisteredForAuthToken: string | null = null;
+// Last notification tap acted on, so a cold-start tap isn't handled twice
+let lastHandledNotificationId: string | null = null;
 
 // Screens where the floating bottom nav is visible
 const TAB_ROUTES = ["/", "/index", "index", "/schedule", "/supplies", "/earnings", "/profile"];
@@ -157,20 +159,35 @@ function LayoutInner() {
     })();
   }, [pathname]);
 
-  // Handle notification taps
+  // Handle notification taps — including the one that launched the app from a
+  // closed state, which fires before this listener exists.
   useEffect(() => {
+    const open = (response: Notifications.NotificationResponse | null) => {
+      if (!response) return;
+      const id = response.notification.request.identifier;
+      if (id && id === lastHandledNotificationId) return;
+      lastHandledNotificationId = id;
+      const data = response.notification.request.content.data as Record<string, string> | undefined;
+      if (!data) return;
+      const jobId = data.jobId || (data.type === "job" ? data.id : undefined);
+      if (data.url) {
+        router.push(data.url as any);
+      } else if (jobId) {
+        router.push(`/jobs/${jobId}` as any);
+      } else if (data.type === "notification") {
+        router.push("/notifications" as any);
+      }
+    };
+
+    Notifications.getLastNotificationResponseAsync()
+      .then((response) => {
+        // Let the home screen's auth check settle before pushing on top of it
+        if (response) setTimeout(() => open(response), 300);
+      })
+      .catch(() => {});
+
     notificationResponseListener.current =
-      Notifications.addNotificationResponseReceivedListener((response) => {
-        const data = response.notification.request.content.data as Record<string, string> | undefined;
-        if (!data) return;
-        if (data.url) {
-          router.push(data.url as any);
-        } else if (data.type === "job" && data.id) {
-          router.push(`/jobs/${data.id}` as any);
-        } else if (data.type === "notification") {
-          router.push("/notifications" as any);
-        }
-      });
+      Notifications.addNotificationResponseReceivedListener(open);
     return () => {
       notificationResponseListener.current?.remove();
     };

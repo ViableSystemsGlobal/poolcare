@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { api } from "../lib/api-client";
 
@@ -7,6 +7,8 @@ interface ThemeContextValue {
   orgName: string;
   orgLogoUrl: string | null;
   homeCardImageUrl: string | null;
+  /** Re-fetch org branding — called after sign-in, since the first fetch ran without a token. */
+  refreshTheme: () => void;
 }
 
 const DEFAULT_COLOR = "#397d54";
@@ -51,6 +53,7 @@ const ThemeContext = createContext<ThemeContextValue>({
   orgName: "PoolCare",
   orgLogoUrl: null,
   homeCardImageUrl: null,
+  refreshTheme: () => {},
 });
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
@@ -76,7 +79,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       .catch(() => {});
   }, []);
 
-  useEffect(() => {
+  const refreshTheme = useCallback(() => {
     api
       .getOrgSettings()
       .then((settings: any) => {
@@ -98,8 +101,12 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       .catch(() => {});
   }, []);
 
+  useEffect(() => {
+    refreshTheme();
+  }, [refreshTheme]);
+
   return (
-    <ThemeContext.Provider value={{ themeColor, orgName, orgLogoUrl, homeCardImageUrl }}>
+    <ThemeContext.Provider value={{ themeColor, orgName, orgLogoUrl, homeCardImageUrl, refreshTheme }}>
       {children}
     </ThemeContext.Provider>
   );

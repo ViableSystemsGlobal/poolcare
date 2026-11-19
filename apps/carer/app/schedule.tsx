@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import {
   View,
   Text,
@@ -8,7 +8,7 @@ import {
   RefreshControl,
   ActivityIndicator,
 } from "react-native";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { api } from "../src/lib/api-client";
@@ -68,6 +68,20 @@ export default function ScheduleScreen() {
   };
 
   useEffect(() => { fetchJobs(); }, [selectedDate]);
+
+  // Refresh when returning from a job so its status is current
+  const firstFocus = useRef(true);
+  const fetchJobsRef = useRef(fetchJobs);
+  fetchJobsRef.current = fetchJobs;
+  useFocusEffect(
+    useCallback(() => {
+      if (firstFocus.current) {
+        firstFocus.current = false;
+        return;
+      }
+      fetchJobsRef.current();
+    }, [])
+  );
 
   const changeDate = (days: number) => {
     const d = new Date(selectedDate);

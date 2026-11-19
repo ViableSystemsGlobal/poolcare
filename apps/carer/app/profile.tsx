@@ -5,7 +5,6 @@ import {
   ScrollView,
   TouchableOpacity,
   StyleSheet,
-  Switch,
   Alert,
   Linking,
   Image,
@@ -18,9 +17,9 @@ import {
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useTheme } from "../src/contexts/ThemeContext";
-import { api } from "../src/lib/api-client";
+import { api, getApiUrl } from "../src/lib/api-client";
+import { fixUrlForMobile } from "../src/lib/network-utils";
 
 // expo-image-picker is loaded lazily, not at module scope. A native module that
 // fails while initialising takes the whole route module down with it, and the
@@ -36,7 +35,6 @@ function getImagePicker(): ImagePickerModule | null {
 }
 
 
-const NOTIF_PREFS_KEY = "notification_preferences";
 
 interface CarerProfile {
   id: string;
@@ -47,10 +45,13 @@ interface CarerProfile {
   orgName: string;
 }
 
-interface NotificationPreferences {
-  jobReminders: boolean;
-  visitUpdates: boolean;
-  paymentAlerts: boolean;
+
+// Uploads may come back as a path ("/files/...") — make them loadable
+function resolveImageUrl(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const origin = getApiUrl().replace(/\/api\/?$/, "");
+  const full = raw.startsWith("http") ? raw : origin + (raw.startsWith("/") ? raw : "/" + raw);
+  return fixUrlForMobile(full);
 }
 
 export default function ProfileScreen() {
@@ -71,34 +72,7 @@ export default function ProfileScreen() {
   const [editName, setEditName] = useState("");
   const [savingProfile, setSavingProfile] = useState(false);
 
-  const [notifications, setNotifications] = useState<NotificationPreferences>({
-    jobReminders: true,
-    visitUpdates: true,
-    paymentAlerts: true,
-  });
-
-  useEffect(() => { loadProfile(); loadNotificationPrefs(); }, []);
-
-  const loadNotificationPrefs = async () => {
-    try {
-      const stored = await AsyncStorage.getItem(NOTIF_PREFS_KEY);
-      if (stored) {
-        setNotifications((prev) => ({ ...prev, ...JSON.parse(stored) }));
-      }
-    } catch {
-      // keep defaults
-    }
-  };
-
-  const toggleNotificationPref = async (key: keyof NotificationPreferences, value: boolean) => {
-    const updated = { ...notifications, [key]: value };
-    setNotifications(updated);
-    try {
-      await AsyncStorage.setItem(NOTIF_PREFS_KEY, JSON.stringify(updated));
-    } catch {
-      // silent – state already updated for instant feedback
-    }
-  };
+  useEffect(() => { loadProfile(); }, []);
 
   const loadProfile = async () => {
     try {
@@ -174,7 +148,7 @@ export default function ProfileScreen() {
         setUploadingPhoto(true);
         try {
           const { imageUrl } = await api.uploadMyCarerPhoto(asset.uri, fileName, mimeType);
-          setProfile((p) => ({ ...p, imageUrl }));
+          setProfile((p) => ({ ...p, imageUrl: resolveImageUrl(imageUrl) }));
           Alert.alert("Success", "Profile photo updated!");
         } catch (error: any) {
           Alert.alert("Error", error.message || "Failed to upload photo.");
@@ -363,32 +337,14 @@ export default function ProfileScreen() {
           {renderItem("calendar-outline", "My Schedule", () => router.push("/schedule"))}
         </>)}
 
-        {/* Notifications section */}
+        {/* Notifications section — push alerts are controlled by the phone's
+            own settings; the old in-app switches only saved locally and never
+            stopped anything being sent. */}
         {renderSection("Notifications", <>
-          {(["jobReminders", "visitUpdates", "paymentAlerts"] as const).map((key) => {
-            const labels: Record<string, [string, string]> = {
-              jobReminders: ["calendar-outline", "Job Reminders"],
-              visitUpdates: ["notifications-outline", "Visit Updates"],
-              paymentAlerts: ["cash-outline", "Payment Alerts"],
-            };
-            const [icon, label] = labels[key];
-            return (
-              <View key={key} style={styles.item}>
-                <View style={[styles.iconBox, { backgroundColor: `${themeColor}18` }]}>
-                  <Ionicons name={icon as any} size={20} color={themeColor} />
-                </View>
-                <View style={styles.itemText}>
-                  <Text style={styles.itemLabel}>{label}</Text>
-                </View>
-                <Switch
-                  value={notifications[key]}
-                  onValueChange={(v) => toggleNotificationPref(key, v)}
-                  trackColor={{ false: "#d1d5db", true: themeColor }}
-                  thumbColor="#ffffff"
-                />
-              </View>
-            );
+          {renderItem("notifications-outline", "Notification settings", () => Linking.openSettings(), {
+            subtitle: "Turn PoolCare alerts on or off on this phone",
           })}
+          {renderItem("list-outline", "Recent alerts", () => router.push("/notifications"))}
         </>)}
 
         {/* Support section */}

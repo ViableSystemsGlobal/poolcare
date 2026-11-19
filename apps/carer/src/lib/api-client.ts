@@ -104,13 +104,16 @@ class ApiClient {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout for mobile
 
-      const response = await fetch(url, {
-        ...restOptions,
-        headers: requestHeaders,
-        signal: controller.signal,
-      });
-
-      clearTimeout(timeoutId);
+      let response: Response;
+      try {
+        response = await fetch(url, {
+          ...restOptions,
+          headers: requestHeaders,
+          signal: controller.signal,
+        });
+      } finally {
+        clearTimeout(timeoutId);
+      }
       console.log("API Response:", response.status, response.statusText);
 
       if (!response.ok) {
@@ -162,22 +165,22 @@ class ApiClient {
         console.error("API Request failed:", error);
       }
       if (error.name === "AbortError") {
-        const networkIp = getNetworkIp();
-        throw new Error(
-          `Request timed out. Cannot reach API at ${url}. ` +
-          `Make sure:\n` +
-          `1. API server is running\n` +
-          `2. Network IP is correct (current: ${networkIp})\n` +
-          `3. Both devices are on the same network\n` +
-          `4. Set EXPO_PUBLIC_NETWORK_IP in .env if needed`
-        );
+        if (__DEV__) {
+          throw new Error(
+            `Request timed out. Cannot reach API at ${url}. ` +
+            `Check the API is running and EXPO_PUBLIC_NETWORK_IP (current: ${getNetworkIp()}).`
+          );
+        }
+        throw new Error("The server took too long to respond. Check your internet connection and try again.");
       }
-      if (error.message?.includes("fetch") || error.message?.includes("Failed to fetch")) {
-        const networkIp = getNetworkIp();
-        throw new Error(
-          `Cannot connect to server at ${url}. ` +
-          `Check network IP (current: ${networkIp}) and ensure API server is running.`
-        );
+      if (
+        error.message?.includes("Network request failed") ||
+        error.message?.includes("Failed to fetch")
+      ) {
+        if (__DEV__) {
+          throw new Error(`Cannot connect to server at ${url} (network IP: ${getNetworkIp()}).`);
+        }
+        throw new Error("No connection to PoolCare. Check your internet connection and try again.");
       }
       throw error;
     }
