@@ -378,6 +378,13 @@ model Client {
   billingAddress    String?
   preferredChannels String[] @default(["WHATSAPP"])
   notes             String?
+  // Clients a carer adds wait for office approval (no app access/welcome until
+  // then): pending | approved | rejected. Office-created clients start approved.
+  approvalStatus    String    @default("approved")
+  submittedById     String?   @db.Uuid
+  reviewedById      String?   @db.Uuid
+  reviewedAt        DateTime? @db.Timestamptz(6)
+  reviewNote        String?
   createdAt         DateTime @default(now()) @db.Timestamptz(6)
 
   org              Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
@@ -396,6 +403,7 @@ model Client {
   @@index([orgId, phone])
   @@index([householdId])
   @@index([orgId, userId])
+  @@index([orgId, approvalStatus])
 }
 
 // Client shop orders (PoolShop)
@@ -440,6 +448,13 @@ model Pool {
   // Client hazard disclosure + access instructions (contract cl. 12.2):
   // { hazards: string[], details, accessInstructions, accessContact, updatedAt, updatedByRole }
   siteSafety     Json?
+  // Pools onboarded by carers wait for office approval before they can be
+  // scheduled: pending | approved | rejected. Office-created pools start approved.
+  approvalStatus String    @default("approved")
+  submittedById  String?   @db.Uuid // User who onboarded it (carer)
+  reviewedById   String?   @db.Uuid
+  reviewedAt     DateTime? @db.Timestamptz(6)
+  reviewNote     String?
   createdAt      DateTime @default(now()) @db.Timestamptz(6)
 
   org           Organization          @relation(fields: [orgId], references: [id], onDelete: Cascade)
@@ -453,6 +468,7 @@ model Pool {
 
   @@index([orgId, clientId])
   @@index([orgId, name])
+  @@index([orgId, approvalStatus])
 }
 
 // Chemicals the client keeps at the property (contract cl. 7.1: under Flex the
@@ -765,6 +781,15 @@ model VisitEntry {
   templateId         String?   @db.Uuid
   templateVersion    Int?
   checklist          Json? // Stores checklist completion state: [{id, task, completed, required}]
+  // AI-written visit report from the full visit context (readings, checklist,
+  // chemicals, photos, issues, history). { summary, sections[{title, body}], recommendations[] }.
+  // draft = office only; published = shown to the client.
+  aiReport            Json?
+  aiReportStatus      String?   // draft | published
+  aiReportModel       String?
+  aiReportGeneratedAt DateTime? @db.Timestamptz(6)
+  aiReportEditedAt    DateTime? @db.Timestamptz(6)
+  aiReportPublishedAt DateTime? @db.Timestamptz(6)
   // Carer payment fields
   approvedAt         DateTime? @db.Timestamptz(6)
   approvedBy         String?   @db.Uuid

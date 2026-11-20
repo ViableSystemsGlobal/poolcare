@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Plus, Search, Users, Edit, Trash2, Eye, Mail, Phone, MapPin, MessageSquare, Droplet, FileText, Download, ChevronLeft, ChevronRight } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { DashboardAICard } from "@/components/dashboard-ai-card";
+import { PendingClientsCard, ApprovalTag } from "@/components/pools/pool-approval";
 import { useToast } from "@/hooks/use-toast";
 import {
   Table,
@@ -36,6 +37,7 @@ import {
 
 interface Client {
   id: string;
+  approvalStatus?: string;
   name?: string;
   email?: string;
   phone?: string;
@@ -581,6 +583,8 @@ export default function ClientsPage() {
         </Button>
       </div>
 
+      <PendingClientsCard onChanged={() => fetchClients()} />
+
       {/* AI Recommendations & Metrics */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* AI Recommendation Card - Left Side (2/3) */}
@@ -783,6 +787,7 @@ export default function ClientsPage() {
                             </div>
                           )}
                           <span>{client.name || "Unnamed Client"}</span>
+                          <ApprovalTag status={client.approvalStatus} />
                         </div>
                       </TableCell>
                       <TableCell>

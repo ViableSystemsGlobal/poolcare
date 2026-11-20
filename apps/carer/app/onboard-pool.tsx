@@ -561,10 +561,15 @@ export default function OnboardPoolScreen() {
             <View style={[styles.successIcon, { backgroundColor: themeColor + "15" }]}>
               <Ionicons name="checkmark-circle" size={64} color={themeColor} />
             </View>
-            <Text style={styles.successTitle}>Pool added</Text>
+            <Text style={styles.successTitle}>
+              {createdPool?.approvalStatus === "pending" ? "Sent for approval" : "Pool added"}
+            </Text>
             <Text style={styles.successSubtitle}>
-              {createdPool?.name || "The pool"} has been added for{" "}
+              {createdPool?.name || "The pool"} has been {createdPool?.approvalStatus === "pending" ? "submitted" : "added"} for{" "}
               <Text style={{ fontWeight: "700" }}>{selectedClient?.name}</Text>.
+              {createdPool?.approvalStatus === "pending"
+                ? " The office will review it before it can be scheduled."
+                : ""}
             </Text>
 
             <TouchableOpacity

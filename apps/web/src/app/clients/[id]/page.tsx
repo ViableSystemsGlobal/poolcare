@@ -54,9 +54,13 @@ import { SkeletonMetricCard } from "@/components/ui/skeleton";
 import { formatCurrencyForDisplay } from "@/lib/utils";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
+import { ClientApprovalBanner } from "@/components/pools/pool-approval";
 
 interface Client {
   id: string;
+  approvalStatus?: string;
+  reviewNote?: string | null;
+  submittedBy?: { id: string; name?: string | null } | null;
   name: string;
   email?: string;
   phone?: string;
@@ -576,6 +580,8 @@ export default function ClientDetailPage() {
         </div>
       </div>
 
+      <ClientApprovalBanner client={client as any} onReviewed={fetchClientData} />
+
       {/* Metrics Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card>
@@ -632,7 +638,7 @@ export default function ClientDetailPage() {
         </Card>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 even-cols">
         {/* Left Column - Client Info */}
         <div className="lg:col-span-1 space-y-6">
           {/* Contact Information */}
@@ -814,7 +820,7 @@ export default function ClientDetailPage() {
         </div>
 
         {/* Right Column - Pools, Invoices, Quotes */}
-        <div className="lg:col-span-2 space-y-6 max-h-[calc(100vh-200px)] overflow-y-auto pr-2">
+        <div className="lg:col-span-2 space-y-6">
           {/* Pools */}
           <Card>
             <CardHeader>

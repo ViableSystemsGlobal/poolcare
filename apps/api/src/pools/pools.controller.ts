@@ -39,6 +39,7 @@ export class PoolsController {
     @Query("clientId") clientId?: string,
     @Query("query") query?: string,
     @Query("tag") tag?: string,
+    @Query("approvalStatus") approvalStatus?: string,
     @Query("page") page?: string,
     @Query("limit") limit?: string
   ) {
@@ -46,6 +47,7 @@ export class PoolsController {
       clientId,
       query,
       tag,
+      approvalStatus,
       page: page ? parseInt(page) : 1,
       limit: limit ? parseInt(limit) : 50,
     }, user.sub);
@@ -55,10 +57,28 @@ export class PoolsController {
   @UseGuards(RolesGuard)
   @Roles("ADMIN", "MANAGER", "CARER")
   async create(
-    @CurrentUser() user: { org_id: string },
+    @CurrentUser() user: { org_id: string; role: string; sub: string },
     @Body() dto: CreatePoolDto
   ) {
-    return this.poolsService.create(user.org_id, dto);
+    return this.poolsService.create(user.org_id, dto, { role: user.role, userId: user.sub });
+  }
+
+  @Post(":id/approve")
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "MANAGER")
+  async approve(@CurrentUser() user: { org_id: string; sub: string }, @Param("id") id: string) {
+    return this.poolsService.review(user.org_id, user.sub, id, "approved");
+  }
+
+  @Post(":id/reject")
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "MANAGER")
+  async reject(
+    @CurrentUser() user: { org_id: string; sub: string },
+    @Param("id") id: string,
+    @Body() body: { note?: string }
+  ) {
+    return this.poolsService.review(user.org_id, user.sub, id, "rejected", body?.note);
   }
 
   @Get(":id")

@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Plus, Search, Droplet, MapPin, Edit, Trash2, Eye, Users, Download, Navigation, Loader2, ChevronLeft, ChevronRight } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { DashboardAICard } from "@/components/dashboard-ai-card";
+import { PendingPoolsCard, PoolApprovalTag } from "@/components/pools/pool-approval";
 import { useToast } from "@/hooks/use-toast";
 import {
   Table,
@@ -55,6 +56,7 @@ interface Pool {
     email?: string;
     phone?: string;
   };
+  approvalStatus?: string;
   createdAt: string;
 }
 
@@ -866,6 +868,8 @@ export default function PoolsPage() {
         </Button>
       </div>
 
+      <PendingPoolsCard onChanged={() => fetchPools()} />
+
       {/* AI Recommendations & Metrics */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* AI Recommendation Card - Left Side (2/3) */}
@@ -1026,6 +1030,7 @@ export default function PoolsPage() {
                             </div>
                           )}
                           <span>{pool.name || "Unnamed Pool"}</span>
+                          <PoolApprovalTag status={pool.approvalStatus} />
                         </div>
                       </TableCell>
                       <TableCell>

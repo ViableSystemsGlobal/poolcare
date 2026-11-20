@@ -16,6 +16,7 @@ export class ClientsService {
     filters: {
       query?: string;
       tag?: string;
+      approvalStatus?: string;
       page: number;
       limit: number;
     }
@@ -28,6 +29,10 @@ export class ClientsService {
     const where: any = {
       orgId,
     };
+
+    if (filters.approvalStatus) {
+      where.approvalStatus = filters.approvalStatus;
+    }
 
     if (filters.query) {
       where.OR = [
@@ -61,15 +66,24 @@ export class ClientsService {
       prisma.client.count({ where }),
     ]);
 
+    // Who added each client, so the office can see carer submissions.
+    const submitterIds = [...new Set(items.map((c: any) => c.submittedById).filter(Boolean))] as string[];
+    const submitters = submitterIds.length
+      ? await prisma.user.findMany({ where: { id: { in: submitterIds } }, select: { id: true, name: true } })
+      : [];
+    const submitterById = new Map(submitters.map((u) => [u.id, u]));
+
     return {
-      items,
+      items: items.map((c: any) => ({ ...c, submittedBy: (c.submittedById && submitterById.get(c.submittedById)) || null })),
       total,
       page: filters.page,
       limit: filters.limit,
     };
   }
 
-  async create(orgId: string, dto: CreateClientDto) {
+  async create(orgId: string, dto: CreateClientDto, actor?: { role: string; userId: string }) {
+    // Clients a carer adds wait for office approval: no app access or welcome until then.
+    const pending = actor?.role === "CARER";
     const phone = emptyAsNull(dto.phone) ?? undefined;
     const email = emptyAsNull(dto.email) ?? undefined;
     if (!phone && !email) {
@@ -118,21 +132,7 @@ export class ClientsService {
       // Always ensure a CLIENT membership exists in this org — covers both new
       // users and existing users being added as clients for the first time.
       // With multi-role support, this creates a CLIENT role alongside any existing roles.
-      await prisma.orgMember.upsert({
-        where: {
-          orgId_userId_role: {
-            orgId,
-            userId,
-            role: "CLIENT",
-          },
-        },
-        create: {
-          orgId,
-          userId,
-          role: "CLIENT",
-        },
-        update: {},
-      });
+      if (!pending) await this.ensureClientMembership(orgId, userId);
     }
 
     const client = await prisma.client.create({
@@ -146,10 +146,30 @@ export class ClientsService {
         billingAddress: dto.billingAddress,
         preferredChannels: dto.preferredChannels || ["WHATSAPP"],
         notes: dto.notes,
+        ...(pending ? { approvalStatus: "pending", submittedById: actor!.userId } : { submittedById: actor?.userId }),
       },
     });
 
-    // Send welcome notifications (SMS and Email)
+    if (!pending) await this.sendWelcome(orgId, client);
+    return client;
+  }
+
+  /** CLIENT membership gives the client app access. Upsert, since a user can hold several roles. */
+  private async ensureClientMembership(orgId: string, userId: string) {
+    await prisma.orgMember.upsert({
+      where: { orgId_userId_role: { orgId, userId, role: "CLIENT" } },
+      create: { orgId, userId, role: "CLIENT" },
+      update: {},
+    });
+  }
+
+  /** Welcome SMS and email. Failures are logged, never thrown. */
+  private async sendWelcome(
+    orgId: string,
+    client: { id: string; name: string | null; email: string | null; phone: string | null; userId: string | null }
+  ) {
+    const { email, phone, userId } = client;
+    const dto = { name: client.name || "" };
     try {
       // Get organization settings for email template
       const org = await prisma.organization.findUnique({
@@ -212,8 +232,28 @@ export class ClientsService {
       this.logger.error(`Failed to send welcome notifications for client ${client.id}:`, notificationError);
       // Don't fail client creation if notifications fail
     }
+  }
 
-    return client;
+  /**
+   * Approve or reject a carer-added client. Approval grants app access and
+   * sends the welcome that was held back at creation.
+   */
+  async review(orgId: string, reviewerId: string, clientId: string, decision: "approved" | "rejected", note?: string) {
+    const client = await prisma.client.findFirst({ where: { id: clientId, orgId } });
+    if (!client) throw new NotFoundException("Client not found");
+    if (decision === "rejected" && !note?.trim()) {
+      throw new BadRequestException("Give a reason so the carer knows what to fix");
+    }
+    const wasApproved = client.approvalStatus === "approved";
+    const updated = await prisma.client.update({
+      where: { id: clientId },
+      data: { approvalStatus: decision, reviewedById: reviewerId, reviewedAt: new Date(), reviewNote: note?.trim() || null },
+    });
+    if (decision === "approved" && !wasApproved) {
+      if (updated.userId) await this.ensureClientMembership(orgId, updated.userId);
+      await this.sendWelcome(orgId, updated);
+    }
+    return updated;
   }
 
   async getMyProfile(orgId: string, userId: string) {
@@ -303,7 +343,10 @@ export class ClientsService {
       throw new ForbiddenException("Access denied");
     }
 
-    return client;
+    const submittedBy = client.submittedById
+      ? await prisma.user.findUnique({ where: { id: client.submittedById }, select: { id: true, name: true } })
+      : null;
+    return { ...client, submittedBy };
   }
 
   async update(orgId: string, clientId: string, dto: UpdateClientDto) {

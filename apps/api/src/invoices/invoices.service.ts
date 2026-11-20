@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from "@nestjs/common";
+import { assertApproved } from "../utils/approval";
 import * as fs from "fs";
 import * as path from "path";
 import PDFDocument from "pdfkit";
@@ -59,6 +60,7 @@ export class InvoicesService {
     if (!client) {
       throw new NotFoundException("Client not found");
     }
+    assertApproved("client", client);
 
     // Verify pool if provided
     if (dto.poolId) {

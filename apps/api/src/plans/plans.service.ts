@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException, forwardRef, Inject, Logger } from "@nestjs/common";
+import { assertApproved } from "../utils/approval";
 import { prisma } from "@poolcare/db";
 import { CreatePlanDto, UpdatePlanDto, PausePlanDto, OverrideWindowDto, CancelPlanDto } from "./dto";
 import { SubscriptionTemplatesService } from "../subscription-templates/subscription-templates.service";
@@ -151,11 +152,15 @@ export class PlansService {
     // Validate pool belongs to org
     const pool = await prisma.pool.findFirst({
       where: { id: dto.poolId, orgId },
+      include: { client: { select: { approvalStatus: true } } },
     });
 
     if (!pool) {
       throw new NotFoundException("Pool not found");
     }
+
+    assertApproved("pool", pool);
+    assertApproved("client", pool.client);
 
     // Validate frequency requirements
     if (WEEKLY_DAY_COUNT[dto.frequency] && !dto.dow && !dto.templateId) {

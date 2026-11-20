@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException, ForbiddenException, BadRequestException, Logger } from "@nestjs/common";
+import { assertApproved } from "../utils/approval";
 import { prisma } from "@poolcare/db";
 import { LATE_CANCEL_CODE, LATE_CANCEL_HOURS, ACCESS_FAILURE_CODES } from "../plans/visit-entitlement";
 import { MapsService } from "../maps/maps.service";
@@ -35,6 +36,9 @@ export class JobsService {
     if (!pool) {
       throw new NotFoundException("Pool not found");
     }
+
+    assertApproved("pool", pool);
+    assertApproved("client", pool.client);
 
     // Verify plan if provided
     let planTemplateId: string | null = null;
@@ -357,6 +361,17 @@ export class JobsService {
             select: {
               id: true,
               frequency: true,
+            },
+          },
+          // Latest water reading, so lists can show the pH / Cl swatches.
+          visit: {
+            select: {
+              id: true,
+              readings: {
+                orderBy: { measuredAt: "desc" },
+                take: 1,
+                select: { ph: true, chlorineFree: true },
+              },
             },
           },
         },

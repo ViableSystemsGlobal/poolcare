@@ -7,9 +7,10 @@ import { AuthModule } from "../auth/auth.module";
 import { FilesModule } from "../files/files.module";
 import { MapsModule } from "../maps/maps.module";
 import { SettingsModule } from "../settings/settings.module";
+import { ClientsModule } from "../clients/clients.module";
 
 @Module({
-  imports: [AuthModule, FilesModule, MapsModule, SettingsModule, NotificationsModule],
+  imports: [AuthModule, FilesModule, MapsModule, SettingsModule, NotificationsModule, ClientsModule],
   controllers: [PoolsController, ClientChemicalStockController],
   providers: [PoolsService],
   exports: [PoolsService],

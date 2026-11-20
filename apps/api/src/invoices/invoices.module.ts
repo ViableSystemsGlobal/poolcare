@@ -1,4 +1,5 @@
 import { Module, forwardRef } from "@nestjs/common";
+import { OverdueInvoicesScheduler } from "./overdue.scheduler";
 import { InvoicesController } from "./invoices.controller";
 import { InvoicesService } from "./invoices.service";
 import { PaymentsService } from "./payments.service";
@@ -12,7 +13,7 @@ import { QuotesModule } from "../quotes/quotes.module";
 @Module({
   imports: [AuthModule, NotificationsModule, forwardRef(() => PlansModule), forwardRef(() => QuotesModule)],
   controllers: [InvoicesController, PaymentsController, ReceiptsController],
-  providers: [InvoicesService, PaymentsService, ReceiptsService],
+  providers: [InvoicesService, PaymentsService, ReceiptsService, OverdueInvoicesScheduler],
   exports: [InvoicesService, PaymentsService],
 })
 export class InvoicesModule {}

@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from "@nestjs/common";
+import { assertApproved } from "../utils/approval";
 import { prisma } from "@poolcare/db";
 import { JobsService } from "../jobs/jobs.service";
 import { NotificationsService } from "../notifications/notifications.service";
@@ -45,6 +46,8 @@ export class QuotesService {
     if (!pool) {
       throw new NotFoundException("Pool not found");
     }
+    assertApproved("pool", pool);
+    assertApproved("client", pool.client);
 
     // If issueId provided, verify it exists
     if (dto.issueId) {

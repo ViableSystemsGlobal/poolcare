@@ -4,13 +4,15 @@ import { MapsService } from "../maps/maps.service";
 import { SettingsService } from "../settings/settings.service";
 import { NotificationsService } from "../notifications/notifications.service";
 import { CreatePoolDto, UpdatePoolDto } from "./dto";
+import { ClientsService } from "../clients/clients.service";
 
 @Injectable()
 export class PoolsService {
   constructor(
     private readonly mapsService: MapsService,
     private readonly settingsService: SettingsService,
-    private readonly notificationsService: NotificationsService
+    private readonly notificationsService: NotificationsService,
+    private readonly clientsService: ClientsService
   ) {}
 
   /**
@@ -71,6 +73,7 @@ export class PoolsService {
       clientId?: string;
       query?: string;
       tag?: string;
+      approvalStatus?: string;
       page: number;
       limit: number;
     },
@@ -79,6 +82,10 @@ export class PoolsService {
     const where: any = {
       orgId,
     };
+
+    if (filters.approvalStatus) {
+      where.approvalStatus = filters.approvalStatus;
+    }
 
     if (filters.clientId) {
       where.clientId = filters.clientId;
@@ -119,6 +126,7 @@ export class PoolsService {
             select: {
               id: true,
               name: true,
+              approvalStatus: true,
             },
           },
         },
@@ -128,14 +136,14 @@ export class PoolsService {
     ]);
 
     return {
-      items,
+      items: await this.withSubmitters(items),
       total,
       page: filters.page,
       limit: filters.limit,
     };
   }
 
-  async create(orgId: string, dto: CreatePoolDto) {
+  async create(orgId: string, dto: CreatePoolDto, actor?: { role: string; userId: string }) {
     // Verify client belongs to org
     const client = await prisma.client.findFirst({
       where: {
@@ -201,13 +209,105 @@ export class PoolsService {
         equipment: dto.equipment,
         targets: dto.targets,
         notes: dto.notes,
+        // Carer-onboarded pools wait for the office to approve them.
+        ...(actor?.role === "CARER"
+          ? { approvalStatus: "pending", submittedById: actor.userId }
+          : { submittedById: actor?.userId }),
       },
       include: {
         client: true,
       },
     });
 
+    if (pool.approvalStatus === "pending") {
+      await this.notifyPoolSubmitted(orgId, pool, actor!.userId);
+    }
+
     return pool;
+  }
+
+  /** Email admins and managers that a carer onboarded a pool needing approval. */
+  private async notifyPoolSubmitted(orgId: string, pool: any, submittedById: string) {
+    try {
+      const [submitter, managers] = await Promise.all([
+        prisma.user.findUnique({ where: { id: submittedById }, select: { name: true } }),
+        prisma.orgMember.findMany({
+          where: { orgId, role: { in: ["ADMIN", "MANAGER"] } },
+          include: { user: { select: { id: true, email: true } } },
+        }),
+      ]);
+      const who = submitter?.name || "A carer";
+      const poolLabel = pool.name || pool.address || "a pool";
+      for (const member of managers) {
+        if (!member.user?.email) continue;
+        try {
+          await this.notificationsService.send(orgId, {
+            recipientId: member.user.id,
+            recipientType: "user",
+            channel: "email",
+            to: member.user.email,
+            subject: `Pool awaiting approval: ${poolLabel}`,
+            body: `${who} onboarded a new pool and it needs your approval before it can be scheduled.\n\nPool: ${poolLabel}\nClient: ${pool.client?.name || "—"}${pool.client?.approvalStatus === "pending" ? " (new client, approved together with the pool)" : ""}\n${pool.address ? `Address: ${pool.address}\n` : ""}\nReview it under Clients & Pools → Pools in the admin.`,
+            metadata: { type: "pool_submitted", poolId: pool.id },
+          });
+        } catch (error) {
+          console.error(`Failed to notify ${member.user.email} about pool ${pool.id}:`, error);
+        }
+      }
+    } catch (error) {
+      // Never fail the onboarding because a notification failed.
+      console.error("Failed to send pool approval notifications:", error);
+    }
+  }
+
+  /** Attach { submittedBy: { id, name } } so the office can see who onboarded a pool. */
+  private async withSubmitters<T extends { submittedById?: string | null }>(pools: T[]) {
+    const ids = [...new Set(pools.map((p) => p.submittedById).filter(Boolean))] as string[];
+    if (ids.length === 0) return pools.map((p) => ({ ...p, submittedBy: null }));
+    const users = await prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } });
+    const byId = new Map(users.map((u) => [u.id, u]));
+    return pools.map((p) => ({ ...p, submittedBy: (p.submittedById && byId.get(p.submittedById)) || null }));
+  }
+
+  /** Approve or reject a carer-onboarded pool. */
+  async review(
+    orgId: string,
+    reviewerId: string,
+    poolId: string,
+    decision: "approved" | "rejected",
+    note?: string
+  ) {
+    const pool = await prisma.pool.findFirst({ where: { id: poolId, orgId } });
+    if (!pool) throw new NotFoundException("Pool not found");
+    if (decision === "rejected" && !note?.trim()) {
+      throw new BadRequestException("Give a reason so the carer knows what to fix");
+    }
+    await prisma.pool.update({
+      where: { id: poolId },
+      data: {
+        approvalStatus: decision,
+        reviewedById: reviewerId,
+        reviewedAt: new Date(),
+        reviewNote: note?.trim() || null,
+      },
+    });
+
+    // A pending client added alongside the pool follows the pool's decision.
+    // On rejection, only if it has no other pool still in play.
+    const client = await prisma.client.findUnique({ where: { id: pool.clientId } });
+    if (client?.approvalStatus === "pending") {
+      const otherLivePools =
+        decision === "rejected"
+          ? await prisma.pool.count({
+              where: { clientId: client.id, id: { not: poolId }, approvalStatus: { not: "rejected" } },
+            })
+          : 0;
+      if (decision === "approved" || otherLivePools === 0) {
+        await this.clientsService.review(orgId, reviewerId, client.id, decision, note);
+      }
+    }
+
+    return prisma.pool.findUnique({ where: { id: poolId }, include: { client: true } });
   }
 
   async getOne(orgId: string, role: string, currentUserId: string, poolId: string) {
@@ -239,7 +339,8 @@ export class PoolsService {
       }
     }
 
-    return pool;
+    const [withSubmitter] = await this.withSubmitters([pool]);
+    return withSubmitter;
   }
 
   async update(orgId: string, poolId: string, dto: UpdatePoolDto) {

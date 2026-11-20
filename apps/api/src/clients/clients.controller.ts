@@ -35,12 +35,14 @@ export class ClientsController {
     @CurrentUser() user: { org_id: string; role: string },
     @Query("query") query?: string,
     @Query("tag") tag?: string,
+    @Query("approvalStatus") approvalStatus?: string,
     @Query("page") page?: string,
     @Query("limit") limit?: string
   ) {
     return this.clientsService.list(user.org_id, user.role, {
       query,
       tag,
+      approvalStatus,
       page: page ? parseInt(page) : 1,
       limit: limit ? parseInt(limit) : 50,
     });
@@ -50,10 +52,28 @@ export class ClientsController {
   @UseGuards(RolesGuard)
   @Roles("ADMIN", "MANAGER", "CARER")
   async create(
-    @CurrentUser() user: { org_id: string },
+    @CurrentUser() user: { org_id: string; role: string; sub: string },
     @Body() dto: CreateClientDto
   ) {
-    return this.clientsService.create(user.org_id, dto);
+    return this.clientsService.create(user.org_id, dto, { role: user.role, userId: user.sub });
+  }
+
+  @Post(":id/approve")
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "MANAGER")
+  async approve(@CurrentUser() user: { org_id: string; sub: string }, @Param("id") id: string) {
+    return this.clientsService.review(user.org_id, user.sub, id, "approved");
+  }
+
+  @Post(":id/reject")
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "MANAGER")
+  async reject(
+    @CurrentUser() user: { org_id: string; sub: string },
+    @Param("id") id: string,
+    @Body() body: { note?: string }
+  ) {
+    return this.clientsService.review(user.org_id, user.sub, id, "rejected", body?.note);
   }
 
   // ========================
