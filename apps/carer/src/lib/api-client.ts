@@ -141,7 +141,10 @@ class ApiClient {
         }
 
         // Extract the actual error message
-        const errorMessage = errorData?.message || errorData?.error || response.statusText;
+        // Validation errors arrive as an array of messages; string methods
+        // below (and the Alert) need a single string.
+        const rawMessage = errorData?.message || errorData?.error || response.statusText;
+        const errorMessage: string = Array.isArray(rawMessage) ? rawMessage.join("\n") : String(rawMessage ?? "");
         // Skip logging expected errors to reduce console noise
         const isExpectedError =
           response.status === 401 ||

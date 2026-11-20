@@ -88,6 +88,26 @@ interface ChecklistWizardProps {
   persistKey?: string;
 }
 
+// Hard limits the API enforces (apps/api/src/visits/dto/add-reading.dto.ts).
+// Values outside these are rejected on save, so block them at entry instead of
+// failing the whole visit at "Complete".
+const READING_LIMITS: Partial<Record<keyof ReadingsState, { min: number; max?: number }>> = {
+  ph: { min: 6.2, max: 8.6 },
+  chlorineFree: { min: 0, max: 10 },
+  chlorineTotal: { min: 0, max: 10 },
+  alkalinity: { min: 40, max: 240 },
+  calciumHardness: { min: 100, max: 600 },
+  cyanuricAcid: { min: 0, max: 120 },
+  tempC: { min: 5, max: 45 },
+  tds: { min: 0 },
+  salinity: { min: 0 },
+};
+const outsideLimits = (key: string, v: unknown) => {
+  const lim = (READING_LIMITS as any)[key];
+  if (!lim || typeof v !== "number" || isNaN(v)) return false;
+  return v < lim.min || (lim.max !== undefined && v > lim.max);
+};
+
 // Catalog of all supported readings; the org config decides which are shown/required
 const READING_FIELDS: Array<{
   key: keyof ReadingsState;
@@ -651,7 +671,9 @@ export const ChecklistWizard: React.FC<ChecklistWizardProps> = ({
     const isAfter = showReadingsPhase === "after";
     const readings = isAfter ? afterReadings : beforeReadings;
     const setReadings = isAfter ? setAfterReadings : setBeforeReadings;
-    const missingRequired = requiredReadingKeys.some((k) => !isEntered((readings as any)[k]));
+    const invalidReading = visibleReadingFields.some((f) => outsideLimits(f.key as string, (readings as any)[f.key]));
+    const missingRequired =
+      requiredReadingKeys.some((k) => !isEntered((readings as any)[k])) || invalidReading;
 
     return (
       <KeyboardAvoidingView
@@ -691,6 +713,7 @@ export const ChecklistWizard: React.FC<ChecklistWizardProps> = ({
                 placeholder={field.placeholder}
                 unit={field.unit}
                 range={field.range}
+                limits={READING_LIMITS[field.key]}
                 optional={readingModes[field.key] === "optional"}
               />
             ))}
@@ -977,6 +1000,7 @@ interface ReadingInputProps {
   unit?: string;
   optional?: boolean;
   range?: { min: number; max: number };
+  limits?: { min: number; max?: number };
 }
 
 const ReadingInput: React.FC<ReadingInputProps> = ({
@@ -987,6 +1011,7 @@ const ReadingInput: React.FC<ReadingInputProps> = ({
   unit,
   optional,
   range,
+  limits,
 }) => {
   // Keep the raw text locally: parsing on every keystroke ("7." → 7 → "7")
   // used to erase the decimal point the moment it was typed.
@@ -1007,8 +1032,10 @@ const ReadingInput: React.FC<ReadingInputProps> = ({
     onChange(cleaned === "" || isNaN(parsed) ? undefined : parsed);
   };
 
+  const isInvalid =
+    !!limits && value !== undefined && (value < limits.min || (limits.max !== undefined && value > limits.max));
   const isOutOfRange =
-    range && value !== undefined && (value < range.min || value > range.max);
+    !isInvalid && range && value !== undefined && (value < range.min || value > range.max);
 
   return (
     <View style={styles.readingInputContainer}>
@@ -1020,6 +1047,7 @@ const ReadingInput: React.FC<ReadingInputProps> = ({
         style={[
           styles.readingInputWrapper,
           isOutOfRange && styles.readingInputWarning,
+          isInvalid && styles.readingInputError,
         ]}
       >
         <TextInput
@@ -1032,6 +1060,13 @@ const ReadingInput: React.FC<ReadingInputProps> = ({
         />
         {unit && <Text style={styles.readingUnit}>{unit}</Text>}
       </View>
+      {isInvalid && limits && (
+        <Text style={styles.errorText}>
+          {limits.max !== undefined
+            ? `Must be between ${limits.min} and ${limits.max}${unit ? ` ${unit}` : ""}`
+            : `Must be ${limits.min} or more`}
+        </Text>
+      )}
       {isOutOfRange && (
         <Text style={styles.warningText}>
           Outside normal range ({range.min} - {range.max})
@@ -1381,6 +1416,14 @@ const styles = StyleSheet.create({
     paddingRight: SPACING.md,
     fontSize: FONT_SIZES.md,
     color: COLORS.text.secondary,
+  },
+  readingInputError: {
+    borderColor: COLORS.error?.[500] ?? "#dc2626",
+  },
+  errorText: {
+    marginTop: SPACING.xs,
+    fontSize: FONT_SIZES.xs,
+    color: COLORS.error?.[600] ?? "#dc2626",
   },
   warningText: {
     marginTop: SPACING.xs,
