@@ -56,8 +56,16 @@ export default function BottomNav() {
                 accessibilityLabel={tab.label}
               >
                 <View style={styles.itemInner}>
-                  {/* Fixed-size circle behind the icon only, so its shape never depends on the label */}
-                  <View style={[styles.iconCircle, active && { backgroundColor: themeColor + "1F" }]}>
+                  {/*
+                    Circle behind the icon. It is always mounted with the same colour and
+                    only its opacity changes: on Android (new architecture) adding/removing
+                    a background on a rounded view can redraw it as a square.
+                  */}
+                  <View style={styles.iconCircle}>
+                    <View
+                      pointerEvents="none"
+                      style={[styles.iconCircleFill, { backgroundColor: themeColor, opacity: active ? 0.12 : 0 }]}
+                    />
                     <Ionicons
                       name={(active ? tab.icon : tab.iconOutline) as any}
                       size={21}
@@ -102,8 +110,10 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
+    overflow: "hidden",
     alignItems: "center",
     justifyContent: "center",
   },
+  iconCircleFill: { ...StyleSheet.absoluteFillObject, borderRadius: 20 },
   label: { fontSize: 10.5 },
 });
