@@ -98,7 +98,7 @@ const READING_LIMITS: Partial<Record<keyof ReadingsState, { min: number; max?: n
   alkalinity: { min: 40, max: 240 },
   calciumHardness: { min: 100, max: 600 },
   cyanuricAcid: { min: 0, max: 120 },
-  tempC: { min: 5, max: 45 },
+  tempC: { min: 0, max: 45 },
   tds: { min: 0 },
   salinity: { min: 0 },
 };

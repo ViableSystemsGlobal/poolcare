@@ -39,7 +39,9 @@ export class AddReadingDto {
 
   @IsOptional()
   @IsNumber()
-  @Min(5)
+  // 0 is allowed: carers without a thermometer enter 0, and a hard 5 °C floor
+  // blocked the whole visit from completing.
+  @Min(0)
   @Max(45)
   tempC?: number;
 
