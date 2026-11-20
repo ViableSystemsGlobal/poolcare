@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "162702311058",
+    "project_id": "poolcare-95264",
+    "storage_bucket": "poolcare-95264.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:162702311058:android:7fb807aa8c262e7a63304b",
+        "android_client_info": {
+          "package_name": "com.poolcare.carer"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD26BteowTexbMcvVbhuzSh2UBVBa7JvR8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

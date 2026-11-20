@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import * as Updates from "expo-updates";
 import Constants from "expo-constants";
+import * as Notifications from "expo-notifications";
 import {
   View,
   Text,
@@ -181,6 +182,39 @@ export default function ProfileScreen() {
     ]);
   };
 
+  // Re-registers this phone for push, then asks the server to send a test.
+  // Shows the real error at each step so setup problems are visible here.
+  const [testingPush, setTestingPush] = useState(false);
+  const testNotification = async () => {
+    if (testingPush) return;
+    setTestingPush(true);
+    try {
+      let { status } = await Notifications.getPermissionsAsync();
+      if (status !== "granted") status = (await Notifications.requestPermissionsAsync()).status;
+      if (status !== "granted") {
+        Alert.alert("Notifications are off", "Allow notifications for PoolCare in your phone settings, then try again.", [
+          { text: "Open settings", onPress: () => Linking.openSettings() },
+          { text: "Cancel", style: "cancel" },
+        ]);
+        return;
+      }
+      let pushToken: string;
+      try {
+        pushToken = (await Notifications.getExpoPushTokenAsync({ projectId: "b53852a4-0450-4e67-9690-9564c55cce66" })).data;
+      } catch (e: any) {
+        Alert.alert("This phone couldn't get a push token", String(e?.message || e));
+        return;
+      }
+      await api.registerDeviceToken(pushToken, Platform.OS === "ios" ? "ios" : "android");
+      const r = await api.testPush();
+      Alert.alert(r.ok ? "Test sent" : "Test failed", r.message);
+    } catch (e: any) {
+      Alert.alert("Test failed", String(e?.message || e));
+    } finally {
+      setTestingPush(false);
+    }
+  };
+
   const contactSupport = () =>
     Alert.alert("Contact support", "How would you like to reach the office?", [
       { text: "Call", onPress: () => Linking.openURL("tel:+233506226222") },
@@ -272,6 +306,9 @@ export default function ProfileScreen() {
             first: true,
             sub: "Turn PoolCare alerts on or off on this phone",
             external: true,
+          })}
+          {linkRow("notifications-circle-outline", testingPush ? "Sending test…" : "Send test notification", testNotification, {
+            sub: "Check this phone receives PoolCare alerts",
           })}
           {linkRow("person-outline", "Edit name", () => {
             setEditName(profile.name);

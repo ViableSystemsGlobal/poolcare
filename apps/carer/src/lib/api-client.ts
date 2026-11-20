@@ -258,6 +258,13 @@ class ApiClient {
     return this.request("/carers/me/carer");
   }
 
+  async testPush() {
+    return this.request<{ ok: boolean; devices: number; message: string; results?: Array<{ status: string; error?: string }> }>(
+      "/carers/me/test-push",
+      { method: "POST" }
+    );
+  }
+
   async registerDeviceToken(token: string, platform: "ios" | "android") {
     return this.request<any>("/carers/me/device-token", {
       method: "POST",

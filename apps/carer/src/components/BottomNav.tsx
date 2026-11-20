@@ -55,12 +55,15 @@ export default function BottomNav() {
                 accessibilityState={{ selected: active }}
                 accessibilityLabel={tab.label}
               >
-                <View style={[styles.itemInner, active && { backgroundColor: themeColor + "1F" }]}>
-                  <Ionicons
-                    name={(active ? tab.icon : tab.iconOutline) as any}
-                    size={21}
-                    color={active ? themeColor : "#5b6b62"}
-                  />
+                <View style={styles.itemInner}>
+                  {/* Fixed-size circle behind the icon only, so its shape never depends on the label */}
+                  <View style={[styles.iconCircle, active && { backgroundColor: themeColor + "1F" }]}>
+                    <Ionicons
+                      name={(active ? tab.icon : tab.iconOutline) as any}
+                      size={21}
+                      color={active ? themeColor : "#5b6b62"}
+                    />
+                  </View>
                   <Text
                     style={[styles.label, { color: active ? themeColor : "#5b6b62", fontWeight: active ? "700" : "500" }]}
                     numberOfLines={1}
@@ -94,14 +97,13 @@ const styles = StyleSheet.create({
   frost: { backgroundColor: "rgba(255,255,255,0.62)" },
   row: { flex: 1, flexDirection: "row", alignItems: "center", paddingHorizontal: 6 },
   item: { flex: 1, height: "100%", alignItems: "center", justifyContent: "center" },
-  itemInner: {
+  itemInner: { alignItems: "center", justifyContent: "center", gap: 1 },
+  iconCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: "center",
     justifyContent: "center",
-    gap: 2,
-    paddingVertical: 6,
-    paddingHorizontal: 4,
-    borderRadius: 22,
-    minWidth: 62,
   },
   label: { fontSize: 10.5 },
 });
