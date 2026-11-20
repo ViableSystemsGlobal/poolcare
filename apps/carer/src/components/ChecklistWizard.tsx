@@ -184,6 +184,9 @@ export const ChecklistWizard: React.FC<ChecklistWizardProps> = ({
   const [beforeReadings, setBeforeReadings] = useState<ReadingsState>(initialBeforeReadings);
   const [afterReadings, setAfterReadings] = useState<ReadingsState>(initialAfterReadings);
   const [showReadingsPhase, setShowReadingsPhase] = useState<"before" | "after" | "chemicals" | null>("before");
+  // Set when the final step sends the carer back to fix a reading, so finishing
+  // that readings screen returns straight to the chemicals step.
+  const [returnToChemicals, setReturnToChemicals] = useState(false);
   const [chemicals, setChemicals] = useState<Chemical[]>([]);
   // Rate-card chemicals: picking one keeps names consistent so usage can be
   // priced against the client's chemical allowance.
@@ -467,14 +470,52 @@ export const ChecklistWizard: React.FC<ChecklistWizardProps> = ({
     }
   };
 
+  const firstInvalidReading = (r: ReadingsState) => {
+    const field = visibleReadingFields.find((f) => outsideLimits(f.key as string, (r as any)[f.key]));
+    if (!field) return null;
+    const lim = READING_LIMITS[field.key]!;
+    const range = lim.max !== undefined ? `between ${lim.min} and ${lim.max}` : `${lim.min} or more`;
+    return `${field.label} is ${(r as any)[field.key]}${field.unit ? ` ${field.unit}` : ""} but must be ${range}.`;
+  };
+
   const handleFinishReadings = () => {
     if (showReadingsPhase === "before") {
+      if (returnToChemicals) {
+        setReturnToChemicals(false);
+        setShowReadingsPhase("chemicals");
+        return;
+      }
       setShowReadingsPhase(null);
       setCurrentStep(0);
     } else if (showReadingsPhase === "after") {
       setShowReadingsPhase("chemicals");
     } else if (showReadingsPhase === "chemicals") {
       if (submitting) return;
+      // Before-service readings were entered at the start of the visit (and may
+      // have been restored from saved progress) — re-check both sets here so a
+      // bad value can't fail the whole completion on the server.
+      const badBefore = firstInvalidReading(beforeReadings);
+      const badAfter = firstInvalidReading(afterReadings);
+      if (badBefore || badAfter) {
+        Alert.alert(
+          "Check your readings",
+          `${badBefore ? `Before service: ${badBefore}` : `After service: ${badAfter}`}\n\nPlease correct it to complete the visit.`,
+          [
+            {
+              text: "Fix it",
+              onPress: () => {
+                if (badBefore) {
+                  setReturnToChemicals(true);
+                  setShowReadingsPhase("before");
+                } else {
+                  setShowReadingsPhase("after");
+                }
+              },
+            },
+          ]
+        );
+        return;
+      }
       setSubmitting(true);
       Promise.resolve(onComplete(checklistItems, beforeReadings, afterReadings, chemicals))
         .finally(() => setSubmitting(false));

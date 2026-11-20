@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import * as Updates from "expo-updates";
 import {
   View,
   Text,
@@ -373,7 +374,9 @@ export default function ProfileScreen() {
           <Text style={styles.logoutText}>Log out</Text>
         </TouchableOpacity>
 
-        <Text style={styles.version}>PoolCare Carer v1.0.0</Text>
+        <Text style={styles.version}>
+          PoolCare Carer v1.0.0 · {Updates.updateId ? `update ${Updates.updateId.slice(0, 8)}` : "built-in"}
+        </Text>
       </ScrollView>
 
       {/* Edit Profile Modal */}
