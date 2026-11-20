@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { View, StyleSheet, BackHandler, Platform } from "react-native";
 import { Stack, usePathname, router } from "expo-router";
 import { StatusBar } from "expo-status-bar";
+import * as Updates from "expo-updates";
 import * as SplashScreen from "expo-splash-screen";
 import * as Font from "expo-font";
 import * as Notifications from "expo-notifications";
@@ -38,6 +39,30 @@ if (Platform.OS === "android") {
 // Keep the splash screen visible while we load resources
 SplashScreen.preventAutoHideAsync();
 
+const withTimeout = <T,>(p: Promise<T>, ms: number): Promise<T | null> =>
+  Promise.race([p, new Promise<null>((r) => setTimeout(() => r(null), ms))]);
+
+/**
+ * Apply a waiting OTA update before the app is used, behind the splash screen.
+ * Without this, the first launch runs the old bundle while downloading the new
+ * one in the background (slow, flaky API calls) and the fix only shows after a
+ * second restart. Bounded so a bad network never blocks startup: if the
+ * download is slow it keeps going in the background for the next launch.
+ */
+async function applyUpdateOnLaunch() {
+  if (__DEV__ || !Updates.isEnabled) return;
+  try {
+    const check = await withTimeout(Updates.checkForUpdateAsync(), 5000);
+    if (!check?.isAvailable) return;
+    const fetched = await withTimeout(Updates.fetchUpdateAsync(), 25000);
+    if (fetched?.isNew) {
+      await Updates.reloadAsync();
+    }
+  } catch (e) {
+    console.warn("[updates] launch check failed", e);
+  }
+}
+
 // Push token is registered once per signed-in session (keyed by auth token),
 // not on every navigation; a new login registers again.
 let pushRegisteredForAuthToken: string | null = null;
@@ -58,6 +83,9 @@ export default function RootLayout() {
 
     async function prepare() {
       try {
+        // 0. Get onto the latest update first (reloads the app if one was applied)
+        await applyUpdateOnLaunch();
+
         // 1. Read cached logo URL immediately (no network call)
         const cached = await getCachedLogoUrl();
 

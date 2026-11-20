@@ -81,7 +81,8 @@
       ]
     ],
     "updates": {
-      "url": "https://u.expo.dev/b53852a4-0450-4e67-9690-9564c55cce66"
+      "url": "https://u.expo.dev/b53852a4-0450-4e67-9690-9564c55cce66",
+      "checkAutomatically": "ON_ERROR_RECOVERY"
     },
     "runtimeVersion": "1.0.1"
   }
