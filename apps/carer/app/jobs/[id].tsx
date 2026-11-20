@@ -33,10 +33,10 @@ try {
 // and the Google provider isn't linked on iOS. iOS uses Apple Maps (no key);
 // Android uses Google only when this build was configured with a key, and
 // otherwise drops to the WebView / "open in Maps" fallbacks below.
-const ANDROID_MAPS_KEY: string =
-  (Constants.expoConfig?.android as any)?.config?.googleMaps?.apiKey || "";
-const NATIVE_MAP_AVAILABLE =
-  !!MapView && (Platform.OS === "ios" || (Platform.OS === "android" && !!ANDROID_MAPS_KEY));
+// Android never uses the native Google map: the EAS-stored key is rejected by
+// Google ("API authentication failed"), so Android always renders the keyless
+// Leaflet/OSM WebView map instead.
+const NATIVE_MAP_AVAILABLE = !!MapView && Platform.OS === "ios";
 const NATIVE_MAP_PROVIDER = Platform.OS === "android" ? PROVIDER_GOOGLE : undefined;
 import { api, getApiUrl } from "../../src/lib/api-client";
 import { fixUrlForMobile } from "../../src/lib/network-utils";
