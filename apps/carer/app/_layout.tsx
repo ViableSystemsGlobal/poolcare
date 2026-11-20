@@ -70,7 +70,7 @@ let pushRegisteredForAuthToken: string | null = null;
 let lastHandledNotificationId: string | null = null;
 
 // Screens where the floating bottom nav is visible
-const TAB_ROUTES = ["/", "/index", "index", "/schedule", "/supplies", "/earnings", "/profile"];
+const TAB_ROUTES = ["/", "/index", "index", "/schedule", "/supplies", "/performance", "/profile"];
 
 export default function RootLayout() {
   const [fontsLoaded] = Font.useFonts(Ionicons.font);
@@ -198,7 +198,9 @@ function LayoutInner() {
       const data = response.notification.request.content.data as Record<string, string> | undefined;
       if (!data) return;
       const jobId = data.jobId || (data.type === "job" ? data.id : undefined);
-      if (data.url) {
+      if (data.type === "assessment" && data.assessmentId) {
+        router.push(`/assessments/${data.assessmentId}` as any);
+      } else if (data.url) {
         router.push(data.url as any);
       } else if (jobId) {
         router.push(`/jobs/${jobId}` as any);
@@ -239,7 +241,9 @@ function LayoutInner() {
         <Stack.Screen name="schedule" />
         <Stack.Screen name="supplies" />
         <Stack.Screen name="profile" />
-        <Stack.Screen name="earnings" />
+        <Stack.Screen name="performance" />
+        <Stack.Screen name="assessments/[id]/index" />
+        <Stack.Screen name="assessments/[id]/report" />
         <Stack.Screen name="notifications" />
         <Stack.Screen name="jobs/[id]" options={{ headerShown: false }} />
         <Stack.Screen name="onboard-pool" options={{ headerShown: false }} />

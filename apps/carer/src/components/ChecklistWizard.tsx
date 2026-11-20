@@ -146,13 +146,14 @@ const CATEGORY_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
   documentation: "camera",
 };
 
+// One calm accent for every category (the label carries the meaning)
 const CATEGORY_COLORS: Record<string, string> = {
-  cleaning: COLORS.primary[500],
-  chemistry: COLORS.warning[500],
-  equipment: COLORS.neutral[600],
-  safety: COLORS.success[500],
+  cleaning: COLORS.primary[600],
+  chemistry: COLORS.primary[600],
+  equipment: COLORS.primary[600],
+  safety: COLORS.primary[600],
   maintenance: COLORS.primary[600],
-  documentation: COLORS.primary[400],
+  documentation: COLORS.primary[600],
 };
 
 // 0 is a real reading (e.g. no free chlorine) — only blank counts as missing
@@ -572,7 +573,7 @@ export const ChecklistWizard: React.FC<ChecklistWizardProps> = ({
             <View style={styles.phaseLine} />
             <View style={[styles.phaseDot, styles.phaseDotActive]} />
           </View>
-          <Text style={styles.phaseLabel}>Chemicals Used</Text>
+          <Text style={styles.phaseLabel}>Chemicals used</Text>
           <Text style={styles.phaseSubtitle}>
             Record any chemicals added during service
           </Text>
@@ -583,9 +584,9 @@ export const ChecklistWizard: React.FC<ChecklistWizardProps> = ({
             {chemicals.length === 0 ? (
               <View style={styles.emptyChemicals}>
                 <Ionicons name="flask-outline" size={48} color={COLORS.neutral[400]} />
-                <Text style={styles.emptyChemicalsText}>No chemicals added yet</Text>
+                <Text style={styles.emptyChemicalsText}>No chemicals recorded</Text>
                 <Text style={styles.emptyChemicalsSubtext}>
-                  Tap "Add Chemical" to record chemical usage
+                  Add anything you dosed. Skip if you added nothing.
                 </Text>
               </View>
             ) : (
@@ -677,7 +678,7 @@ export const ChecklistWizard: React.FC<ChecklistWizardProps> = ({
               disabled={disabled}
             >
               <Ionicons name="add-circle" size={24} color={COLORS.primary[500]} />
-              <Text style={styles.addChemicalButtonText}>Add Chemical</Text>
+              <Text style={styles.addChemicalButtonText}>Add chemical</Text>
             </TouchableOpacity>
           </View>
         </ScrollView>
@@ -688,14 +689,14 @@ export const ChecklistWizard: React.FC<ChecklistWizardProps> = ({
             onPress={() => setShowReadingsPhase("after")}
           >
             <Ionicons name="arrow-back" size={20} color={COLORS.primary[500]} />
-            <Text style={styles.secondaryButtonText}>Back to After Readings</Text>
+            <Text style={styles.secondaryButtonText}>Back</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.primaryButton, submitting && styles.primaryButtonDisabled]}
             onPress={handleFinishReadings}
             disabled={submitting}
           >
-            <Text style={styles.primaryButtonText}>{submitting ? "Saving..." : "Complete Visit"}</Text>
+            <Text style={styles.primaryButtonText}>{submitting ? "Saving…" : "Complete visit"}</Text>
             {submitting ? (
               <ActivityIndicator size="small" color={COLORS.text.inverse} />
             ) : (
@@ -734,12 +735,12 @@ export const ChecklistWizard: React.FC<ChecklistWizardProps> = ({
             )}
           </View>
           <Text style={styles.phaseLabel}>
-            {isAfter ? "After Readings" : "Before Readings"}
+            {isAfter ? "Water after service" : "Water before service"}
           </Text>
           <Text style={styles.phaseSubtitle}>
             {isAfter
-              ? "Record the final water chemistry readings"
-              : "Record the initial water chemistry readings"}
+              ? "Test again after treating. Leave optional ones blank if not measured."
+              : "Test the water as you found it. Leave optional ones blank if not measured."}
           </Text>
         </View>
 
@@ -768,7 +769,7 @@ export const ChecklistWizard: React.FC<ChecklistWizardProps> = ({
               onPress={() => setShowReadingsPhase(null)}
             >
               <Ionicons name="arrow-back" size={20} color={COLORS.primary[500]} />
-              <Text style={styles.secondaryButtonText}>Back to Checklist</Text>
+              <Text style={styles.secondaryButtonText}>Back</Text>
             </TouchableOpacity>
           ) : (
             <TouchableOpacity style={styles.secondaryButton} onPress={onCancel}>
@@ -784,7 +785,7 @@ export const ChecklistWizard: React.FC<ChecklistWizardProps> = ({
             disabled={missingRequired}
           >
             <Text style={styles.primaryButtonText}>
-              {isAfter ? "Continue to Chemicals" : "Start Checklist"}
+              {isAfter ? "Chemicals" : "Start checklist"}
             </Text>
             <Ionicons name="arrow-forward" size={20} color={COLORS.text.inverse} />
           </TouchableOpacity>
@@ -825,7 +826,7 @@ export const ChecklistWizard: React.FC<ChecklistWizardProps> = ({
       <View
         style={[
           styles.categoryBadge,
-          { backgroundColor: CATEGORY_COLORS[currentItem.category] + "20" },
+          { backgroundColor: "#e6f0ea" },
         ]}
       >
         <Ionicons
@@ -880,7 +881,7 @@ export const ChecklistWizard: React.FC<ChecklistWizardProps> = ({
           <View style={styles.photoSection}>
             {/* Optional photo label */}
             {currentItem.allowsPhoto && !currentItem.requiresPhoto && (
-              <Text style={styles.optionalPhotoLabel}>📷 Add photo (optional)</Text>
+              <Text style={styles.optionalPhotoLabel}>Photo (optional)</Text>
             )}
             {(currentItem.photoUris?.length ?? 0) > 0 && (
               <>
@@ -912,9 +913,9 @@ export const ChecklistWizard: React.FC<ChecklistWizardProps> = ({
                   <ActivityIndicator size="small" color={COLORS.primary[500]} />
                 ) : (
                   <>
-                    <Ionicons name="camera" size={28} color={COLORS.primary[500]} />
+                    <Ionicons name="camera-outline" size={28} color={INK} />
                     <Text style={styles.photoButtonText}>
-                      {(currentItem.photoUris?.length ?? 0) > 0 ? "Add Photo" : "Take Photo"}
+                      {(currentItem.photoUris?.length ?? 0) > 0 ? "Add another" : "Take photo"}
                     </Text>
                   </>
                 )}
@@ -928,7 +929,7 @@ export const ChecklistWizard: React.FC<ChecklistWizardProps> = ({
                   onPress={handleSelectFromGallery}
                   disabled={disabled || uploadingPhoto}
                 >
-                  <Ionicons name="images" size={28} color={COLORS.primary[500]} />
+                  <Ionicons name="images-outline" size={28} color={INK} />
                   <Text style={styles.photoButtonText}>Gallery</Text>
                 </TouchableOpacity>
               )}
@@ -954,7 +955,7 @@ export const ChecklistWizard: React.FC<ChecklistWizardProps> = ({
 
           {currentItem.allowsNotApplicable && !disabled && (
             <TouchableOpacity style={styles.naButton} onPress={handleMarkNotApplicable}>
-              <Text style={styles.naButtonText}>Not Applicable</Text>
+              <Text style={styles.naButtonText}>Doesn't apply</Text>
             </TouchableOpacity>
           )}
 
@@ -987,13 +988,13 @@ export const ChecklistWizard: React.FC<ChecklistWizardProps> = ({
           {currentItem.completed ? (
             <>
               <Ionicons name="checkmark-circle" size={24} color={COLORS.text.inverse} />
-              <Text style={styles.completeStepButtonText}>Completed - Next</Text>
+              <Text style={styles.completeStepButtonText}>Done · next</Text>
             </>
           ) : (
             <>
               <Ionicons name="checkmark" size={24} color={COLORS.text.inverse} />
               <Text style={styles.completeStepButtonText}>
-                {currentStep === totalSteps - 1 ? "Complete & Finish" : "Complete & Next"}
+                {currentStep === totalSteps - 1 ? "Mark done & finish" : "Mark done"}
               </Text>
             </>
           )}
@@ -1093,7 +1094,7 @@ const ReadingInput: React.FC<ReadingInputProps> = ({
       >
         <TextInput
           style={styles.readingInput}
-          placeholder={placeholder}
+          placeholder={optional ? "—" : placeholder}
           placeholderTextColor={COLORS.neutral[400]}
           keyboardType="decimal-pad"
           value={text}
@@ -1117,509 +1118,121 @@ const ReadingInput: React.FC<ReadingInputProps> = ({
   );
 };
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.background.secondary,
-  },
-  progressHeader: {
-    backgroundColor: COLORS.background.primary,
-    padding: SPACING.lg,
-    paddingTop: SPACING.xl,
-    ...SHADOWS.sm,
-  },
-  progressInfo: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: SPACING.sm,
-  },
-  stepCounter: {
-    fontSize: FONT_SIZES.lg,
-    fontWeight: "600",
-    color: COLORS.text.primary,
-  },
-  progressText: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.text.secondary,
-  },
-  progressBarContainer: {
-    height: 6,
-    backgroundColor: COLORS.neutral[200],
-    borderRadius: BORDER_RADIUS.full,
-    overflow: "hidden",
-  },
-  progressBarFill: {
-    height: "100%",
-    backgroundColor: COLORS.primary[500],
-    borderRadius: BORDER_RADIUS.full,
-  },
-  categoryBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    alignSelf: "flex-start",
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.xs,
-    borderRadius: BORDER_RADIUS.full,
-    marginHorizontal: SPACING.lg,
-    marginTop: SPACING.lg,
-    gap: SPACING.xs,
-  },
-  categoryText: {
-    fontSize: FONT_SIZES.sm,
-    fontWeight: "600",
-  },
-  contentCard: {
-    flex: 1,
-    backgroundColor: COLORS.background.primary,
-    margin: SPACING.lg,
-    borderRadius: BORDER_RADIUS.xl,
-    padding: SPACING.xl,
-    ...SHADOWS.md,
-  },
-  taskHeader: {
-    marginBottom: SPACING.lg,
-  },
-  requiredBadge: {
-    backgroundColor: COLORS.error[100],
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: 2,
-    borderRadius: BORDER_RADIUS.sm,
-    alignSelf: "flex-start",
-    marginBottom: SPACING.sm,
-  },
-  requiredText: {
-    fontSize: FONT_SIZES.xs,
-    color: COLORS.error[600],
-    fontWeight: "600",
-  },
-  taskLabel: {
-    fontSize: FONT_SIZES.xl,
-    fontWeight: "600",
-    color: COLORS.text.primary,
-    lineHeight: 28,
-  },
-  numericInputContainer: {
-    marginTop: SPACING.lg,
-  },
-  numericInput: {
-    backgroundColor: COLORS.background.secondary,
-    borderWidth: 2,
-    borderColor: COLORS.primary[200],
-    borderRadius: BORDER_RADIUS.lg,
-    padding: SPACING.lg,
-    fontSize: FONT_SIZES.xxl,
-    fontWeight: "600",
-    textAlign: "center",
-    color: COLORS.text.primary,
-  },
-  rangeHint: {
-    textAlign: "center",
-    marginTop: SPACING.sm,
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.text.tertiary,
-  },
-  photoSection: {
-    marginTop: SPACING.xl,
-  },
-  photoActions: {
-    flexDirection: "row",
-    gap: SPACING.md,
-  },
-  photoButton: {
-    flex: 1,
-    backgroundColor: COLORS.primary[50],
-    borderWidth: 2,
-    borderColor: COLORS.primary[200],
-    borderStyle: "dashed",
-    borderRadius: BORDER_RADIUS.lg,
-    padding: SPACING.xl,
-    alignItems: "center",
-    gap: SPACING.sm,
-  },
-  photoButtonText: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.primary[600],
-    fontWeight: "500",
-  },
-  photoButtonOptional: {
-    borderStyle: "dotted",
-    opacity: 0.8,
-  },
-  optionalPhotoLabel: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.text.secondary,
-    marginBottom: SPACING.sm,
-    textAlign: "center",
-  },
-  photoThumbRow: {
-    marginBottom: SPACING.xs,
-  },
-  photoThumb: {
-    width: 72,
-    height: 72,
-    borderRadius: BORDER_RADIUS.md,
-    backgroundColor: COLORS.neutral[100],
-  },
-  photoCountText: {
-    fontSize: FONT_SIZES.xs,
-    color: COLORS.text.secondary,
-    marginBottom: SPACING.sm,
-  },
-  photoPreviewContainer: {
-    position: "relative",
-  },
-  photoPreview: {
-    width: "100%",
-    height: 200,
-    borderRadius: BORDER_RADIUS.lg,
-    backgroundColor: COLORS.neutral[200],
-  },
-  retakeButton: {
-    position: "absolute",
-    bottom: SPACING.sm,
-    right: SPACING.sm,
-    backgroundColor: COLORS.neutral[800] + "CC",
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
-    borderRadius: BORDER_RADIUS.md,
-    gap: SPACING.xs,
-  },
-  retakeButtonText: {
-    color: COLORS.text.inverse,
-    fontSize: FONT_SIZES.sm,
-    fontWeight: "500",
-  },
-  footer: {
-    backgroundColor: COLORS.background.primary,
-    padding: SPACING.lg,
-    paddingBottom: SPACING.xxl,
-    ...SHADOWS.lg,
-  },
-  footerTop: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: SPACING.md,
-  },
-  navButton: {
-    padding: SPACING.sm,
-  },
-  naModalBackdrop: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.4)",
-    justifyContent: "center",
-    padding: SPACING.lg,
-  },
-  naModalCard: {
-    backgroundColor: COLORS.background.primary,
-    borderRadius: BORDER_RADIUS.lg,
-    padding: SPACING.lg,
-    gap: SPACING.md,
-  },
-  naModalTitle: {
-    fontSize: FONT_SIZES.lg,
-    fontWeight: "600",
-    color: COLORS.text.primary,
-  },
-  naModalSubtitle: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.text.secondary,
-  },
-  naModalActions: {
-    flexDirection: "row",
-    gap: SPACING.sm,
-  },
-  naButton: {
-    paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.sm,
-    backgroundColor: COLORS.neutral[100],
-    borderRadius: BORDER_RADIUS.md,
-  },
-  naButtonText: {
-    color: COLORS.neutral[600],
-    fontSize: FONT_SIZES.sm,
-    fontWeight: "500",
-  },
-  completeStepButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: COLORS.primary[500],
-    paddingVertical: SPACING.lg,
-    borderRadius: BORDER_RADIUS.lg,
-    gap: SPACING.sm,
-  },
-  completeStepButtonDisabled: {
-    backgroundColor: COLORS.neutral[300],
-  },
-  completeStepButtonDone: {
-    backgroundColor: COLORS.success[500],
-  },
-  completeStepButtonText: {
-    color: COLORS.text.inverse,
-    fontSize: FONT_SIZES.lg,
-    fontWeight: "600",
-  },
-  // Readings styles
-  header: {
-    backgroundColor: COLORS.background.primary,
-    padding: SPACING.xl,
-    alignItems: "center",
-    ...SHADOWS.sm,
-  },
-  phaseIndicator: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: SPACING.lg,
-  },
-  phaseDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: COLORS.neutral[300],
-  },
-  phaseDotActive: {
-    backgroundColor: COLORS.primary[500],
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-  },
-  phaseLine: {
-    width: 60,
-    height: 2,
-    backgroundColor: COLORS.neutral[300],
-    marginHorizontal: SPACING.sm,
-  },
-  phaseLabel: {
-    fontSize: FONT_SIZES.xxl,
-    fontWeight: "700",
-    color: COLORS.text.primary,
-    marginBottom: SPACING.xs,
-  },
-  phaseSubtitle: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.text.secondary,
-    textAlign: "center",
-  },
-  readingsScroll: {
-    flex: 1,
-    padding: SPACING.lg,
-  },
-  readingsGrid: {
-    gap: SPACING.md,
-  },
-  readingInputContainer: {
-    backgroundColor: COLORS.background.primary,
-    padding: SPACING.lg,
-    borderRadius: BORDER_RADIUS.lg,
-    ...SHADOWS.sm,
-  },
-  readingLabelRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: SPACING.sm,
-  },
-  readingLabel: {
-    fontSize: FONT_SIZES.md,
-    fontWeight: "600",
-    color: COLORS.text.primary,
-  },
-  optionalTag: {
-    fontSize: FONT_SIZES.xs,
-    color: COLORS.text.tertiary,
-    backgroundColor: COLORS.neutral[100],
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: 2,
-    borderRadius: BORDER_RADIUS.sm,
-  },
-  readingInputWrapper: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: COLORS.background.secondary,
-    borderRadius: BORDER_RADIUS.md,
-    borderWidth: 1,
-    borderColor: COLORS.border.light,
-  },
-  readingInputWarning: {
-    borderColor: COLORS.warning[400],
-    backgroundColor: COLORS.warning[50],
-  },
-  readingInput: {
-    flex: 1,
-    padding: SPACING.md,
-    fontSize: FONT_SIZES.lg,
-    color: COLORS.text.primary,
-  },
-  readingUnit: {
-    paddingRight: SPACING.md,
-    fontSize: FONT_SIZES.md,
-    color: COLORS.text.secondary,
-  },
-  readingInputError: {
-    borderColor: COLORS.error?.[500] ?? "#dc2626",
-  },
-  errorText: {
-    marginTop: SPACING.xs,
-    fontSize: FONT_SIZES.xs,
-    color: COLORS.error?.[600] ?? "#dc2626",
-  },
-  warningText: {
-    marginTop: SPACING.xs,
-    fontSize: FONT_SIZES.xs,
-    color: COLORS.warning[600],
-  },
-  chemicalsContainer: {
-    gap: SPACING.md,
-  },
-  emptyChemicals: {
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: SPACING.xxl * 2,
-    paddingHorizontal: SPACING.xl,
-  },
-  emptyChemicalsText: {
-    fontSize: FONT_SIZES.lg,
-    fontWeight: "600",
-    color: COLORS.text.primary,
-    marginTop: SPACING.md,
-  },
-  emptyChemicalsSubtext: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.text.secondary,
-    marginTop: SPACING.xs,
-    textAlign: "center",
-  },
-  chemicalItem: {
-    backgroundColor: COLORS.background.primary,
-    padding: SPACING.lg,
-    borderRadius: BORDER_RADIUS.lg,
-    ...SHADOWS.sm,
-    gap: SPACING.md,
-  },
-  chemicalInputRow: {
-    flexDirection: "row",
-    gap: SPACING.sm,
-    alignItems: "flex-start",
-  },
-  chemicalNameInput: {
-    flex: 1,
-  },
-  removeChemicalButton: {
-    padding: SPACING.xs,
-    marginTop: SPACING.lg + 4,
-  },
-  chemicalQtyRow: {
-    flexDirection: "row",
-    gap: SPACING.md,
-  },
-  chemicalQtyInput: {
-    flex: 1,
-  },
-  chemicalUnitInput: {
-    width: 120,
-  },
-  inputLabel: {
-    fontSize: FONT_SIZES.sm,
-    fontWeight: "600",
-    color: COLORS.text.secondary,
-    marginBottom: SPACING.xs,
-  },
-  textInput: {
-    backgroundColor: COLORS.background.secondary,
-    borderWidth: 1,
-    borderColor: COLORS.primary[200],
-    borderRadius: BORDER_RADIUS.md,
-    padding: SPACING.md,
-    fontSize: FONT_SIZES.md,
-    color: COLORS.text.primary,
-  },
-  unitSelector: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: SPACING.xs,
-  },
-  unitOption: {
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
-    borderRadius: BORDER_RADIUS.md,
-    backgroundColor: COLORS.background.secondary,
-    borderWidth: 1,
-    borderColor: COLORS.neutral[300],
-  },
-  unitOptionActive: {
-    backgroundColor: COLORS.primary[50],
-    borderColor: COLORS.primary[500],
-  },
-  unitOptionText: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.text.secondary,
-    fontWeight: "500",
-  },
-  unitOptionTextActive: {
-    color: COLORS.primary[600],
-    fontWeight: "600",
-  },
-  addChemicalButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: SPACING.lg,
-    backgroundColor: COLORS.primary[50],
-    borderWidth: 2,
-    borderColor: COLORS.primary[200],
-    borderStyle: "dashed",
-    borderRadius: BORDER_RADIUS.lg,
-    gap: SPACING.sm,
-  },
-  addChemicalButtonText: {
-    fontSize: FONT_SIZES.md,
-    fontWeight: "600",
-    color: COLORS.primary[600],
-  },
-  readingsFooter: {
-    flexDirection: "row",
-    padding: SPACING.lg,
-    paddingBottom: SPACING.xxl,
-    backgroundColor: COLORS.background.primary,
-    gap: SPACING.md,
-    ...SHADOWS.lg,
-  },
-  secondaryButton: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: SPACING.lg,
-    borderRadius: BORDER_RADIUS.lg,
-    borderWidth: 1,
-    borderColor: COLORS.primary[300],
-    gap: SPACING.xs,
-  },
-  secondaryButtonText: {
-    color: COLORS.primary[500],
-    fontSize: FONT_SIZES.md,
-    fontWeight: "600",
-  },
-  primaryButton: {
-    flex: 1.5,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: COLORS.primary[500],
-    paddingVertical: SPACING.lg,
-    borderRadius: BORDER_RADIUS.lg,
-    gap: SPACING.xs,
-  },
-  primaryButtonDisabled: {
-    backgroundColor: COLORS.neutral[300],
-  },
-  primaryButtonText: {
-    color: COLORS.text.inverse,
-    fontSize: FONT_SIZES.md,
-    fontWeight: "600",
-  },
-});
+const INK = "#10231a";
+const MUTED = "#5b6b62";
+const LINE = "#eceee9";
+const BORDER = "#dfe3dc";
+const BG = "#f4f5f2";
+const ACCENT = COLORS.primary[600];
+const TINT = "#e6f0ea";
+const cardShadow = Platform.select({
+  ios: { shadowColor: INK, shadowOpacity: 0.06, shadowRadius: 4, shadowOffset: { width: 0, height: 1 } },
+  default: { elevation: 1 },
+}) as any;
 
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: BG },
+
+  // Step header
+  progressHeader: { backgroundColor: "#ffffff", paddingHorizontal: 20, paddingTop: 14, paddingBottom: 16, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: LINE },
+  progressInfo: { flexDirection: "row", justifyContent: "space-between", alignItems: "baseline", marginBottom: 10 },
+  stepCounter: { fontSize: 12, fontWeight: "600", letterSpacing: 0.7, textTransform: "uppercase", color: MUTED },
+  progressText: { fontSize: 13, color: MUTED },
+  progressBarContainer: { height: 6, backgroundColor: LINE, borderRadius: 3, overflow: "hidden" },
+  progressBarFill: { height: "100%", backgroundColor: ACCENT, borderRadius: 3 },
+
+  categoryBadge: { flexDirection: "row", alignItems: "center", alignSelf: "flex-start", gap: 6, marginTop: 20, marginHorizontal: 20, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 },
+  categoryText: { fontSize: 12, fontWeight: "600" },
+
+  contentCard: { flex: 1, marginHorizontal: 16, marginTop: 12, marginBottom: 12, backgroundColor: "#ffffff", borderRadius: 20, padding: 20, ...cardShadow },
+  taskHeader: { gap: 8 },
+  requiredBadge: { alignSelf: "flex-start", backgroundColor: "#fff4e5", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
+  requiredText: { fontSize: 11, fontWeight: "700", color: "#8a4b08", letterSpacing: 0.3 },
+  taskLabel: { fontSize: 24, fontWeight: "700", color: INK, lineHeight: 31, letterSpacing: -0.2 },
+
+  numericInputContainer: { marginTop: 20 },
+  numericInput: { height: 64, borderWidth: 1, borderColor: BORDER, borderRadius: 14, paddingHorizontal: 16, fontSize: 26, fontWeight: "700", color: INK, textAlign: "center", backgroundColor: "#ffffff" },
+  rangeHint: { fontSize: 13, color: MUTED, textAlign: "center", marginTop: 8 },
+
+  photoSection: { marginTop: 20 },
+  photoActions: { flexDirection: "row", gap: 10 },
+  photoButton: { flex: 1, height: 112, borderRadius: 16, borderWidth: 1.5, borderStyle: "dashed", borderColor: BORDER, backgroundColor: "#ffffff", alignItems: "center", justifyContent: "center", gap: 6 },
+  photoButtonText: { fontSize: 14, fontWeight: "600", color: INK },
+  photoButtonOptional: { height: 80 },
+  optionalPhotoLabel: { fontSize: 13, fontWeight: "600", color: MUTED, marginBottom: 10 },
+  photoThumbRow: { marginBottom: 8 },
+  photoThumb: { width: 84, height: 84, borderRadius: 12, backgroundColor: LINE },
+  photoCountText: { fontSize: 13, color: MUTED, marginBottom: 12 },
+  photoPreviewContainer: { alignItems: "center" },
+  photoPreview: { width: "100%", height: 200, borderRadius: 14 },
+  retakeButton: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 10 },
+  retakeButtonText: { fontSize: 14, color: ACCENT, fontWeight: "600" },
+
+  // Pinned footer
+  footer: { backgroundColor: "#ffffff", paddingHorizontal: 20, paddingTop: 12, paddingBottom: 28, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: LINE },
+  footerTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 12 },
+  navButton: { width: 48, height: 48, borderRadius: 24, backgroundColor: BG, alignItems: "center", justifyContent: "center" },
+  naButton: { height: 40, paddingHorizontal: 16, borderRadius: 20, borderWidth: 1, borderColor: BORDER, justifyContent: "center" },
+  naButtonText: { fontSize: 14, fontWeight: "600", color: MUTED },
+  completeStepButton: { height: 56, borderRadius: 16, backgroundColor: ACCENT, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 },
+  completeStepButtonDisabled: { backgroundColor: "#c9d3cc" },
+  completeStepButtonDone: { backgroundColor: COLORS.primary[700] },
+  completeStepButtonText: { fontSize: 16, fontWeight: "600", color: "#ffffff" },
+
+  naModalBackdrop: { flex: 1, backgroundColor: "rgba(16,35,26,0.4)", justifyContent: "center", padding: 24 },
+  naModalCard: { backgroundColor: "#ffffff", borderRadius: 20, padding: 20, gap: 12 },
+  naModalTitle: { fontSize: 18, fontWeight: "700", color: INK },
+  naModalSubtitle: { fontSize: 14, color: MUTED, lineHeight: 20 },
+  naModalActions: { flexDirection: "row", gap: 10, marginTop: 4 },
+
+  // Readings / chemicals phase header
+  header: { backgroundColor: "#ffffff", paddingHorizontal: 20, paddingTop: 16, paddingBottom: 18, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: LINE },
+  phaseIndicator: { flexDirection: "row", alignItems: "center", marginBottom: 14 },
+  phaseDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: LINE },
+  phaseDotActive: { backgroundColor: ACCENT, width: 24 },
+  phaseLine: { width: 20, height: 2, backgroundColor: LINE, marginHorizontal: 4 },
+  phaseLabel: { fontSize: 24, fontWeight: "700", color: INK, letterSpacing: -0.2 },
+  phaseSubtitle: { fontSize: 14, color: MUTED, marginTop: 4 },
+
+  readingsScroll: { flex: 1 },
+  readingsGrid: { flexDirection: "row", flexWrap: "wrap", padding: 12 },
+  readingInputContainer: { width: "50%", padding: 4 },
+  readingLabelRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 6, paddingHorizontal: 2 },
+  readingLabel: { fontSize: 13, fontWeight: "600", color: INK },
+  optionalTag: { fontSize: 11, color: MUTED },
+  readingInputWrapper: { flexDirection: "row", alignItems: "center", height: 60, backgroundColor: "#ffffff", borderRadius: 14, borderWidth: 1, borderColor: BORDER, paddingHorizontal: 14 },
+  readingInputWarning: { borderColor: "#e0a100", backgroundColor: "#fffaf0" },
+  readingInput: { flex: 1, fontSize: 22, fontWeight: "700", color: INK, paddingVertical: 0 },
+  readingUnit: { fontSize: 13, color: MUTED, marginLeft: 4 },
+  readingInputError: { borderColor: "#c81e1e", backgroundColor: "#fdf2f2" },
+  errorText: { fontSize: 12, color: "#9b1c1c", fontWeight: "600", marginTop: 4, paddingHorizontal: 2 },
+  warningText: { fontSize: 12, color: "#8a4b08", marginTop: 4, paddingHorizontal: 2 },
+
+  chemicalsContainer: { padding: 16, gap: 12 },
+  emptyChemicals: { alignItems: "center", paddingVertical: 36, backgroundColor: "#ffffff", borderRadius: 20, gap: 6, ...cardShadow },
+  emptyChemicalsText: { fontSize: 15, fontWeight: "600", color: INK, marginTop: 6 },
+  emptyChemicalsSubtext: { fontSize: 13, color: MUTED, textAlign: "center", paddingHorizontal: 24 },
+  chemicalItem: { backgroundColor: "#ffffff", borderRadius: 20, padding: 16, gap: 12, ...cardShadow },
+  chemicalInputRow: { flexDirection: "row", alignItems: "flex-start", gap: 8 },
+  chemicalNameInput: { flex: 1 },
+  removeChemicalButton: { width: 40, height: 40, alignItems: "center", justifyContent: "center" },
+  chemicalQtyRow: { flexDirection: "row", gap: 12 },
+  chemicalQtyInput: { width: 110 },
+  chemicalUnitInput: { flex: 1 },
+  inputLabel: { fontSize: 13, fontWeight: "600", color: INK, marginBottom: 6 },
+  textInput: { minHeight: 48, borderWidth: 1, borderColor: BORDER, borderRadius: 12, paddingHorizontal: 14, fontSize: 15, color: INK, backgroundColor: "#ffffff" },
+  unitSelector: { flexDirection: "row", gap: 6 },
+  unitOption: { minHeight: 40, paddingHorizontal: 12, borderRadius: 10, borderWidth: 1, borderColor: BORDER, backgroundColor: "#ffffff", justifyContent: "center", alignItems: "center", marginBottom: 6 },
+  unitOptionActive: { borderColor: ACCENT, backgroundColor: TINT },
+  unitOptionText: { fontSize: 14, color: "#3c4a42", fontWeight: "500" },
+  unitOptionTextActive: { color: ACCENT, fontWeight: "700" },
+  addChemicalButton: { height: 52, borderRadius: 16, borderWidth: 1.5, borderStyle: "dashed", borderColor: BORDER, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 },
+  addChemicalButtonText: { fontSize: 15, fontWeight: "600", color: ACCENT },
+
+  readingsFooter: { flexDirection: "row", gap: 10, backgroundColor: "#ffffff", paddingHorizontal: 16, paddingTop: 12, paddingBottom: 28, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: LINE },
+  secondaryButton: { flex: 1, height: 56, borderRadius: 16, borderWidth: 1, borderColor: BORDER, backgroundColor: "#ffffff", flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingHorizontal: 10 },
+  secondaryButtonText: { fontSize: 15, fontWeight: "600", color: INK },
+  primaryButton: { flex: 1.4, height: 56, borderRadius: 16, backgroundColor: ACCENT, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingHorizontal: 12 },
+  primaryButtonDisabled: { backgroundColor: "#c9d3cc" },
+  primaryButtonText: { fontSize: 16, fontWeight: "600", color: "#ffffff" },
+});

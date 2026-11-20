@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import * as Updates from "expo-updates";
+import Constants from "expo-constants";
 import {
   View,
   Text,
@@ -8,19 +9,29 @@ import {
   StyleSheet,
   Alert,
   Linking,
-  Image,
   ActivityIndicator,
   Modal,
-  TextInput,
   KeyboardAvoidingView,
   Platform,
 } from "react-native";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useTheme } from "../src/contexts/ThemeContext";
-import { api, getApiUrl } from "../src/lib/api-client";
-import { fixUrlForMobile } from "../src/lib/network-utils";
+import { api, CarerPerformance } from "../src/lib/api-client";
+import { useToast } from "../src/components/Toast";
+import {
+  C,
+  Card,
+  Row,
+  Avatar,
+  Button,
+  Field,
+  TabHeader,
+  SectionHeader,
+  StatStrip,
+  TAB_BAR_CLEARANCE,
+  useAccent,
+} from "../src/ui";
 
 // expo-image-picker is loaded lazily, not at module scope. A native module that
 // fails while initialising takes the whole route module down with it, and the
@@ -35,10 +46,7 @@ function getImagePicker(): ImagePickerModule | null {
   }
 }
 
-
-
 interface CarerProfile {
-  id: string;
   name: string;
   phone: string;
   email: string;
@@ -46,159 +54,121 @@ interface CarerProfile {
   orgName: string;
 }
 
-
-// Uploads may come back as a path ("/files/...") — make them loadable
-function resolveImageUrl(raw: string | null | undefined): string | null {
-  if (!raw) return null;
-  const origin = getApiUrl().replace(/\/api\/?$/, "");
-  const full = raw.startsWith("http") ? raw : origin + (raw.startsWith("/") ? raw : "/" + raw);
-  return fixUrlForMobile(full);
-}
-
 export default function ProfileScreen() {
-  const { themeColor } = useTheme();
+  const { accent, tint } = useAccent();
   const insets = useSafeAreaInsets();
-
-  const [profile, setProfile] = useState<CarerProfile>({
-    id: "",
-    name: "",
-    phone: "",
-    email: "",
-    imageUrl: null,
-    orgName: "",
-  });
-  const [loadingProfile, setLoadingProfile] = useState(true);
-  const [uploadingPhoto, setUploadingPhoto] = useState(false);
-  const [showEditModal, setShowEditModal] = useState(false);
+  const { showToast } = useToast();
+  const [profile, setProfile] = useState<CarerProfile>({ name: "", phone: "", email: "", imageUrl: null, orgName: "" });
+  const [perf, setPerf] = useState<CarerPerformance | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
   const [editName, setEditName] = useState("");
-  const [savingProfile, setSavingProfile] = useState(false);
+  const [saving, setSaving] = useState(false);
 
-  useEffect(() => { loadProfile(); }, []);
-
-  const loadProfile = async () => {
-    try {
-      setLoadingProfile(true);
-      const [carerRes, meRes] = await Promise.allSettled([
+  useEffect(() => {
+    (async () => {
+      const [carerRes, meRes, perfRes] = await Promise.allSettled([
         api.getMyCarer() as Promise<any>,
         api.getMe() as Promise<any>,
+        api.getPerformance(),
       ]);
       const carer = carerRes.status === "fulfilled" ? carerRes.value : null;
       const me = meRes.status === "fulfilled" ? meRes.value : null;
-
       setProfile({
-        id: carer?.id || "",
         name: carer?.name || carer?.user?.name || "",
         phone: carer?.phone || carer?.user?.phone || "",
         email: carer?.user?.email || "",
         imageUrl: carer?.imageUrl || null,
         orgName: me?.org?.name || "",
       });
-    } catch {
-      // keep defaults
-    } finally {
-      setLoadingProfile(false);
-    }
-  };
+      if (perfRes.status === "fulfilled") setPerf(perfRes.value);
+      setLoading(false);
+    })();
+  }, []);
 
-  const handleChangePhoto = () => {
-    Alert.alert("Profile Photo", "Choose an option", [
-      { text: "Take Photo", onPress: () => pickImage("camera") },
-      { text: "Choose from Gallery", onPress: () => pickImage("library") },
-      ...(profile.imageUrl
-        ? [{ text: "Remove Photo", style: "destructive" as const, onPress: handleRemovePhoto }]
-        : []),
-      // Android alerts show at most three buttons; there, tapping outside cancels
-      ...(Platform.OS === "android" && profile.imageUrl
-        ? []
-        : [{ text: "Cancel", style: "cancel" as const }]),
-    ], { cancelable: true });
+  const changePhoto = () => {
+    Alert.alert(
+      "Profile photo",
+      undefined,
+      [
+        { text: "Take photo", onPress: () => pickImage("camera") },
+        { text: "Choose from gallery", onPress: () => pickImage("library") },
+        ...(profile.imageUrl ? [{ text: "Remove photo", style: "destructive" as const, onPress: removePhoto }] : []),
+        // Android alerts show at most three buttons; there, tapping outside cancels
+        ...(Platform.OS === "android" && profile.imageUrl ? [] : [{ text: "Cancel", style: "cancel" as const }]),
+      ],
+      { cancelable: true },
+    );
   };
 
   const pickImage = async (source: "camera" | "library") => {
     const ImagePicker = getImagePicker();
-    if (!ImagePicker) { Alert.alert("Unavailable", "The photo picker is not available on this device."); return; }
-    try {
-      let result: Awaited<ReturnType<ImagePickerModule["launchCameraAsync"]>>;
-      if (source === "camera") {
-        const { status } = await ImagePicker!.requestCameraPermissionsAsync();
-        if (status !== "granted") {
-          Alert.alert("Permission Required", "Camera access is needed to take a photo.");
-          return;
-        }
-        result = await ImagePicker!.launchCameraAsync({ allowsEditing: true, aspect: [1, 1], quality: 0.8 });
-      } else {
-        const { status } = await ImagePicker!.requestMediaLibraryPermissionsAsync();
-        if (status !== "granted") {
-          Alert.alert("Permission Required", "Photo library access is needed.");
-          return;
-        }
-        result = await ImagePicker!.launchImageLibraryAsync({
-          mediaTypes: ["images"],
-          allowsEditing: true,
-          aspect: [1, 1],
-          quality: 0.8,
-        });
-      }
-
-      if (!result.canceled && result.assets[0]) {
-        const asset = result.assets[0];
-        const ext = asset.uri.split(".").pop()?.toLowerCase() || "jpg";
-        const mimeType = ext === "png" ? "image/png" : "image/jpeg";
-        const fileName = `carer_profile_${Date.now()}.${ext}`;
-
-        setUploadingPhoto(true);
-        try {
-          const { imageUrl } = await api.uploadMyCarerPhoto(asset.uri, fileName, mimeType);
-          setProfile((p) => ({ ...p, imageUrl: resolveImageUrl(imageUrl) }));
-          Alert.alert("Success", "Profile photo updated!");
-        } catch (error: any) {
-          Alert.alert("Error", error.message || "Failed to upload photo.");
-        } finally {
-          setUploadingPhoto(false);
-        }
-      }
-    } catch {
-      Alert.alert("Error", "Failed to open camera or gallery.");
-    }
-  };
-
-  const handleRemovePhoto = async () => {
-    try {
-      setUploadingPhoto(true);
-      await api.updateMyCarer({ imageUrl: "" });
-      setProfile((p) => ({ ...p, imageUrl: null }));
-    } catch (error: any) {
-      Alert.alert("Error", error.message || "Failed to remove photo.");
-    } finally {
-      setUploadingPhoto(false);
-    }
-  };
-
-  const handleOpenEditModal = () => {
-    setEditName(profile.name);
-    setShowEditModal(true);
-  };
-
-  const handleSaveProfile = async () => {
-    if (!editName.trim()) {
-      Alert.alert("Error", "Name cannot be empty.");
+    if (!ImagePicker) {
+      showToast("The photo picker isn't available on this device", "error");
       return;
     }
     try {
-      setSavingProfile(true);
-      await api.updateMyCarer({ name: editName.trim() });
-      setProfile((p) => ({ ...p, name: editName.trim() }));
-      setShowEditModal(false);
-      Alert.alert("Saved", "Profile updated successfully.");
-    } catch (error: any) {
-      Alert.alert("Error", error.message || "Failed to save profile.");
-    } finally {
-      setSavingProfile(false);
+      const perm =
+        source === "camera"
+          ? await ImagePicker.requestCameraPermissionsAsync()
+          : await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (perm.status !== "granted") {
+        showToast(source === "camera" ? "Camera access is needed" : "Photo access is needed", "warning");
+        return;
+      }
+      const opts = { allowsEditing: true, aspect: [1, 1] as [number, number], quality: 0.8 };
+      const result =
+        source === "camera"
+          ? await ImagePicker.launchCameraAsync(opts)
+          : await ImagePicker.launchImageLibraryAsync({ ...opts, mediaTypes: ["images"] });
+      if (result.canceled || !result.assets[0]) return;
+      const asset = result.assets[0];
+      const ext = asset.uri.split(".").pop()?.toLowerCase() || "jpg";
+      setUploading(true);
+      try {
+        const { imageUrl } = await api.uploadMyCarerPhoto(asset.uri, `carer_profile_${Date.now()}.${ext}`, ext === "png" ? "image/png" : "image/jpeg");
+        setProfile((p) => ({ ...p, imageUrl }));
+        showToast("Photo updated", "success");
+      } catch (e: any) {
+        showToast(e?.message || "Couldn't upload the photo", "error");
+      } finally {
+        setUploading(false);
+      }
+    } catch {
+      showToast("Couldn't open the camera or gallery", "error");
     }
   };
 
-  const handleLogout = () => {
-    Alert.alert("Log out", "Are you sure you want to log out?", [
+  const removePhoto = async () => {
+    try {
+      setUploading(true);
+      await api.updateMyCarer({ imageUrl: "" });
+      setProfile((p) => ({ ...p, imageUrl: null }));
+    } catch (e: any) {
+      showToast(e?.message || "Couldn't remove the photo", "error");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const saveName = async () => {
+    if (!editName.trim()) return;
+    try {
+      setSaving(true);
+      await api.updateMyCarer({ name: editName.trim() });
+      setProfile((p) => ({ ...p, name: editName.trim() }));
+      setEditOpen(false);
+      showToast("Profile updated", "success");
+    } catch (e: any) {
+      showToast(e?.message || "Couldn't save", "error");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const logout = () => {
+    Alert.alert("Log out?", "You'll need a new code to sign back in.", [
       { text: "Cancel", style: "cancel" },
       {
         text: "Log out",
@@ -211,221 +181,143 @@ export default function ProfileScreen() {
     ]);
   };
 
-  const renderSection = (title: string, children: React.ReactNode) => (
-    <View style={styles.section}>
-      <Text style={styles.sectionTitle}>{title}</Text>
-      {children}
-    </View>
+  const contactSupport = () =>
+    Alert.alert("Contact support", "How would you like to reach the office?", [
+      { text: "Call", onPress: () => Linking.openURL("tel:+233506226222") },
+      { text: "Email", onPress: () => Linking.openURL("mailto:info@poolcare.africa") },
+      { text: "Cancel", style: "cancel" },
+    ]);
+
+  const linkRow = (icon: keyof typeof Ionicons.glyphMap, label: string, onPress: () => void, opts?: { sub?: string; first?: boolean; external?: boolean }) => (
+    <Row first={opts?.first} onPress={onPress} chevron={!opts?.external}>
+      <Ionicons name={icon} size={20} color={C.muted} />
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text style={styles.rowLabel}>{label}</Text>
+        {opts?.sub ? <Text style={styles.rowSub}>{opts.sub}</Text> : null}
+      </View>
+      {opts?.external ? <Ionicons name="open-outline" size={16} color={C.faint} /> : null}
+    </Row>
   );
 
-  const renderItem = (
-    icon: string,
-    label: string,
-    onPress: () => void,
-    opts?: { subtitle?: string; rightElement?: React.ReactNode; danger?: boolean }
-  ) => (
-    <TouchableOpacity style={styles.item} onPress={onPress} activeOpacity={0.7}>
-      <View style={[styles.iconBox, { backgroundColor: opts?.danger ? "#fee2e2" : `${themeColor}18` }]}>
-        <Ionicons name={icon as any} size={20} color={opts?.danger ? "#ef4444" : themeColor} />
-      </View>
-      <View style={styles.itemText}>
-        <Text style={[styles.itemLabel, opts?.danger && { color: "#ef4444" }]}>{label}</Text>
-        {opts?.subtitle ? <Text style={styles.itemSubtitle}>{opts.subtitle}</Text> : null}
-      </View>
-      {opts?.rightElement ?? <Ionicons name="chevron-forward" size={18} color="#c4c4c4" />}
-    </TouchableOpacity>
-  );
-
-  const displayName = profile.name || "Carer";
-  const initials = displayName
-    .trim()
-    .split(/\s+/)
-    .map((w) => w[0])
-    .join("")
-    .toUpperCase()
-    .slice(0, 2);
+  const version = Constants.expoConfig?.version || "1.0.0";
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
-      {/* Colored header */}
-      <View style={[styles.header, { backgroundColor: themeColor }]}>
-        <Text style={styles.headerTitle}>Profile</Text>
-        <TouchableOpacity onPress={handleOpenEditModal}>
-          <Text style={styles.headerEdit}>Edit</Text>
-        </TouchableOpacity>
-      </View>
-
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 110 }]}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Profile card */}
-        <View style={styles.profileCard}>
-          <TouchableOpacity onPress={handleChangePhoto} activeOpacity={0.8} style={styles.avatarWrap}>
-            {uploadingPhoto ? (
-              <View style={[styles.avatarPlaceholder, { borderColor: themeColor }]}>
-                <ActivityIndicator color={themeColor} />
+    <View style={styles.container}>
+      <TabHeader eyebrow="Account" title="Profile" />
+      <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: TAB_BAR_CLEARANCE + insets.bottom }} showsVerticalScrollIndicator={false}>
+        {/* Identity */}
+        <Card style={styles.identity}>
+          <TouchableOpacity onPress={changePhoto} accessibilityLabel="Change profile photo" activeOpacity={0.8}>
+            {uploading ? (
+              <View style={[styles.avatarBusy, { backgroundColor: tint }]}>
+                <ActivityIndicator color={accent} />
               </View>
-            ) : profile.imageUrl ? (
-              <Image source={{ uri: profile.imageUrl }} style={[styles.avatar, { borderColor: themeColor }]} />
             ) : (
-              <View style={[styles.avatarPlaceholder, { borderColor: themeColor }]}>
-                <Text style={[styles.avatarInitials, { color: themeColor }]}>{initials || "?"}</Text>
-              </View>
+              <Avatar name={profile.name} uri={profile.imageUrl} size={72} />
             )}
-            <View style={[styles.cameraBadge, { backgroundColor: themeColor }]}>
-              <Ionicons name="camera" size={12} color="#fff" />
+            <View style={[styles.camera, { backgroundColor: accent }]}>
+              <Ionicons name="camera" size={12} color="#ffffff" />
             </View>
           </TouchableOpacity>
-
-          {loadingProfile ? (
-            <ActivityIndicator color={themeColor} style={{ marginTop: 8 }} />
-          ) : (
-            <View style={styles.profileInfo}>
-              <Text style={styles.profileName}>{displayName}</Text>
-              {!!profile.email && <Text style={styles.profileSub}>{profile.email}</Text>}
-              {!!profile.phone && <Text style={styles.profileSub}>{profile.phone}</Text>}
-              {!!profile.orgName && (
-                <View style={[styles.orgChip, { backgroundColor: `${themeColor}15`, borderColor: `${themeColor}30` }]}>
-                  <Ionicons name="business-outline" size={12} color={themeColor} />
-                  <Text style={[styles.orgChipText, { color: themeColor }]}>{profile.orgName}</Text>
-                </View>
-              )}
-            </View>
-          )}
-
+          <View style={{ flex: 1, minWidth: 0 }}>
+            {loading ? (
+              <ActivityIndicator color={accent} style={{ alignSelf: "flex-start" }} />
+            ) : (
+              <>
+                <Text style={styles.name} numberOfLines={1}>
+                  {profile.name || "Carer"}
+                </Text>
+                <Text style={styles.meta} numberOfLines={1}>
+                  {[profile.orgName ? `Carer · ${profile.orgName}` : "Carer"].join("")}
+                </Text>
+                {profile.phone ? <Text style={styles.meta}>{profile.phone}</Text> : null}
+              </>
+            )}
+          </View>
           <TouchableOpacity
-            style={[styles.editBtn, { borderColor: `${themeColor}40` }]}
-            onPress={handleOpenEditModal}
-            activeOpacity={0.7}
+            onPress={() => {
+              setEditName(profile.name);
+              setEditOpen(true);
+            }}
+            style={styles.editBtn}
+            accessibilityLabel="Edit name"
           >
-            <Ionicons name="pencil-outline" size={14} color={themeColor} />
-            <Text style={[styles.editBtnText, { color: themeColor }]}>Edit Profile</Text>
+            <Ionicons name="pencil" size={16} color={C.ink} />
           </TouchableOpacity>
-        </View>
+        </Card>
 
-        {/* Quick links */}
-        <View style={styles.quickRow}>
-          {([
-            { icon: "wallet-outline", label: "Earnings", route: "/earnings" },
-            { icon: "calendar-outline", label: "Schedule", route: "/schedule" },
-            { icon: "notifications-outline", label: "Alerts", route: "/notifications" },
-            { icon: "cube-outline", label: "Supplies", route: "/supplies" },
-          ] as const).map((item, i) => (
-            <TouchableOpacity
-              key={i}
-              style={styles.quickItem}
-              onPress={() => router.push(item.route as any)}
-              activeOpacity={0.7}
-            >
-              <View style={[styles.quickIconBox, { backgroundColor: `${themeColor}15` }]}>
-                <Ionicons name={item.icon} size={20} color={themeColor} />
-              </View>
-              <Text style={styles.quickLabel}>{item.label}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
+        {perf ? (
+          <TouchableOpacity activeOpacity={0.8} onPress={() => router.replace("/performance")}>
+            <StatStrip
+              style={{ marginTop: 12 }}
+              items={[
+                { label: "This month", value: String(perf.jobsDone), sub: "jobs done" },
+                { label: "Rating", value: perf.allTimeRating != null ? perf.allTimeRating.toFixed(1) : "–", star: perf.allTimeRating != null, sub: `${perf.allTimeRatingCount} review${perf.allTimeRatingCount === 1 ? "" : "s"}` },
+                { label: "On time", value: perf.onTimePct != null ? `${perf.onTimePct}%` : "–", sub: "this month" },
+              ]}
+            />
+          </TouchableOpacity>
+        ) : null}
 
-        {/* Account section */}
-        {renderSection("Account", <>
-          {renderItem("person-outline", "Profile Information", handleOpenEditModal, {
-            subtitle: profile.phone || profile.email || "",
+        <SectionHeader title="Work" />
+        <Card>
+          {linkRow("star-outline", "Performance", () => router.replace("/performance"), { first: true, sub: "Jobs done, ratings and reviews" })}
+          {linkRow("water-outline", "Onboard a pool", () => router.push("/onboard-pool"), { sub: "Register a new client pool" })}
+          {linkRow("notifications-outline", "Notifications", () => router.push("/notifications"))}
+        </Card>
+
+        <SectionHeader title="Settings" />
+        <Card>
+          {linkRow("phone-portrait-outline", "Notification settings", () => Linking.openSettings(), {
+            first: true,
+            sub: "Turn PoolCare alerts on or off on this phone",
+            external: true,
           })}
-          {renderItem("wallet-outline", "Earnings", () => router.push("/earnings"), {
-            subtitle: "View your pay history",
+          {linkRow("person-outline", "Edit name", () => {
+            setEditName(profile.name);
+            setEditOpen(true);
           })}
-          {renderItem("calendar-outline", "My Schedule", () => router.push("/schedule"))}
-        </>)}
+        </Card>
 
-        {/* Notifications section — push alerts are controlled by the phone's
-            own settings; the old in-app switches only saved locally and never
-            stopped anything being sent. */}
-        {renderSection("Notifications", <>
-          {renderItem("notifications-outline", "Notification settings", () => Linking.openSettings(), {
-            subtitle: "Turn PoolCare alerts on or off on this phone",
-          })}
-          {renderItem("list-outline", "Recent alerts", () => router.push("/notifications"))}
-        </>)}
+        <SectionHeader title="Help" />
+        <Card>
+          {linkRow("chatbubbles-outline", "Contact the office", contactSupport, { first: true })}
+          {linkRow("help-circle-outline", "Help centre", () => Linking.openURL("https://poolcare.africa"), { external: true })}
+          {linkRow("document-text-outline", "Privacy policy", () => Linking.openURL("https://poolcare.africa/privacy-policy/"), { external: true })}
+          {linkRow("document-outline", "Terms of service", () => Linking.openURL("https://poolcare.africa/terms-and-conditions/"), { external: true })}
+        </Card>
 
-        {/* Support section */}
-        {renderSection("Support & Legal", <>
-          {renderItem("help-circle-outline", "Help Center", () =>
-            Linking.openURL("https://poolcare.africa")
-          )}
-          {renderItem("chatbubbles-outline", "Contact Support", () =>
-            Alert.alert("Contact Support", "How would you like to reach us?", [
-              { text: "Call", onPress: () => Linking.openURL("tel:+233506226222") },
-              { text: "Email", onPress: () => Linking.openURL("mailto:info@poolcare.africa") },
-              { text: "Cancel", style: "cancel" },
-            ])
-          )}
-          {renderItem("document-text-outline", "Privacy Policy", () =>
-            Linking.openURL("https://poolcare.africa/privacy-policy/")
-          )}
-          {renderItem("document-outline", "Terms of Service", () =>
-            Linking.openURL("https://poolcare.africa/terms-and-conditions/")
-          )}
-        </>)}
-
-        {/* Logout */}
-        <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout} activeOpacity={0.7}>
-          <Ionicons name="log-out-outline" size={20} color="#ef4444" />
-          <Text style={styles.logoutText}>Log out</Text>
-        </TouchableOpacity>
+        <Card style={{ marginTop: 24 }}>
+          <Row first onPress={logout} chevron={false}>
+            <Ionicons name="log-out-outline" size={20} color={C.danger} />
+            <Text style={[styles.rowLabel, { color: C.danger }]}>Log out</Text>
+          </Row>
+        </Card>
 
         <Text style={styles.version}>
-          PoolCare Carer v1.0.0 · {Updates.updateId ? `update ${Updates.updateId.slice(0, 8)}` : "built-in"}
+          PoolCare Carer {version} · {Updates.updateId ? `update ${Updates.updateId.slice(0, 8)}` : "built-in"}
         </Text>
       </ScrollView>
 
-      {/* Edit Profile Modal */}
-      <Modal
-        visible={showEditModal}
-        animationType="slide"
-        transparent
-        onRequestClose={() => setShowEditModal(false)}
-      >
-        <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
-          style={styles.modalOverlay}
-        >
-          <View style={styles.modalSheet}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Edit Profile</Text>
-              <TouchableOpacity onPress={() => setShowEditModal(false)}>
-                <Ionicons name="close" size={24} color="#6b7280" />
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.modalBody}>
-              <Text style={styles.modalLabel}>Display Name</Text>
-              <TextInput
-                style={styles.modalInput}
-                value={editName}
-                onChangeText={setEditName}
-                placeholder="Your full name"
-                autoCapitalize="words"
-              />
-              <Text style={[styles.modalHint]}>
-                Phone number cannot be changed — it's used to log in.
-              </Text>
-            </View>
-
-            <View style={styles.modalFooter}>
-              <TouchableOpacity style={styles.modalCancel} onPress={() => setShowEditModal(false)}>
-                <Text style={styles.modalCancelText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.modalSave, { backgroundColor: themeColor }, savingProfile && { opacity: 0.6 }]}
-                onPress={handleSaveProfile}
-                disabled={savingProfile}
-              >
-                {savingProfile
-                  ? <ActivityIndicator color="#fff" size="small" />
-                  : <Text style={styles.modalSaveText}>Save</Text>
-                }
-              </TouchableOpacity>
+      <Modal visible={editOpen} animationType="slide" transparent onRequestClose={() => setEditOpen(false)}>
+        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.overlay}>
+          <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setEditOpen(false)} accessibilityLabel="Close" />
+          <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, 12) + 12 }]}>
+            <View style={styles.grabber} />
+            <Text style={styles.sheetTitle}>Your name</Text>
+            <Field
+              style={{ marginTop: 14 }}
+              label="Display name"
+              value={editName}
+              onChangeText={setEditName}
+              placeholder="Your full name"
+              autoCapitalize="words"
+              autoFocus
+              hint="Clients see this on visit reports. Your phone number is your login and can't be changed here."
+            />
+            <View style={{ flexDirection: "row", gap: 10, marginTop: 18 }}>
+              <Button title="Cancel" variant="secondary" onPress={() => setEditOpen(false)} style={{ flex: 1 }} />
+              <Button title="Save" onPress={saveName} loading={saving} disabled={!editName.trim()} style={{ flex: 1 }} />
             </View>
           </View>
         </KeyboardAvoidingView>
@@ -435,232 +327,18 @@ export default function ProfileScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#f3f4f6" },
-
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 20,
-  },
-  headerTitle: { fontSize: 24, fontWeight: "800", color: "#ffffff" },
-  headerEdit: { fontSize: 15, fontWeight: "600", color: "rgba(255,255,255,0.85)" },
-
-  scroll: { flex: 1 },
-  scrollContent: { paddingTop: 0 },
-
-  // Profile card
-  profileCard: {
-    backgroundColor: "#ffffff",
-    marginHorizontal: 16,
-    marginTop: 16,
-    marginBottom: 12,
-    borderRadius: 20,
-    padding: 20,
-    alignItems: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.07,
-    shadowRadius: 12,
-    elevation: 3,
-  },
-  avatarWrap: { position: "relative", marginBottom: 12 },
-  avatar: { width: 80, height: 80, borderRadius: 40, borderWidth: 3 },
-  avatarPlaceholder: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: "#f3f4f6",
-    justifyContent: "center",
-    alignItems: "center",
-    borderWidth: 3,
-  },
-  avatarInitials: { fontSize: 28, fontWeight: "700" },
-  cameraBadge: {
-    position: "absolute",
-    bottom: 0,
-    right: 0,
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    justifyContent: "center",
-    alignItems: "center",
-    borderWidth: 2,
-    borderColor: "#fff",
-  },
-  profileInfo: { alignItems: "center", marginBottom: 14 },
-  profileName: { fontSize: 20, fontWeight: "700", color: "#111827", marginBottom: 2 },
-  profileSub: { fontSize: 13, color: "#6b7280", marginBottom: 2 },
-  orgChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 20,
-    borderWidth: 1,
-    marginTop: 4,
-  },
-  orgChipText: { fontSize: 12, fontWeight: "600" },
-  editBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 18,
-    paddingVertical: 8,
-    borderRadius: 20,
-    borderWidth: 1,
-  },
-  editBtnText: { fontSize: 13, fontWeight: "600" },
-
-  // Quick links
-  quickRow: {
-    flexDirection: "row",
-    backgroundColor: "#ffffff",
-    marginHorizontal: 16,
-    marginBottom: 12,
-    borderRadius: 16,
-    padding: 16,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 6,
-    elevation: 2,
-  },
-  quickItem: { flex: 1, alignItems: "center", gap: 6 },
-  quickIconBox: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  quickLabel: { fontSize: 11, fontWeight: "600", color: "#374151" },
-
-  // Sections
-  section: {
-    backgroundColor: "#ffffff",
-    marginHorizontal: 16,
-    marginBottom: 12,
-    borderRadius: 16,
-    paddingTop: 16,
-    paddingBottom: 4,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 6,
-    elevation: 2,
-  },
-  sectionTitle: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: "#9ca3af",
-    textTransform: "uppercase",
-    letterSpacing: 0.8,
-    paddingHorizontal: 20,
-    marginBottom: 8,
-  },
-
-  // Item row
-  item: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 20,
-    paddingVertical: 14,
-    borderTopWidth: 1,
-    borderTopColor: "#f3f4f6",
-  },
-  iconBox: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    justifyContent: "center",
-    alignItems: "center",
-    marginRight: 14,
-  },
-  itemText: { flex: 1 },
-  itemLabel: { fontSize: 15, fontWeight: "500", color: "#111827" },
-  itemSubtitle: { fontSize: 12, color: "#9ca3af", marginTop: 1 },
-
-  // Logout
-  logoutBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    marginHorizontal: 16,
-    marginTop: 20,
-    marginBottom: 12,
-    paddingVertical: 16,
-    borderRadius: 14,
-    backgroundColor: "#fff",
-    borderWidth: 1,
-    borderColor: "#fee2e2",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04,
-    shadowRadius: 4,
-    elevation: 1,
-  },
-  logoutText: { fontSize: 16, fontWeight: "600", color: "#ef4444" },
-  version: { textAlign: "center", fontSize: 12, color: "#c4c4c4", marginBottom: 16 },
-
-  // Modal
-  modalOverlay: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.4)" },
-  modalSheet: {
-    backgroundColor: "#fff",
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    maxHeight: "75%",
-  },
-  modalHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    padding: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: "#f3f4f6",
-  },
-  modalTitle: { fontSize: 18, fontWeight: "700", color: "#111827" },
-  modalBody: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 8 },
-  modalLabel: { fontSize: 13, fontWeight: "600", color: "#6b7280", marginBottom: 8 },
-  modalInput: {
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
-    borderRadius: 10,
-    padding: 14,
-    fontSize: 15,
-    color: "#111827",
-    backgroundColor: "#fafafa",
-  },
-  modalHint: {
-    fontSize: 12,
-    color: "#9ca3af",
-    marginTop: 10,
-  },
-  modalFooter: {
-    flexDirection: "row",
-    gap: 12,
-    padding: 20,
-    borderTopWidth: 1,
-    borderTopColor: "#f3f4f6",
-  },
-  modalCancel: {
-    flex: 1,
-    paddingVertical: 14,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
-    alignItems: "center",
-  },
-  modalCancelText: { fontSize: 15, fontWeight: "600", color: "#374151" },
-  modalSave: {
-    flex: 2,
-    paddingVertical: 14,
-    borderRadius: 12,
-    alignItems: "center",
-  },
-  modalSaveText: { fontSize: 15, fontWeight: "600", color: "#fff" },
+  container: { flex: 1, backgroundColor: C.bg },
+  identity: { flexDirection: "row", alignItems: "center", gap: 14, padding: 16 },
+  avatarBusy: { width: 72, height: 72, borderRadius: 36, alignItems: "center", justifyContent: "center" },
+  camera: { position: "absolute", right: -2, bottom: -2, width: 24, height: 24, borderRadius: 12, alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: "#ffffff" },
+  name: { fontSize: 20, fontWeight: "700", color: C.ink },
+  meta: { fontSize: 13, color: C.muted, marginTop: 2 },
+  editBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: C.bg, alignItems: "center", justifyContent: "center" },
+  rowLabel: { fontSize: 15, fontWeight: "500", color: C.ink },
+  rowSub: { fontSize: 13, color: C.muted, marginTop: 2 },
+  version: { textAlign: "center", fontSize: 12, color: C.faint, marginTop: 20 },
+  overlay: { flex: 1, backgroundColor: "rgba(16,35,26,0.35)" },
+  sheet: { backgroundColor: C.card, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: 20, paddingTop: 10 },
+  grabber: { alignSelf: "center", width: 40, height: 4, borderRadius: 2, backgroundColor: C.border, marginBottom: 12 },
+  sheetTitle: { fontSize: 20, fontWeight: "700", color: C.ink },
 });

@@ -47,10 +47,21 @@ interface AuthResult {
   role: string;
 }
 
+// SecureStore has no web implementation; the web preview keeps the token in
+// localStorage instead. Native builds always use SecureStore.
+const store = {
+  get: (k: string): Promise<string | null> =>
+    Platform.OS === "web" ? Promise.resolve(globalThis.localStorage?.getItem(k) ?? null) : SecureStore.getItemAsync(k),
+  set: (k: string, v: string): Promise<void> =>
+    Platform.OS === "web" ? Promise.resolve(globalThis.localStorage?.setItem(k, v)) : SecureStore.setItemAsync(k, v),
+  del: (k: string): Promise<void> =>
+    Platform.OS === "web" ? Promise.resolve(globalThis.localStorage?.removeItem(k)) : SecureStore.deleteItemAsync(k),
+};
+
 class ApiClient {
   async getAuthToken(): Promise<string | null> {
     try {
-      return await SecureStore.getItemAsync(TOKEN_KEY);
+      return await store.get(TOKEN_KEY);
     } catch (error) {
       console.error("Error getting auth token:", error);
       return null;
@@ -59,7 +70,7 @@ class ApiClient {
 
   private async setAuthToken(token: string): Promise<void> {
     try {
-      await SecureStore.setItemAsync(TOKEN_KEY, token);
+      await store.set(TOKEN_KEY, token);
     } catch (error) {
       console.error("Error setting auth token:", error);
     }
@@ -67,9 +78,9 @@ class ApiClient {
 
   private async clearAuthToken(): Promise<void> {
     try {
-      await SecureStore.deleteItemAsync(TOKEN_KEY);
-      await SecureStore.deleteItemAsync(USER_KEY);
-      await SecureStore.deleteItemAsync(ORG_KEY);
+      await store.del(TOKEN_KEY);
+      await store.del(USER_KEY);
+      await store.del(ORG_KEY);
     } catch (error) {
       console.error("Error clearing auth token:", error);
     }
@@ -213,10 +224,10 @@ class ApiClient {
       await this.setAuthToken(result.token);
       // Store user and org info for quick access
       if (result.user) {
-        await SecureStore.setItemAsync(USER_KEY, JSON.stringify(result.user));
+        await store.set(USER_KEY, JSON.stringify(result.user));
       }
       if (result.org) {
-        await SecureStore.setItemAsync(ORG_KEY, JSON.stringify(result.org));
+        await store.set(ORG_KEY, JSON.stringify(result.org));
       }
     }
 
@@ -624,6 +635,66 @@ class ApiClient {
     return response.json() as Promise<{ imageUrl: string }>;
   }
 
+  // Performance (replaces earnings — carers are salaried)
+  async getPerformance(params?: { month?: number; year?: number }) {
+    const q = new URLSearchParams();
+    if (params?.month) q.set("month", String(params.month));
+    if (params?.year) q.set("year", String(params.year));
+    const qs = q.toString();
+    return this.request<CarerPerformance>(`/carers/me/performance${qs ? `?${qs}` : ""}`);
+  }
+
+  // Assessments assigned to this carer
+  async getAssessments(params?: { from?: string; to?: string }) {
+    const q = new URLSearchParams();
+    if (params?.from) q.set("from", params.from);
+    if (params?.to) q.set("to", params.to);
+    const qs = q.toString();
+    return this.request<CarerAssessment[]>(`/carers/me/assessments${qs ? `?${qs}` : ""}`);
+  }
+
+  async getAssessment(id: string) {
+    return this.request<CarerAssessment>(`/carers/me/assessments/${id}`);
+  }
+
+  async startAssessment(id: string, loc?: { lat: number; lng: number }) {
+    return this.request<CarerAssessment>(`/carers/me/assessments/${id}/start`, {
+      method: "POST",
+      body: JSON.stringify(loc || {}),
+    });
+  }
+
+  async saveAssessmentDraft(id: string, data: Partial<AssessmentReportFields>) {
+    return this.request<CarerAssessment>(`/carers/me/assessments/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async submitAssessment(id: string, data: Partial<AssessmentReportFields>) {
+    return this.request<CarerAssessment>(`/carers/me/assessments/${id}/submit`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async uploadAssessmentPhoto(id: string, imageUri: string, fileName: string, mimeType: string) {
+    const formData = new FormData();
+    formData.append("image", { uri: imageUri, name: fileName, type: mimeType } as any);
+    const token = await this.getAuthToken();
+    const response = await fetch(`${getBaseUrl()}/carers/me/assessments/${id}/photo`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: formData,
+    });
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ message: response.statusText }));
+      const m = errorData?.message;
+      throw new Error(Array.isArray(m) ? m.join(", ") : m || response.statusText);
+    }
+    return response.json() as Promise<{ url: string }>;
+  }
+
   async getNotifications(params?: { limit?: number; page?: number }) {
     const query = new URLSearchParams();
     if (params?.limit != null) query.set("limit", String(params.limit));
@@ -631,6 +702,70 @@ class ApiClient {
     const qs = query.toString();
     return this.request(`/carers/me/notifications${qs ? `?${qs}` : ""}`);
   }
+}
+
+export interface CarerPerformance {
+  month: number;
+  year: number;
+  jobsDone: number;
+  prevJobsDone: number;
+  rating: number | null;
+  ratingCount: number;
+  allTimeRating: number | null;
+  allTimeRatingCount: number;
+  distribution: { star: number; count: number }[];
+  onTimePct: number | null;
+  onTimeCount: number;
+  arrivedCount: number;
+  avgMinutesOnSite: number | null;
+  disputedCount: number;
+  latestReviews: {
+    id: string;
+    rating: number;
+    feedback: string | null;
+    completedAt: string;
+    poolName: string | null;
+    clientName: string | null;
+  }[];
+}
+
+export interface AssessmentReportFields {
+  poolType: string | null;
+  surfaceType: string | null;
+  filtrationType: string | null;
+  volumeL: number | null;
+  dimensions: string | null;
+  ph: number | null;
+  chlorineFree: number | null;
+  alkalinity: number | null;
+  calciumHardness: number | null;
+  cyanuricAcid: number | null;
+  salinity: number | null;
+  conditionRating: number | null;
+  equipmentNotes: string | null;
+  findings: string | null;
+  recommendation: string | null;
+  recommendedPlan: string | null;
+  photoUrls: string[];
+}
+
+export interface CarerAssessment {
+  id: string;
+  status: "PENDING" | "DISPATCHED" | "COMPLETED" | string;
+  scheduledAt: string | null;
+  assessedAt: string | null;
+  prospectName: string;
+  opportunityName: string | null;
+  address: string | null;
+  phone: string | null;
+  contactName: string | null;
+  brief: string | null;
+  leadNotes: string | null;
+  assignedByName: string | null;
+  lat: number | null;
+  lng: number | null;
+  locationAt: string | null;
+  report: AssessmentReportFields;
 }
 
 export const api = new ApiClient();

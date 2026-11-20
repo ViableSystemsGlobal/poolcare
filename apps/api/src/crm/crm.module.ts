@@ -22,11 +22,14 @@ import { LeadSourcesController } from "./lead-sources.controller";
 import { MapsModule } from "../maps/maps.module";
 import { SettingsModule } from "../settings/settings.module";
 
+import { CarerAssessmentsController } from "./carer-assessments.controller";
+import { CarerAssessmentsService } from "./carer-assessments.service";
 @Module({
   imports: [AuthModule, FilesModule, NotificationsModule, MapsModule, SettingsModule],
   controllers: [
     PublicLeadsController,
     PublicAssessmentController,
+    CarerAssessmentsController,
     AccountsController,
     ContactsController,
     LeadsController,
@@ -39,6 +42,7 @@ import { SettingsModule } from "../settings/settings.module";
     ContactsService,
     LeadsService,
     OpportunitiesService,
+    CarerAssessmentsService,
     ActivitiesService,
     LeadSourcesService,
     CrmMessagingService,

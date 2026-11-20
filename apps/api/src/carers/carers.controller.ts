@@ -112,6 +112,18 @@ export class CarersController {
     return this.carersService.getMyCarer(user.org_id, user.sub);
   }
 
+  @Get("me/performance")
+  async getMyPerformance(
+    @CurrentUser() user: { org_id: string; sub: string },
+    @Query("month") month?: string,
+    @Query("year") year?: string
+  ) {
+    return this.carersService.getMyPerformance(user.org_id, user.sub, {
+      month: month ? parseInt(month) : undefined,
+      year: year ? parseInt(year) : undefined,
+    });
+  }
+
   @Get("me/earnings")
   async getMyEarnings(
     @CurrentUser() user: { org_id: string; sub: string },

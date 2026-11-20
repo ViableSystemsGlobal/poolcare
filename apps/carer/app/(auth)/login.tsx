@@ -18,9 +18,9 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { api } from "../../src/lib/api-client";
 import { fixUrlForMobile } from "../../src/lib/network-utils";
 import { useTheme } from "../../src/contexts/ThemeContext";
+import { C, Button, Field, Notice } from "../../src/ui";
 
 const BRAND_COLOR = "#397d54";
-const loginBg = require("../../assets/login-bg.png");
 const localLogo = require("../../assets/poolcare.png");
 
 export default function LoginScreen() {
@@ -33,6 +33,7 @@ export default function LoginScreen() {
   const [resending, setResending] = useState(false);
   const [resendIn, setResendIn] = useState(0);
   const [devOtpCode, setDevOtpCode] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [orgLogoUrl, setOrgLogoUrl] = useState<string | null>(null);
   const [orgName, setOrgName] = useState<string>("PoolCare");
   const [themeColor, setThemeColor] = useState(BRAND_COLOR);
@@ -54,10 +55,11 @@ export default function LoginScreen() {
 
   const handleRequestOtp = async () => {
     if (!phone.trim()) {
-      Alert.alert("Error", "Please enter your phone number");
+      setError("Enter the phone number the office registered you with");
       return;
     }
     setLoading(true);
+    setError(null);
     try {
       await api.requestOtp("phone", phone.trim());
       if (__DEV__) {
@@ -69,7 +71,7 @@ export default function LoginScreen() {
       setStep("otp");
       setResendIn(45);
     } catch (error: any) {
-      Alert.alert("Error", error.message || "Failed to send OTP. Please try again.");
+      setError(error.message || "Couldn't send the code. Check the number and try again.");
     } finally {
       setLoading(false);
     }
@@ -89,7 +91,7 @@ export default function LoginScreen() {
       setOtp("");
       setResendIn(45);
     } catch (error: any) {
-      Alert.alert("Error", error.message || "Failed to resend code. Please try again.");
+      setError(error.message || "Couldn't resend the code. Try again.");
     } finally {
       setResending(false);
     }
@@ -97,10 +99,11 @@ export default function LoginScreen() {
 
   const handleVerifyOtp = async () => {
     if (!otp.trim()) {
-      Alert.alert("Error", "Please enter the OTP");
+      setError("Enter the 6-digit code we sent you");
       return;
     }
     setLoading(true);
+    setError(null);
     try {
       const result = await api.verifyOtp("phone", phone.trim(), otp.trim());
       if (result.token) {
@@ -110,257 +113,143 @@ export default function LoginScreen() {
         throw new Error("Authentication failed");
       }
     } catch (error: any) {
-      Alert.alert("Error", error.message || "Invalid OTP. Please try again.");
+      setError(error.message || "That code didn't work. Check it and try again.");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <View style={styles.root}>
-      <Image source={loginBg} style={StyleSheet.absoluteFill} resizeMode="cover" />
-    <KeyboardAvoidingView
-      style={styles.root}
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-    >
+    <KeyboardAvoidingView style={styles.root} behavior={Platform.OS === "ios" ? "padding" : undefined}>
       <ScrollView
-        contentContainerStyle={[styles.scroll, { paddingBottom: Math.max(insets.bottom, 24) }]}
+        contentContainerStyle={[styles.scroll, { paddingTop: insets.top + 48, paddingBottom: insets.bottom + 24 }]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        {/* Spacer */}
-        <View style={{ paddingTop: insets.top + 130 }} />
-
-        {/* Form card */}
-        <View style={styles.card}>
-          <View style={styles.cardLogoWrap}>
-            {orgLogoUrl ? (
-              <Image source={{ uri: orgLogoUrl }} style={styles.cardLogo} resizeMode="contain" />
-            ) : (
-              <Image source={localLogo} style={styles.cardLogo} resizeMode="contain" />
-            )}
+        {/* Brand */}
+        <View style={styles.brand}>
+          <View style={styles.logoWrap}>
+            <Image source={orgLogoUrl ? { uri: orgLogoUrl } : localLogo} style={styles.logo} resizeMode="contain" />
           </View>
-          <Text style={[styles.appTag, { color: themeColor }]}>STAFF PORTAL</Text>
+          <Text style={styles.eyebrow}>{orgName} · Carer</Text>
+          <Text style={styles.title}>{step === "phone" ? "Sign in to start your day" : "Enter your code"}</Text>
+          <Text style={styles.sub}>
+            {step === "phone"
+              ? "Use the phone number the office registered you with. We'll text you a code."
+              : `We sent a 6-digit code to ${phone.trim()}.`}
+          </Text>
+        </View>
+
+        <View style={styles.card}>
           {step === "phone" ? (
             <>
-              <Text style={styles.formSubtitle}>Enter your phone number to sign in</Text>
-
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Phone number</Text>
-                <View style={styles.inputRow}>
-                  <View style={styles.inputIcon}>
-                    <Ionicons name="call-outline" size={18} color="#9ca3af" />
-                  </View>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="e.g. 0244000000"
-                    placeholderTextColor="#9ca3af"
-                    value={phone}
-                    onChangeText={setPhone}
-                    keyboardType="phone-pad"
-                    autoFocus
-                    returnKeyType="done"
-                    onSubmitEditing={handleRequestOtp}
-                  />
-                </View>
-              </View>
-
-              <TouchableOpacity
-                style={[styles.btn, { backgroundColor: themeColor }, loading && styles.btnDisabled]}
+              <Field
+                label="Phone number"
+                placeholder="e.g. 024 123 4567"
+                value={phone}
+                onChangeText={(t) => {
+                  setPhone(t);
+                  if (error) setError(null);
+                }}
+                keyboardType="phone-pad"
+                autoComplete="tel"
+                textContentType="telephoneNumber"
+                returnKeyType="send"
+                onSubmitEditing={handleRequestOtp}
+                editable={!loading}
+                inputStyle={styles.bigInput}
+                error={error}
+              />
+              <Button
+                title="Send code"
+                iconRight="arrow-forward"
                 onPress={handleRequestOtp}
-                disabled={loading}
-                activeOpacity={0.85}
-              >
-                {loading ? (
-                  <ActivityIndicator size="small" color="#ffffff" />
-                ) : (
-                  <>
-                    <Text style={styles.btnText}>Send OTP</Text>
-                    <Ionicons name="arrow-forward" size={18} color="#ffffff" />
-                  </>
-                )}
-              </TouchableOpacity>
+                loading={loading}
+                style={[{ marginTop: 18 }, phone.trim() && !loading ? { backgroundColor: themeColor } : null]}
+                disabled={!phone.trim()}
+              />
             </>
           ) : (
             <>
-              <Text style={styles.formTitle}>Enter OTP</Text>
-              <Text style={styles.formSubtitle}>
-                Code sent to <Text style={{ fontWeight: "700", color: "#111827" }}>{phone}</Text>
-              </Text>
-
-              {__DEV__ && devOtpCode && (
-                <View style={styles.devBox}>
-                  <Ionicons name="code-slash" size={14} color="#92400e" />
-                  <Text style={styles.devText}>Dev code: {devOtpCode}</Text>
-                </View>
-              )}
-
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Verification code</Text>
-                <View style={styles.inputRow}>
-                  <View style={styles.inputIcon}>
-                    <Ionicons name="shield-checkmark-outline" size={18} color="#9ca3af" />
-                  </View>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="6-digit code"
-                    placeholderTextColor="#9ca3af"
-                    value={otp}
-                    onChangeText={setOtp}
-                    keyboardType="number-pad"
-                    autoFocus
-                    maxLength={6}
-                    returnKeyType="done"
-                    onSubmitEditing={handleVerifyOtp}
-                  />
-                </View>
-              </View>
-
-              <TouchableOpacity
-                style={[styles.btn, { backgroundColor: themeColor }, loading && styles.btnDisabled]}
+              <TextInput
+                style={[styles.code, error ? { borderColor: C.danger } : null]}
+                placeholder="••••••"
+                placeholderTextColor={C.border}
+                value={otp}
+                onChangeText={(t) => {
+                  setOtp(t.replace(/\D/g, "").slice(0, 6));
+                  if (error) setError(null);
+                }}
+                keyboardType="number-pad"
+                autoComplete="sms-otp"
+                textContentType="oneTimeCode"
+                maxLength={6}
+                autoFocus
+                editable={!loading}
+                onSubmitEditing={handleVerifyOtp}
+                accessibilityLabel="6-digit code"
+              />
+              {error ? <Text style={styles.error}>{error}</Text> : null}
+              {devOtpCode ? (
+                <Notice tone="neutral" icon="bug-outline" style={{ marginTop: 12 }}>
+                  Dev code: {devOtpCode}
+                </Notice>
+              ) : null}
+              <Button
+                title="Verify & sign in"
                 onPress={handleVerifyOtp}
-                disabled={loading}
-                activeOpacity={0.85}
-              >
-                {loading ? (
-                  <ActivityIndicator size="small" color="#ffffff" />
-                ) : (
-                  <>
-                    <Text style={styles.btnText}>Verify & Sign In</Text>
-                    <Ionicons name="checkmark" size={18} color="#ffffff" />
-                  </>
-                )}
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.linkBtn}
-                onPress={handleResendOtp}
-                disabled={resendIn > 0 || resending}
-              >
-                <Ionicons name="refresh" size={14} color={resendIn > 0 ? "#9ca3af" : themeColor} />
-                <Text style={[styles.linkText, { color: resendIn > 0 ? "#9ca3af" : themeColor }]}>
-                  {resending
-                    ? "Sending new code..."
-                    : resendIn > 0
-                      ? `Resend code in ${resendIn}s`
-                      : "Resend code"}
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity style={styles.linkBtn} onPress={() => { setStep("phone"); setOtp(""); setDevOtpCode(null); }}>
-                <Ionicons name="arrow-back" size={14} color={themeColor} />
-                <Text style={[styles.linkText, { color: themeColor }]}>Change number</Text>
-              </TouchableOpacity>
+                loading={loading}
+                disabled={otp.length < 4}
+                style={[{ marginTop: 18 }, otp.length >= 4 && !loading ? { backgroundColor: themeColor } : null]}
+              />
+              <View style={styles.otpLinks}>
+                <TouchableOpacity
+                  onPress={() => {
+                    setStep("phone");
+                    setOtp("");
+                    setError(null);
+                    setDevOtpCode(null);
+                  }}
+                  hitSlop={10}
+                >
+                  <Text style={styles.link}>Change number</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={handleResendOtp} disabled={resendIn > 0 || resending} hitSlop={10}>
+                  {resending ? (
+                    <ActivityIndicator size="small" color={themeColor} />
+                  ) : (
+                    <Text style={[styles.link, { color: resendIn > 0 ? C.faint : themeColor }]}>
+                      {resendIn > 0 ? `Resend in ${resendIn}s` : "Resend code"}
+                    </Text>
+                  )}
+                </TouchableOpacity>
+              </View>
             </>
           )}
         </View>
 
-        <Text style={styles.footer}>Powered by PoolCare</Text>
+        <Text style={styles.help}>
+          Not registered yet? Ask the office to add you as a carer.
+        </Text>
       </ScrollView>
     </KeyboardAvoidingView>
-    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1 },
-  scroll: { flexGrow: 1 },
-  appTag: {
-    fontSize: 13,
-    fontWeight: "600",
-    letterSpacing: 1,
-    textTransform: "uppercase",
-    textAlign: "center",
-    marginBottom: 16,
-  },
-  formTitle: {
-    fontSize: 20,
-    fontWeight: "700",
-    color: "#111827",
-    textAlign: "center",
-    marginBottom: 4,
-  },
-  cardLogoWrap: {
-    alignItems: "center",
-    marginBottom: 20,
-  },
-  cardLogo: { width: 120, height: 72 },
-  card: {
-    backgroundColor: "#ffffff",
-    borderRadius: 28,
-    marginHorizontal: 20,
-    marginTop: 0,
-    padding: 24,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.1,
-    shadowRadius: 20,
-    elevation: 6,
-  },
-  formSubtitle: {
-    fontSize: 14,
-    color: "#6b7280",
-    marginBottom: 24,
-    lineHeight: 20,
-  },
-  inputGroup: { marginBottom: 20 },
-  inputLabel: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: "#374151",
-    marginBottom: 8,
-  },
-  inputRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#f9fafb",
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
-    paddingHorizontal: 14,
-  },
-  inputIcon: { marginRight: 10 },
-  input: {
-    flex: 1,
-    paddingVertical: 14,
-    fontSize: 16,
-    color: "#111827",
-  },
-  btn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    paddingVertical: 15,
-    borderRadius: 14,
-  },
-  btnDisabled: { opacity: 0.6 },
-  btnText: { color: "#ffffff", fontSize: 16, fontWeight: "700" },
-  linkBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    marginTop: 18,
-  },
-  linkText: { fontSize: 14, fontWeight: "500" },
-  devBox: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    backgroundColor: "#fef3c7",
-    padding: 10,
-    borderRadius: 8,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: "#fbbf24",
-  },
-  devText: { color: "#92400e", fontSize: 13, fontWeight: "600" },
-  footer: {
-    textAlign: "center",
-    fontSize: 12,
-    color: "rgba(255,255,255,0.7)",
-    marginTop: 24,
-    marginBottom: 8,
-  },
+  root: { flex: 1, backgroundColor: C.bg },
+  scroll: { flexGrow: 1, paddingHorizontal: 20 },
+  brand: { paddingHorizontal: 4 },
+  logoWrap: { width: 64, height: 64, borderRadius: 18, backgroundColor: "#ffffff", alignItems: "center", justifyContent: "center", marginBottom: 24 },
+  logo: { width: 46, height: 46 },
+  eyebrow: { fontSize: 12, fontWeight: "600", letterSpacing: 0.7, textTransform: "uppercase", color: C.muted },
+  title: { fontSize: 28, fontWeight: "700", color: C.ink, marginTop: 6, letterSpacing: -0.4, lineHeight: 34 },
+  sub: { fontSize: 15, color: C.muted, marginTop: 8, lineHeight: 22 },
+  card: { backgroundColor: "#ffffff", borderRadius: 20, padding: 20, marginTop: 28 },
+  bigInput: { height: 56, fontSize: 18, fontWeight: "600" },
+  code: { height: 64, borderRadius: 14, borderWidth: 1, borderColor: C.border, fontSize: 28, fontWeight: "700", letterSpacing: 10, textAlign: "center", color: C.ink },
+  error: { fontSize: 13, color: C.dangerInk, fontWeight: "600", marginTop: 8, textAlign: "center" },
+  otpLinks: { flexDirection: "row", justifyContent: "space-between", marginTop: 18, paddingHorizontal: 4 },
+  link: { fontSize: 14, fontWeight: "600", color: C.ink },
+  help: { textAlign: "center", fontSize: 13, color: C.muted, marginTop: 24, lineHeight: 19 },
 });

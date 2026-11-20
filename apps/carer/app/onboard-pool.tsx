@@ -17,6 +17,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Location from "expo-location";
 import { api } from "../src/lib/api-client";
 import { useTheme } from "../src/contexts/ThemeContext";
+import { ScreenHeader } from "../src/ui";
 import { useToast } from "../src/components/Toast";
 
 // expo-image-picker is loaded lazily, not at module scope. A native module that
@@ -251,54 +252,43 @@ export default function OnboardPoolScreen() {
       style={{ flex: 1 }}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
-      <View style={[styles.container, { paddingTop: insets.top }]}>
-        {/* Header */}
-        <View style={styles.header}>
-          <TouchableOpacity
-            style={styles.backBtn}
-            onPress={() => {
-              if (step === "pool-details") {
-                setStep("find-client");
-              } else {
-                router.back();
-              }
-            }}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
-            <Ionicons name="arrow-back" size={22} color="#374151" />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Onboard Pool</Text>
-          <View style={{ width: 38 }} />
-        </View>
+      <View style={styles.container}>
+        <ScreenHeader
+          eyebrow={step === "success" ? "Done" : `Step ${step === "pool-details" ? 2 : 1} of 2`}
+          title="Onboard a pool"
+          onBack={() => (step === "pool-details" ? setStep("find-client") : router.back())}
+        />
 
         {/* Progress */}
         {step !== "success" && (
           <View style={styles.progressRow}>
-            <View style={[styles.progressStep, { backgroundColor: themeColor }]}>
-              <Text style={styles.progressStepText}>1</Text>
-            </View>
-            <View style={[styles.progressLine, step === "pool-details" && { backgroundColor: themeColor }]} />
-            <View style={[styles.progressStep, step === "pool-details" ? { backgroundColor: themeColor } : { backgroundColor: "#e5e7eb" }]}>
-              <Text style={[styles.progressStepText, step !== "pool-details" && { color: "#9ca3af" }]}>2</Text>
-            </View>
+            {["Client", "Pool details"].map((label, i) => {
+              const on = i === 0 || step === "pool-details";
+              return (
+                <View key={label} style={{ flex: 1 }}>
+                  <View style={[styles.progressLine, on && { backgroundColor: themeColor }]} />
+                  <Text style={[styles.progressStepText, on && { color: themeColor }]}>{label}</Text>
+                </View>
+              );
+            })}
           </View>
         )}
 
         {/* ===== STEP 1: FIND CLIENT ===== */}
         {step === "find-client" && (
           <ScrollView style={styles.scrollView} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-            <Text style={styles.stepTitle}>Find or Create Client</Text>
+            <Text style={styles.stepTitle}>Whose pool is it?</Text>
             <Text style={styles.stepSubtitle}>Search for the client this pool belongs to, or add a new one.</Text>
 
             {!showNewClientForm && (
               <>
                 {/* Search input */}
                 <View style={styles.searchRow}>
-                  <Ionicons name="search-outline" size={18} color="#9ca3af" style={styles.searchIcon} />
+                  <Ionicons name="search-outline" size={18} color="#8a968f" style={styles.searchIcon} />
                   <TextInput
                     style={styles.searchInput}
                     placeholder="Search by name, phone or email…"
-                    placeholderTextColor="#9ca3af"
+                    placeholderTextColor="#8a968f"
                     value={searchQuery}
                     onChangeText={handleSearch}
                     autoCapitalize="none"
@@ -326,7 +316,7 @@ export default function OnboardPoolScreen() {
                         <Text style={styles.clientContact}>{client.phone || client.email}</Text>
                       )}
                     </View>
-                    <Ionicons name="chevron-forward" size={18} color="#d1d5db" />
+                    <Ionicons name="chevron-forward" size={18} color="#8a968f" />
                   </TouchableOpacity>
                 ))}
 
@@ -345,7 +335,7 @@ export default function OnboardPoolScreen() {
                   onPress={() => setShowNewClientForm(true)}
                 >
                   <Ionicons name="person-add-outline" size={18} color={themeColor} />
-                  <Text style={[styles.newClientBtnText, { color: themeColor }]}>Create New Client</Text>
+                  <Text style={[styles.newClientBtnText, { color: themeColor }]}>Add a new client</Text>
                 </TouchableOpacity>
               </>
             )}
@@ -354,15 +344,15 @@ export default function OnboardPoolScreen() {
             {showNewClientForm && (
               <View style={styles.newClientForm}>
                 <TouchableOpacity style={styles.backToSearch} onPress={() => setShowNewClientForm(false)}>
-                  <Ionicons name="arrow-back-outline" size={16} color="#6b7280" />
+                  <Ionicons name="arrow-back-outline" size={16} color="#5b6b62" />
                   <Text style={styles.backToSearchText}>Back to search</Text>
                 </TouchableOpacity>
 
-                <Text style={styles.formLabel}>Full Name *</Text>
+                <Text style={styles.formLabel}>Full name</Text>
                 <TextInput
                   style={styles.input}
                   placeholder="e.g. John Mensah"
-                  placeholderTextColor="#9ca3af"
+                  placeholderTextColor="#8a968f"
                   value={newClientName}
                   onChangeText={setNewClientName}
                   autoCapitalize="words"
@@ -372,7 +362,7 @@ export default function OnboardPoolScreen() {
                 <TextInput
                   style={styles.input}
                   placeholder="+233 20 000 0000"
-                  placeholderTextColor="#9ca3af"
+                  placeholderTextColor="#8a968f"
                   value={newClientPhone}
                   onChangeText={setNewClientPhone}
                   keyboardType="phone-pad"
@@ -383,7 +373,7 @@ export default function OnboardPoolScreen() {
                 <TextInput
                   style={styles.input}
                   placeholder="john@example.com"
-                  placeholderTextColor="#9ca3af"
+                  placeholderTextColor="#8a968f"
                   value={newClientEmail}
                   onChangeText={setNewClientEmail}
                   keyboardType="email-address"
@@ -398,7 +388,7 @@ export default function OnboardPoolScreen() {
                   {creatingClient ? (
                     <ActivityIndicator color="#fff" size="small" />
                   ) : (
-                    <Text style={styles.primaryBtnText}>Create Client & Continue</Text>
+                    <Text style={styles.primaryBtnText}>Add client & continue</Text>
                   )}
                 </TouchableOpacity>
               </View>
@@ -411,7 +401,7 @@ export default function OnboardPoolScreen() {
         {/* ===== STEP 2: POOL DETAILS ===== */}
         {step === "pool-details" && (
           <ScrollView style={styles.scrollView} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-            <Text style={styles.stepTitle}>Pool Details</Text>
+            <Text style={styles.stepTitle}>Pool details</Text>
             {selectedClient && (
               <View style={styles.selectedClientBadge}>
                 <Ionicons name="person-circle-outline" size={16} color={themeColor} />
@@ -421,11 +411,11 @@ export default function OnboardPoolScreen() {
               </View>
             )}
 
-            <Text style={styles.formLabel}>Pool Name</Text>
+            <Text style={styles.formLabel}>Pool name</Text>
             <TextInput
               style={styles.input}
               placeholder="e.g. Backyard Pool"
-              placeholderTextColor="#9ca3af"
+              placeholderTextColor="#8a968f"
               value={poolName}
               onChangeText={setPoolName}
               autoCapitalize="words"
@@ -436,7 +426,7 @@ export default function OnboardPoolScreen() {
               <TextInput
                 style={[styles.input, styles.addressInput]}
                 placeholder="123 Main St, Accra"
-                placeholderTextColor="#9ca3af"
+                placeholderTextColor="#8a968f"
                 value={poolAddress}
                 onChangeText={(v) => {
                   setPoolAddress(v);
@@ -464,51 +454,51 @@ export default function OnboardPoolScreen() {
               </Text>
             )}
 
-            <Text style={styles.formLabel}>Volume (Litres)</Text>
+            <Text style={styles.formLabel}>Volume (litres)</Text>
             <TextInput
               style={styles.input}
               placeholder="e.g. 50000"
-              placeholderTextColor="#9ca3af"
+              placeholderTextColor="#8a968f"
               value={poolVolume}
               onChangeText={setPoolVolume}
               keyboardType="numeric"
             />
 
-            <Text style={styles.formLabel}>Pool Type</Text>
+            <Text style={styles.formLabel}>Pool type</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipRow}>
               {POOL_TYPES.map((t) => (
                 <TouchableOpacity
                   key={t}
-                  style={[styles.chip, poolType === t && { backgroundColor: themeColor, borderColor: themeColor }]}
+                  style={[styles.chip, poolType === t && { backgroundColor: themeColor + "1F", borderColor: themeColor }]}
                   onPress={() => setPoolType(poolType === t ? "" : t)}
                 >
-                  <Text style={[styles.chipText, poolType === t && { color: "#fff" }]}>{t}</Text>
+                  <Text style={[styles.chipText, poolType === t && { color: themeColor, fontWeight: "700" }]}>{t}</Text>
                 </TouchableOpacity>
               ))}
             </ScrollView>
 
-            <Text style={styles.formLabel}>Surface Type</Text>
+            <Text style={styles.formLabel}>Surface</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipRow}>
               {SURFACE_TYPES.map((t) => (
                 <TouchableOpacity
                   key={t}
-                  style={[styles.chip, surfaceType === t && { backgroundColor: themeColor, borderColor: themeColor }]}
+                  style={[styles.chip, surfaceType === t && { backgroundColor: themeColor + "1F", borderColor: themeColor }]}
                   onPress={() => setSurfaceType(surfaceType === t ? "" : t)}
                 >
-                  <Text style={[styles.chipText, surfaceType === t && { color: "#fff" }]}>{t}</Text>
+                  <Text style={[styles.chipText, surfaceType === t && { color: themeColor, fontWeight: "700" }]}>{t}</Text>
                 </TouchableOpacity>
               ))}
             </ScrollView>
 
-            <Text style={styles.formLabel}>Filtration Type</Text>
+            <Text style={styles.formLabel}>Water</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipRow}>
               {FILTRATION_TYPES.map((t) => (
                 <TouchableOpacity
                   key={t}
-                  style={[styles.chip, filtrationType === t && { backgroundColor: themeColor, borderColor: themeColor }]}
+                  style={[styles.chip, filtrationType === t && { backgroundColor: themeColor + "1F", borderColor: themeColor }]}
                   onPress={() => setFiltrationType(filtrationType === t ? "" : t)}
                 >
-                  <Text style={[styles.chipText, filtrationType === t && { color: "#fff" }]}>{t}</Text>
+                  <Text style={[styles.chipText, filtrationType === t && { color: themeColor, fontWeight: "700" }]}>{t}</Text>
                 </TouchableOpacity>
               ))}
             </ScrollView>
@@ -517,7 +507,7 @@ export default function OnboardPoolScreen() {
             <TextInput
               style={[styles.input, styles.textArea]}
               placeholder="Any special notes about the pool…"
-              placeholderTextColor="#9ca3af"
+              placeholderTextColor="#8a968f"
               value={poolNotes}
               onChangeText={setPoolNotes}
               multiline
@@ -535,16 +525,16 @@ export default function OnboardPoolScreen() {
                     style={styles.photoRemoveBtn}
                     onPress={() => setPoolImages((prev) => prev.filter((_, idx) => idx !== i))}
                   >
-                    <Ionicons name="close-circle" size={20} color="#ef4444" />
+                    <Ionicons name="close-circle" size={22} color="#10231a" />
                   </TouchableOpacity>
                 </View>
               ))}
               <TouchableOpacity style={styles.addPhotoBtn} onPress={handleTakePhoto}>
-                <Ionicons name="camera-outline" size={22} color="#9ca3af" />
+                <Ionicons name="camera-outline" size={22} color="#8a968f" />
                 <Text style={styles.addPhotoText}>Camera</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.addPhotoBtn} onPress={handlePickImage}>
-                <Ionicons name="image-outline" size={22} color="#9ca3af" />
+                <Ionicons name="image-outline" size={22} color="#8a968f" />
                 <Text style={styles.addPhotoText}>Gallery</Text>
               </TouchableOpacity>
             </View>
@@ -557,7 +547,7 @@ export default function OnboardPoolScreen() {
               {savingPool ? (
                 <ActivityIndicator color="#fff" size="small" />
               ) : (
-                <Text style={styles.primaryBtnText}>Save Pool</Text>
+                <Text style={styles.primaryBtnText}>Save pool</Text>
               )}
             </TouchableOpacity>
 
@@ -571,7 +561,7 @@ export default function OnboardPoolScreen() {
             <View style={[styles.successIcon, { backgroundColor: themeColor + "15" }]}>
               <Ionicons name="checkmark-circle" size={64} color={themeColor} />
             </View>
-            <Text style={styles.successTitle}>Pool Onboarded!</Text>
+            <Text style={styles.successTitle}>Pool added</Text>
             <Text style={styles.successSubtitle}>
               {createdPool?.name || "The pool"} has been added for{" "}
               <Text style={{ fontWeight: "700" }}>{selectedClient?.name}</Text>.
@@ -611,7 +601,7 @@ export default function OnboardPoolScreen() {
                 setCreatedPool(null);
               }}
             >
-              <Text style={[styles.outlineBtnText, { color: themeColor }]}>Onboard Another Pool</Text>
+              <Text style={[styles.outlineBtnText, { color: themeColor }]}>Onboard another pool</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -620,350 +610,66 @@ export default function OnboardPoolScreen() {
   );
 }
 
+const INK = "#10231a";
+const MUTED = "#5b6b62";
+const LINE = "#eceee9";
+const BORDER = "#dfe3dc";
+
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#f8fafc",
-  },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    backgroundColor: "#ffffff",
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "#e5e7eb",
-  },
-  backBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: "#f3f4f6",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  headerTitle: {
-    fontSize: 17,
-    fontWeight: "700",
-    color: "#111827",
-  },
-  progressRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 16,
-    backgroundColor: "#ffffff",
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "#e5e7eb",
-    gap: 0,
-  },
-  progressStep: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  progressStepText: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: "#fff",
-  },
-  progressLine: {
-    width: 60,
-    height: 2,
-    backgroundColor: "#e5e7eb",
-    marginHorizontal: 4,
-  },
+  container: { flex: 1, backgroundColor: "#f4f5f2" },
+  header: {},
+  backBtn: {},
+  headerTitle: {},
+  progressRow: { flexDirection: "row", gap: 8, paddingHorizontal: 20, paddingTop: 14 },
+  progressStep: {},
+  progressStepText: { fontSize: 12, fontWeight: "600", color: MUTED, marginTop: 6 },
+  progressLine: { height: 4, borderRadius: 2, backgroundColor: LINE },
   scrollView: { flex: 1 },
-  content: {
-    paddingHorizontal: 20,
-    paddingTop: 24,
-  },
-  stepTitle: {
-    fontSize: 20,
-    fontWeight: "700",
-    color: "#111827",
-    marginBottom: 6,
-  },
-  stepSubtitle: {
-    fontSize: 14,
-    color: "#6b7280",
-    marginBottom: 24,
-    lineHeight: 20,
-  },
-  searchRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#ffffff",
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
-    marginBottom: 16,
-  },
-  searchIcon: {
-    marginLeft: 12,
-    marginRight: 4,
-  },
-  searchInput: {
-    flex: 1,
-    height: 46,
-    fontSize: 15,
-    color: "#111827",
-    paddingHorizontal: 8,
-  },
-  noResultsText: {
-    textAlign: "center",
-    color: "#9ca3af",
-    fontSize: 14,
-    paddingVertical: 16,
-  },
-  clientCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#ffffff",
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 10,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  clientAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    justifyContent: "center",
-    alignItems: "center",
-    marginRight: 12,
-  },
-  clientAvatarText: {
-    fontSize: 14,
-    fontWeight: "700",
-  },
-  clientInfo: { flex: 1 },
-  clientName: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: "#111827",
-  },
-  clientContact: {
-    fontSize: 13,
-    color: "#6b7280",
-    marginTop: 2,
-  },
-  dividerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginVertical: 20,
-    gap: 10,
-  },
-  divider: {
-    flex: 1,
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: "#e5e7eb",
-  },
-  dividerText: {
-    fontSize: 13,
-    color: "#9ca3af",
-    fontWeight: "500",
-  },
-  newClientBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    borderRadius: 12,
-    borderWidth: 1.5,
-    borderStyle: "dashed",
-    paddingVertical: 14,
-  },
-  newClientBtnText: {
-    fontSize: 15,
-    fontWeight: "600",
-  },
-  newClientForm: {
-    marginTop: 4,
-  },
-  backToSearch: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    marginBottom: 20,
-  },
-  backToSearchText: {
-    fontSize: 14,
-    color: "#6b7280",
-  },
-  formLabel: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: "#374151",
-    marginBottom: 6,
-    marginTop: 14,
-  },
-  input: {
-    backgroundColor: "#ffffff",
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 15,
-    color: "#111827",
-  },
-  textArea: {
-    height: 80,
-    paddingTop: 12,
-    textAlignVertical: "top",
-  },
-  addressRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  addressInput: {
-    flex: 1,
-  },
-  locationBtn: {
-    width: 46,
-    height: 46,
-    borderRadius: 12,
-    borderWidth: 1,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  locationHint: {
-    fontSize: 12,
-    fontWeight: "500",
-    marginTop: 4,
-    marginLeft: 2,
-  },
-  selectedClientBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    marginBottom: 20,
-  },
-  selectedClientText: {
-    fontSize: 14,
-    fontWeight: "600",
-  },
-  chipRow: {
-    flexDirection: "row",
-    marginBottom: 4,
-  },
-  chip: {
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
-    backgroundColor: "#ffffff",
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    marginRight: 8,
-    marginBottom: 8,
-  },
-  chipText: {
-    fontSize: 13,
-    fontWeight: "500",
-    color: "#374151",
-  },
-  photoRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 10,
-    marginTop: 6,
-  },
-  photoThumb: {
-    width: 80,
-    height: 80,
-    borderRadius: 10,
-    overflow: "hidden",
-  },
-  photoThumbImage: {
-    width: 80,
-    height: 80,
-    borderRadius: 10,
-  },
-  photoRemoveBtn: {
-    position: "absolute",
-    top: 2,
-    right: 2,
-    backgroundColor: "#fff",
-    borderRadius: 10,
-  },
-  addPhotoBtn: {
-    width: 80,
-    height: 80,
-    borderRadius: 10,
-    borderWidth: 1.5,
-    borderColor: "#e5e7eb",
-    borderStyle: "dashed",
-    backgroundColor: "#ffffff",
-    justifyContent: "center",
-    alignItems: "center",
-    gap: 4,
-  },
-  addPhotoText: {
-    fontSize: 11,
-    color: "#9ca3af",
-    fontWeight: "500",
-  },
-  primaryBtn: {
-    borderRadius: 12,
-    paddingVertical: 15,
-    alignItems: "center",
-    justifyContent: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 6,
-    elevation: 3,
-  },
-  primaryBtnText: {
-    color: "#ffffff",
-    fontSize: 16,
-    fontWeight: "700",
-  },
-  outlineBtn: {
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1.5,
-  },
-  outlineBtnText: {
-    fontSize: 15,
-    fontWeight: "600",
-  },
-  successContainer: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 32,
-  },
-  successIcon: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: 20,
-  },
-  successTitle: {
-    fontSize: 26,
-    fontWeight: "800",
-    color: "#111827",
-    marginBottom: 10,
-    textAlign: "center",
-  },
-  successSubtitle: {
-    fontSize: 16,
-    color: "#6b7280",
-    textAlign: "center",
-    lineHeight: 24,
-  },
+  content: { paddingHorizontal: 20, paddingTop: 20 },
+  stepTitle: { fontSize: 24, fontWeight: "700", color: INK, letterSpacing: -0.2 },
+  stepSubtitle: { fontSize: 14, color: MUTED, marginTop: 4, marginBottom: 18, lineHeight: 20 },
+  searchRow: { flexDirection: "row", alignItems: "center", height: 52, backgroundColor: "#ffffff", borderRadius: 14, borderWidth: 1, borderColor: BORDER, marginBottom: 12 },
+  searchIcon: { marginLeft: 14, marginRight: 8 },
+  searchInput: { flex: 1, fontSize: 16, color: INK, paddingVertical: 0 },
+  noResultsText: { fontSize: 14, color: MUTED, textAlign: "center", paddingVertical: 16 },
+  clientCard: { flexDirection: "row", alignItems: "center", gap: 12, backgroundColor: "#ffffff", borderRadius: 16, padding: 14, marginBottom: 8 },
+  clientAvatar: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center" },
+  clientAvatarText: { fontSize: 15, fontWeight: "700" },
+  clientInfo: { flex: 1, minWidth: 0 },
+  clientName: { fontSize: 15, fontWeight: "600", color: INK },
+  clientContact: { fontSize: 13, color: MUTED, marginTop: 2 },
+  dividerRow: { flexDirection: "row", alignItems: "center", gap: 12, marginVertical: 18 },
+  divider: { flex: 1, height: StyleSheet.hairlineWidth, backgroundColor: BORDER },
+  dividerText: { fontSize: 13, color: MUTED },
+  newClientBtn: { height: 52, borderRadius: 16, borderWidth: 1.5, borderStyle: "dashed", flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: "#ffffff" },
+  newClientBtnText: { fontSize: 15, fontWeight: "600" },
+  newClientForm: { backgroundColor: "#ffffff", borderRadius: 20, padding: 16 },
+  backToSearch: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 6, height: 36 },
+  backToSearchText: { fontSize: 14, color: MUTED, fontWeight: "500" },
+  formLabel: { fontSize: 13, fontWeight: "600", color: INK, marginTop: 16, marginBottom: 6 },
+  input: { minHeight: 50, borderWidth: 1, borderColor: BORDER, borderRadius: 12, paddingHorizontal: 14, fontSize: 15, color: INK, backgroundColor: "#ffffff" },
+  textArea: { minHeight: 90, paddingTop: 12, textAlignVertical: "top" },
+  addressRow: { flexDirection: "row", gap: 8 },
+  addressInput: { flex: 1 },
+  locationBtn: { width: 50, height: 50, borderRadius: 12, borderWidth: 1, alignItems: "center", justifyContent: "center" },
+  locationHint: { fontSize: 12, marginTop: 6, fontWeight: "500" },
+  selectedClientBadge: { flexDirection: "row", alignItems: "center", gap: 6, alignSelf: "flex-start", backgroundColor: "#ffffff", borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6, marginTop: 8 },
+  selectedClientText: { fontSize: 13, fontWeight: "600" },
+  chipRow: { flexGrow: 0 },
+  chip: { minHeight: 40, paddingHorizontal: 14, borderRadius: 10, borderWidth: 1, borderColor: BORDER, backgroundColor: "#ffffff", justifyContent: "center", marginRight: 8 },
+  chipText: { fontSize: 14, color: "#3c4a42", fontWeight: "500" },
+  photoRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  photoThumb: { width: 84, height: 84 },
+  photoThumbImage: { width: 84, height: 84, borderRadius: 12 },
+  photoRemoveBtn: { position: "absolute", top: -6, right: -6, backgroundColor: "#ffffff", borderRadius: 11 },
+  addPhotoBtn: { width: 84, height: 84, borderRadius: 12, borderWidth: 1.5, borderStyle: "dashed", borderColor: BORDER, alignItems: "center", justifyContent: "center", gap: 4, backgroundColor: "#ffffff" },
+  addPhotoText: { fontSize: 12, color: MUTED, fontWeight: "600" },
+  primaryBtn: { height: 56, borderRadius: 16, alignItems: "center", justifyContent: "center", marginTop: 20 },
+  primaryBtnText: { color: "#ffffff", fontSize: 16, fontWeight: "600" },
+  outlineBtn: { height: 56, borderRadius: 16, borderWidth: 1, alignItems: "center", justifyContent: "center", backgroundColor: "#ffffff" },
+  outlineBtnText: { fontSize: 16, fontWeight: "600" },
+  successContainer: { flex: 1, paddingHorizontal: 24, alignItems: "stretch", justifyContent: "center" },
+  successIcon: { alignSelf: "center", width: 104, height: 104, borderRadius: 52, alignItems: "center", justifyContent: "center" },
+  successTitle: { fontSize: 26, fontWeight: "700", color: INK, textAlign: "center", marginTop: 20 },
+  successSubtitle: { fontSize: 15, color: MUTED, textAlign: "center", marginTop: 8, lineHeight: 22 },
 });

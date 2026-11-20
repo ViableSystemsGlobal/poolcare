@@ -1,17 +1,22 @@
-import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
+import { View, Text, TouchableOpacity, StyleSheet, Platform } from "react-native";
 import { router, usePathname } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { BlurView } from "expo-blur";
 import { useTheme } from "../contexts/ThemeContext";
 
 const TABS = [
-  { route: "/",         label: "Today",    icon: "home",          iconOutline: "home-outline" },
-  { route: "/schedule", label: "Schedule", icon: "calendar",      iconOutline: "calendar-outline" },
-  { route: "/supplies", label: "Supplies", icon: "cube",          iconOutline: "cube-outline" },
-  { route: "/earnings", label: "Earnings", icon: "wallet",        iconOutline: "wallet-outline" },
-  { route: "/profile",  label: "Profile",  icon: "person",        iconOutline: "person-outline" },
+  { route: "/", label: "Today", icon: "home", iconOutline: "home-outline" },
+  { route: "/schedule", label: "Schedule", icon: "calendar", iconOutline: "calendar-outline" },
+  { route: "/supplies", label: "Supplies", icon: "cube", iconOutline: "cube-outline" },
+  { route: "/performance", label: "Performance", icon: "star", iconOutline: "star-outline" },
+  { route: "/profile", label: "Profile", icon: "person", iconOutline: "person-outline" },
 ] as const;
 
+/**
+ * Floating glass tab bar: a translucent pill that hovers above the content,
+ * blurred behind (iOS + Android 12+), with a frosted-white fallback.
+ */
 export default function BottomNav() {
   const { themeColor } = useTheme();
   const pathname = usePathname();
@@ -23,69 +28,80 @@ export default function BottomNav() {
   };
 
   return (
-    <View style={[styles.bottomNav, { bottom: Math.max(insets.bottom, 16) }]}>
-      {TABS.map((tab) => {
-        const active = isActive(tab.route);
-        return (
-          <TouchableOpacity
-            key={tab.route}
-            style={styles.navItem}
-            onPress={() => { if (!active) router.replace(tab.route as any); }}
-            activeOpacity={0.7}
-          >
-            <View style={[styles.iconWrap, active && { backgroundColor: themeColor + "18" }]}>
-              <Ionicons
-                name={(active ? tab.icon : tab.iconOutline) as any}
-                size={22}
-                color={active ? themeColor : "#9ca3af"}
-              />
-            </View>
-            <Text style={[styles.navLabel, active && { color: themeColor, fontWeight: "600" }]}>
-              {tab.label}
-            </Text>
-          </TouchableOpacity>
-        );
-      })}
+    <View
+      pointerEvents="box-none"
+      style={[styles.wrap, { bottom: Math.max(insets.bottom, 10) + 12 }]}
+    >
+      <View style={styles.pill}>
+        <BlurView
+          intensity={Platform.OS === "ios" ? 60 : 40}
+          tint="light"
+          experimentalBlurMethod="dimezisBlurView"
+          style={StyleSheet.absoluteFill}
+        />
+        <View style={[StyleSheet.absoluteFill, styles.frost]} />
+        <View style={styles.row} accessibilityRole="tablist">
+          {TABS.map((tab) => {
+            const active = isActive(tab.route);
+            return (
+              <TouchableOpacity
+                key={tab.route}
+                style={styles.item}
+                onPress={() => {
+                  if (!active) router.replace(tab.route as any);
+                }}
+                activeOpacity={0.7}
+                accessibilityRole="tab"
+                accessibilityState={{ selected: active }}
+                accessibilityLabel={tab.label}
+              >
+                <View style={[styles.itemInner, active && { backgroundColor: themeColor + "1F" }]}>
+                  <Ionicons
+                    name={(active ? tab.icon : tab.iconOutline) as any}
+                    size={21}
+                    color={active ? themeColor : "#5b6b62"}
+                  />
+                  <Text
+                    style={[styles.label, { color: active ? themeColor : "#5b6b62", fontWeight: active ? "700" : "500" }]}
+                    numberOfLines={1}
+                  >
+                    {tab.label}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  bottomNav: {
-    flexDirection: "row",
-    backgroundColor: "#ffffff",
-    borderRadius: 24,
-    paddingVertical: 8,
-    paddingHorizontal: 8,
-    justifyContent: "space-between",
-    alignItems: "center",
-    position: "absolute",
-    left: 16,
-    right: 16,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.12,
-    shadowRadius: 12,
-    elevation: 8,
+  wrap: { position: "absolute", left: 14, right: 14 },
+  pill: {
+    height: 66,
+    borderRadius: 33,
+    overflow: "hidden",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(255,255,255,0.9)",
+    ...Platform.select({
+      ios: { shadowColor: "#10231a", shadowOpacity: 0.14, shadowRadius: 16, shadowOffset: { width: 0, height: 6 } },
+      default: { elevation: 8 },
+    }),
+    backgroundColor: Platform.OS === "android" ? "rgba(255,255,255,0.55)" : "transparent",
   },
-  navItem: {
-    flex: 1,
+  frost: { backgroundColor: "rgba(255,255,255,0.62)" },
+  row: { flex: 1, flexDirection: "row", alignItems: "center", paddingHorizontal: 6 },
+  item: { flex: 1, height: "100%", alignItems: "center", justifyContent: "center" },
+  itemInner: {
     alignItems: "center",
-  },
-  iconWrap: {
-    width: 44,
-    height: 30,
-    borderRadius: 12,
     justifyContent: "center",
-    alignItems: "center",
-    marginBottom: 2,
+    gap: 2,
+    paddingVertical: 6,
+    paddingHorizontal: 4,
+    borderRadius: 22,
+    minWidth: 62,
   },
-  navLabel: {
-    fontSize: 11,
-    lineHeight: 13,
-    color: "#9ca3af",
-    fontWeight: "400",
-    includeFontPadding: false,
-    textAlignVertical: "center",
-  },
+  label: { fontSize: 10.5 },
 });

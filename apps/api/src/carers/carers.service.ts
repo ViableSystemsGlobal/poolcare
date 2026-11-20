@@ -260,6 +260,88 @@ export class CarersService {
     return { items, total, page, limit };
   }
 
+  /**
+   * Carer-facing performance for a month (replaces earnings in the carer app —
+   * carers are salaried): jobs done vs last month, client star ratings,
+   * on-time arrivals (arrived before the window closed), average time on site
+   * and disputed reports, plus the latest reviews.
+   */
+  async getMyPerformance(orgId: string, userId: string, filters?: { month?: number; year?: number }) {
+    const carer = await prisma.carer.findFirst({ where: { orgId, userId }, select: { id: true } });
+    if (!carer) throw new NotFoundException("Carer profile not found");
+
+    const now = new Date();
+    const year = filters?.year ?? now.getFullYear();
+    const month = filters?.month ?? now.getMonth() + 1; // 1-12
+    const start = new Date(year, month - 1, 1);
+    const end = new Date(year, month, 1);
+    const prevStart = new Date(year, month - 2, 1);
+
+    const baseWhere = { orgId, completedAt: { not: null }, job: { assignedCarerId: carer.id } } as any;
+    const [visits, prevCount, reviews] = await Promise.all([
+      prisma.visitEntry.findMany({
+        where: { ...baseWhere, completedAt: { gte: start, lt: end } },
+        select: {
+          completedAt: true, arrivedAt: true, startedAt: true, rating: true, reportDisputedAt: true,
+          job: { select: { windowStart: true, windowEnd: true } },
+        },
+      }),
+      prisma.visitEntry.count({ where: { ...baseWhere, completedAt: { gte: prevStart, lt: start } } }),
+      prisma.visitEntry.findMany({
+        where: { ...baseWhere, rating: { not: null } },
+        orderBy: { completedAt: "desc" },
+        take: 200,
+        select: {
+          id: true, rating: true, feedback: true, completedAt: true,
+          job: { select: { pool: { select: { name: true, client: { select: { name: true } } } } } },
+        },
+      }),
+    ]);
+
+    const rated = visits.filter((v) => v.rating != null);
+    const distribution = [1, 2, 3, 4, 5].map((star) => ({
+      star,
+      count: rated.filter((v) => v.rating === star).length,
+    }));
+    const avg = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null);
+
+    const arrived = visits.filter((v) => v.arrivedAt);
+    const onTime = arrived.filter((v) => v.arrivedAt! <= v.job.windowEnd).length;
+    const minutes = visits
+      .map((v) => {
+        const from = v.arrivedAt || v.startedAt;
+        return from && v.completedAt ? (v.completedAt.getTime() - from.getTime()) / 60000 : null;
+      })
+      .filter((m): m is number => m != null && m >= 1 && m < 600);
+
+    const allTimeRatings = reviews.map((r) => r.rating as number);
+    const round1 = (n: number | null) => (n == null ? null : Math.round(n * 10) / 10);
+
+    return {
+      month, year,
+      jobsDone: visits.length,
+      prevJobsDone: prevCount,
+      rating: round1(avg(rated.map((v) => v.rating as number))),
+      ratingCount: rated.length,
+      allTimeRating: round1(avg(allTimeRatings)),
+      allTimeRatingCount: allTimeRatings.length,
+      distribution,
+      onTimePct: arrived.length ? Math.round((onTime / arrived.length) * 100) : null,
+      onTimeCount: onTime,
+      arrivedCount: arrived.length,
+      avgMinutesOnSite: minutes.length ? Math.round(avg(minutes)!) : null,
+      disputedCount: visits.filter((v) => v.reportDisputedAt).length,
+      latestReviews: reviews.slice(0, 5).map((r) => ({
+        id: r.id,
+        rating: r.rating,
+        feedback: r.feedback,
+        completedAt: r.completedAt,
+        poolName: r.job?.pool?.name || null,
+        clientName: r.job?.pool?.client?.name || null,
+      })),
+    };
+  }
+
   async getMyCarer(orgId: string, userId: string) {
     const carer = await prisma.carer.findFirst({
       where: {

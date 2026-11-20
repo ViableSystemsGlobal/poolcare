@@ -1,206 +1,172 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import {
-  View,
-  Text,
-  ScrollView,
-  TouchableOpacity,
-  StyleSheet,
-  RefreshControl,
-  ActivityIndicator,
-  AppState,
-  Image,
-} from "react-native";
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, RefreshControl, AppState } from "react-native";
 import { router, usePathname, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { api, getApiUrl } from "../src/lib/api-client";
-import { fixUrlForMobile } from "../src/lib/network-utils";
-import { useTheme } from "../src/contexts/ThemeContext";
+import { api, CarerAssessment, CarerPerformance } from "../src/lib/api-client";
 import Loader from "../src/components/Loader";
 import { getNotificationsLastSeen, isUnread } from "../src/lib/notifications-seen";
+import {
+  C,
+  Card,
+  Row,
+  Chip,
+  Eyebrow,
+  IconButton,
+  Avatar,
+  PoolThumb,
+  StatStrip,
+  SectionHeader,
+  EmptyState,
+  Button,
+  TAB_BAR_CLEARANCE,
+  useAccent,
+  fmtTime,
+  fmtWindow,
+  dayLabel,
+  localDateKey,
+  STATUS_LABEL,
+  shadow,
+} from "../src/ui";
 
-const localHomeCard = require("../assets/poolcare.png");
-
-interface Job {
+interface JobItem {
+  kind: "job";
   id: string;
-  pool?: { name?: string; address?: string; imageUrl?: string };
-  client?: { name?: string };
-  windowStart: string;
-  windowEnd: string;
+  at: Date;
+  end: Date;
   status: string;
-  date?: string;
-  dateValue?: string;
+  poolName: string;
+  clientName?: string;
+  address?: string;
+  imageUrl?: string;
+  imageCount: number;
 }
 
-interface Earnings {
-  totalEarningsCents: number;
-  monthlyEarningsCents: number;
-  totalApprovedVisits: number;
-  monthlyApprovedVisits: number;
+interface AssessItem {
+  kind: "assessment";
+  id: string;
+  at: Date;
+  status: string;
+  name: string;
+  address?: string | null;
 }
 
-function localDateString(d: Date) {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
+type Item = JobItem | AssessItem;
 
-function getGreeting() {
+function greeting() {
   const h = new Date().getHours();
   if (h < 12) return "Good morning";
   if (h < 17) return "Good afternoon";
   return "Good evening";
 }
 
-function formatCurrency(cents: number) {
-  return `GH₵${(cents / 100).toFixed(2)}`;
+const isActive = (s: string) => s === "en_route" || s === "on_site";
+
+function toJob(j: any): JobItem {
+  return {
+    kind: "job",
+    id: j.id,
+    at: new Date(j.windowStart),
+    end: new Date(j.windowEnd),
+    status: j.status || "scheduled",
+    poolName: j.pool?.name || "Pool visit",
+    clientName: j.pool?.client?.name,
+    address: j.pool?.address,
+    imageUrl: j.pool?.imageUrls?.[0],
+    imageCount: j.pool?.imageUrls?.length || 0,
+  };
 }
 
-function getStatusColor(status: string, themeColor: string) {
-  switch (status) {
-    case "completed": return themeColor;      // brand green — matches job detail
-    case "on_site":   return "#16a34a";
-    case "en_route":  return "#d97706";       // amber — in transit
-    case "scheduled": return "#2563eb";
-    default:          return "#6b7280";
-  }
-}
-
-function getStatusLabel(status: string) {
-  switch (status) {
-    case "en_route":  return "En Route";
-    case "on_site":   return "On Site";
-    case "scheduled": return "Scheduled";
-    case "completed": return "Completed";
-    default:          return status;
-  }
+function toAssessment(a: CarerAssessment): AssessItem {
+  return {
+    kind: "assessment",
+    id: a.id,
+    at: new Date(a.scheduledAt || Date.now()),
+    status: a.status,
+    name: a.prospectName,
+    address: a.address,
+  };
 }
 
 export default function TodayScreen() {
-  const { themeColor, homeCardImageUrl } = useTheme();
+  const { accent, tint } = useAccent();
   const insets = useSafeAreaInsets();
+  const pathname = usePathname();
 
-  const [jobs, setJobs] = useState<Job[]>([]);
-  const [earnings, setEarnings] = useState<Earnings | null>(null);
-  const [carerName, setCarerName] = useState<string>("");
-  const [carerImageUrl, setCarerImageUrl] = useState<string | null>(null);
+  const [checkingAuth, setCheckingAuth] = useState(true);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [checkingAuth, setCheckingAuth] = useState(true);
-  const [unreadCount, setUnreadCount] = useState(0);
+  const [name, setName] = useState("");
+  const [avatar, setAvatar] = useState<string | null>(null);
+  const [items, setItems] = useState<Item[]>([]);
+  const [doneToday, setDoneToday] = useState(0);
+  const [perf, setPerf] = useState<CarerPerformance | null>(null);
+  const [unread, setUnread] = useState(0);
 
-  const fetchUnreadCount = useCallback(async () => {
+  const fetchUnread = useCallback(async () => {
     try {
-      const token = await api.getAuthToken();
-      if (!token) return;
+      if (!(await api.getAuthToken())) return;
       const res: any = await api.getNotifications({ limit: 50 });
-      const items: any[] = Array.isArray(res) ? res : (res?.items || res?.data || []);
+      const list: any[] = Array.isArray(res) ? res : res?.items || res?.data || [];
       const lastSeen = await getNotificationsLastSeen();
-      setUnreadCount(items.filter((n: any) => isUnread(n.createdAt || n.sentAt, lastSeen)).length);
-    } catch { /* silent */ }
+      setUnread(list.filter((n) => isUnread(n.createdAt || n.sentAt, lastSeen)).length);
+    } catch {}
   }, []);
 
-  const pathname = usePathname();
-  useEffect(() => { fetchUnreadCount(); }, [fetchUnreadCount, pathname]);
+  useEffect(() => {
+    fetchUnread();
+  }, [fetchUnread, pathname]);
 
   useEffect(() => {
-    const sub = AppState.addEventListener("change", (state) => {
-      if (state === "active") fetchUnreadCount();
-    });
+    const sub = AppState.addEventListener("change", (st) => st === "active" && fetchUnread());
     return () => sub.remove();
-  }, [fetchUnreadCount]);
+  }, [fetchUnread]);
 
   const fetchData = async (silent = false) => {
     try {
       if (!silent) setLoading(true);
+      const start = new Date();
+      start.setHours(0, 0, 0, 0);
+      const weekOut = new Date(start);
+      weekOut.setDate(start.getDate() + 8);
 
-      const [jobsResponse, earningsResponse, carerResponse] = await Promise.all([
-        // Ask for today onwards: the API pages oldest-first (50 per page), so an
-        // unfiltered request returns only history once a carer has 50+ jobs.
-        api.getJobs({ date: localDateString(new Date()), upcoming: "true" }).catch(() => ({ items: [], total: 0 })),
-        api.getEarnings().catch(() => ({
-          totalEarningsCents: 0,
-          monthlyEarningsCents: 0,
-          totalApprovedVisits: 0,
-          monthlyApprovedVisits: 0,
-        })),
+      const [jobsRes, perfRes, carer, assessRes] = await Promise.all([
+        // Today onwards — the API pages oldest-first, so an unfiltered request
+        // returns only history once a carer has 50+ jobs.
+        api.getJobs({ date: localDateKey(start), upcoming: "true" }).catch(() => ({ items: [] })),
+        api.getPerformance().catch(() => null),
         api.getMyCarer().catch(() => null),
+        api.getAssessments({ from: start.toISOString(), to: weekOut.toISOString() }).catch(() => [] as CarerAssessment[]),
       ]);
 
-      // Carer name + avatar
-      if (carerResponse) {
-        const carer = carerResponse as any;
-        const name: string = carer.name || carer.user?.name || "";
-        setCarerName(name.split(" ")[0]);
-        if (carer.imageUrl) {
-          const raw: string = carer.imageUrl;
-          const origin = getApiUrl().replace(/\/api\/?$/, "");
-          const full = raw.startsWith("http") ? raw : origin + (raw.startsWith("/") ? raw : "/" + raw);
-          setCarerImageUrl(fixUrlForMobile(full));
-        }
+      if (carer) {
+        const c: any = carer;
+        setName((c.name || c.user?.name || "").split(" ")[0]);
+        setAvatar(c.imageUrl || null);
       }
+      setPerf(perfRes);
 
-      // Transform jobs
-      const jobsData: any[] = Array.isArray(jobsResponse)
-        ? jobsResponse
-        : (jobsResponse as any).items || [];
+      const jobs: any[] = Array.isArray(jobsRes) ? jobsRes : (jobsRes as any)?.items || [];
+      const todayKey = localDateKey(start);
+      setDoneToday(
+        jobs.filter((j) => j.status === "completed" && localDateKey(new Date(j.windowStart)) === todayKey).length,
+      );
+      const open = jobs
+        .filter((j) => !["cancelled", "completed", "failed"].includes(j.status))
+        .filter((j) => new Date(j.windowStart).getTime() >= start.getTime() || isActive(j.status))
+        .map(toJob);
+      const assessments = (assessRes || []).filter((a) => a.status !== "COMPLETED").map(toAssessment);
 
-      const todayStart = new Date();
-      todayStart.setHours(0, 0, 0, 0);
-
-      const futureJobs = jobsData
-        .filter((job: any) => {
-          if (job.status === "cancelled" || job.status === "completed" || job.status === "failed") return false;
-          return new Date(job.windowStart).getTime() >= todayStart.getTime();
-        })
-        .sort((a: any, b: any) => {
-          const aActive = a.status === "en_route" || a.status === "on_site";
-          const bActive = b.status === "en_route" || b.status === "on_site";
-          if (aActive && !bActive) return -1;
-          if (!aActive && bActive) return 1;
-          return new Date(a.windowStart).getTime() - new Date(b.windowStart).getTime();
-        });
-
-      const today = new Date().toISOString().split("T")[0];
-      const tomorrow = new Date(Date.now() + 86400000).toISOString().split("T")[0];
-
-      const transformedJobs: Job[] = futureJobs.map((job: any) => {
-        const start = new Date(job.windowStart);
-        const end   = new Date(job.windowEnd);
-        const jobDate = start.toISOString().split("T")[0];
-        let dateDisplay = start.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
-        if (jobDate === today) dateDisplay = "Today";
-        else if (jobDate === tomorrow) dateDisplay = "Tomorrow";
-
-        return {
-          id: job.id,
-          pool: job.pool
-            ? {
-                name: job.pool.name,
-                address: job.pool.address,
-                imageUrl: job.pool.imageUrls?.[0] ? fixUrlForMobile(job.pool.imageUrls[0]) : undefined,
-              }
-            : undefined,
-          client: job.pool?.client ? { name: job.pool.client.name } : undefined,
-          windowStart: start.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }),
-          windowEnd:   end.toLocaleTimeString("en-US",   { hour: "2-digit", minute: "2-digit" }),
-          status: job.status || "scheduled",
-          date: dateDisplay,
-          dateValue: jobDate,
-        };
+      const all: Item[] = [...open, ...assessments].sort((a, b) => {
+        const aa = a.kind === "job" && isActive(a.status) ? 0 : 1;
+        const bb = b.kind === "job" && isActive(b.status) ? 0 : 1;
+        if (aa !== bb) return aa - bb;
+        return a.at.getTime() - b.at.getTime();
       });
-
-      setJobs(transformedJobs);
-
-      const ed = earningsResponse as any;
-      setEarnings({
-        totalEarningsCents:    ed?.totalEarningsCents    || 0,
-        monthlyEarningsCents:  ed?.monthlyEarningsCents  || 0,
-        totalApprovedVisits:   ed?.totalApprovedVisits   || 0,
-        monthlyApprovedVisits: ed?.monthlyApprovedVisits || 0,
-      });
-    } catch (error) {
-      console.error("Failed to fetch data:", error);
-      setJobs([]);
-      setEarnings({ totalEarningsCents: 0, monthlyEarningsCents: 0, totalApprovedVisits: 0, monthlyApprovedVisits: 0 });
+      setItems(all);
+    } catch (e) {
+      console.error("Failed to load Today:", e);
+      setItems([]);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -208,11 +174,9 @@ export default function TodayScreen() {
   };
 
   useEffect(() => {
-    const checkAuth = async () => {
+    (async () => {
       try {
-        setCheckingAuth(true);
-        const token = await api.getAuthToken();
-        if (!token) {
+        if (!(await api.getAuthToken())) {
           router.replace("/(auth)/login");
           return;
         }
@@ -222,11 +186,10 @@ export default function TodayScreen() {
       } finally {
         setCheckingAuth(false);
       }
-    };
-    checkAuth();
+    })();
   }, []);
 
-  // Coming back from a job (or anywhere pushed on top) must show its new status
+  // Coming back from a job must show its new status
   const firstFocus = useRef(true);
   useFocusEffect(
     useCallback(() => {
@@ -236,528 +199,250 @@ export default function TodayScreen() {
       }
       fetchData(true);
       // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [])
+    }, []),
   );
-
-  const onRefresh = () => {
-    setRefreshing(true);
-    fetchData();
-  };
 
   if (checkingAuth) return <Loader />;
 
-  // Separate today's jobs from future jobs for the section title
-  const today = new Date().toISOString().split("T")[0];
-  const todayJobs = jobs.filter((j) => j.dateValue === today);
-  const upcomingJobs = jobs.filter((j) => j.dateValue !== today);
+  const todayKey = localDateKey(new Date());
+  const today = items.filter((i) => localDateKey(i.at) === todayKey || (i.kind === "job" && isActive(i.status)));
+  const later = items.filter((i) => !today.includes(i));
+  const next = today[0];
+  const rest = today.slice(1);
+  const remaining = today.length;
+
+  const open = (i: Item) => router.push((i.kind === "job" ? `/jobs/${i.id}` : `/assessments/${i.id}`) as any);
 
   return (
     <View style={styles.container}>
-      {/* Header */}
-      <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
-        <View style={styles.headerLeft}>
-          <TouchableOpacity onPress={() => router.push("/profile")} activeOpacity={0.7}>
-            {carerImageUrl ? (
-              <Image source={{ uri: carerImageUrl }} style={styles.avatarImage} />
-            ) : (
-              <View style={[styles.avatar, { backgroundColor: themeColor + "18", borderColor: themeColor + "30" }]}>
-                <Ionicons name="person" size={20} color={themeColor} />
-              </View>
-            )}
-          </TouchableOpacity>
-          <View>
-            <Text style={styles.greeting}>{getGreeting()}{carerName ? `, ${carerName}` : ""}</Text>
-            <Text style={styles.dateLabel}>
-              {new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
-            </Text>
-          </View>
-        </View>
-        <TouchableOpacity
-          style={styles.notificationBtn}
-          onPress={() => router.push("/notifications")}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-        >
-          <Ionicons name="notifications-outline" size={22} color="#374151" />
-          {unreadCount > 0 && (
-            <View style={[styles.notifBadge, { backgroundColor: themeColor }]}>
-              <Text style={styles.notifBadgeText}>{unreadCount > 99 ? "99+" : unreadCount}</Text>
-            </View>
-          )}
-        </TouchableOpacity>
-      </View>
-
       <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.content}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={themeColor} />}
+        contentContainerStyle={{ paddingTop: insets.top + 12, paddingHorizontal: 16, paddingBottom: TAB_BAR_CLEARANCE + insets.bottom }}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => {
+              setRefreshing(true);
+              fetchData(true);
+              fetchUnread();
+            }}
+            tintColor={accent}
+          />
+        }
         showsVerticalScrollIndicator={false}
       >
-        {/* Earnings Card */}
-        {earnings && (
-          <View style={styles.earningsCard}>
-            {/* Top half: label + amount, image on the right */}
-            <View style={styles.earningsTop}>
-              <View style={styles.earningsTopContent}>
-                <Text style={styles.earningsLabel}>Earnings this month</Text>
-                <Text style={styles.earningsValue}>{formatCurrency(earnings.monthlyEarningsCents)}</Text>
-              </View>
-              <Image
-                source={homeCardImageUrl ? { uri: homeCardImageUrl } : localHomeCard}
-                style={styles.homeCardImage}
-                resizeMode="contain"
-              />
-            </View>
-            {/* Divider */}
-            <View style={styles.earningsDivider} />
-            {/* Bottom half: stats, full width */}
-            <View style={styles.earningsRow}>
-              <View style={styles.earningsStat}>
-                <Text style={styles.earningsStatValue}>{earnings.monthlyApprovedVisits}</Text>
-                <Text style={styles.earningsStatLabel}>Visits this month</Text>
-              </View>
-              <View style={styles.earningsStatSep} />
-              <View style={styles.earningsStat}>
-                <Text style={styles.earningsStatValue}>{formatCurrency(earnings.totalEarningsCents)}</Text>
-                <Text style={styles.earningsStatLabel}>All-time earnings</Text>
-              </View>
-            </View>
+        {/* Greeting */}
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => router.replace("/profile")} accessibilityLabel="Your profile">
+            <Avatar name={name} uri={avatar} size={44} />
+          </TouchableOpacity>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Eyebrow>{new Date().toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" })}</Eyebrow>
+            <Text style={styles.hello} numberOfLines={1}>
+              {greeting()}
+              {name ? `, ${name}` : ""}
+            </Text>
           </View>
-        )}
-
-        {/* Quick Actions */}
-        <TouchableOpacity
-          style={[styles.quickActionBtn, { borderColor: themeColor + "40", backgroundColor: themeColor + "08" }]}
-          onPress={() => router.push("/onboard-pool")}
-          activeOpacity={0.7}
-        >
-          <View style={[styles.quickActionIcon, { backgroundColor: themeColor + "18" }]}>
-            <Ionicons name="water-outline" size={20} color={themeColor} />
-          </View>
-          <View style={styles.quickActionText}>
-            <Text style={[styles.quickActionTitle, { color: themeColor }]}>Onboard a Pool</Text>
-            <Text style={styles.quickActionSubtitle}>Register a new client pool</Text>
-          </View>
-          <Ionicons name="chevron-forward" size={18} color={themeColor} />
-        </TouchableOpacity>
-
-        {/* Today's Jobs */}
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Today's jobs</Text>
-          <Text style={styles.sectionCount}>{todayJobs.length}</Text>
+          <IconButton
+            icon="notifications-outline"
+            label={unread ? `Notifications, ${unread} new` : "Notifications"}
+            variant="white"
+            badge={unread > 0}
+            onPress={() => router.push("/notifications")}
+          />
         </View>
 
+        {/* Performance strip */}
+        <TouchableOpacity activeOpacity={0.8} onPress={() => router.replace("/performance")}>
+          <StatStrip
+            style={{ marginTop: 18 }}
+            items={[
+              { label: "Done today", value: `${doneToday}/${doneToday + today.filter((i) => i.kind === "job").length}` },
+              {
+                label: "Rating",
+                value: perf?.allTimeRating != null ? perf.allTimeRating.toFixed(1) : "–",
+                star: perf?.allTimeRating != null,
+              },
+              { label: "On time", value: perf?.onTimePct != null ? `${perf.onTimePct}%` : "–", sub: "this month" },
+            ]}
+          />
+        </TouchableOpacity>
+
         {loading ? (
-          <View style={styles.center}>
-            <ActivityIndicator size="large" color={themeColor} />
-          </View>
-        ) : todayJobs.length === 0 ? (
-          <View style={styles.emptyCard}>
-            <Ionicons name="checkmark-circle-outline" size={40} color="#d1d5db" />
-            <Text style={styles.emptyTitle}>All clear for today</Text>
-            <Text style={styles.emptySubtitle}>No jobs scheduled for today</Text>
+          <View style={{ paddingVertical: 48, alignItems: "center" }}>
+            <Text style={{ color: C.muted }}>Loading your day…</Text>
           </View>
         ) : (
-          todayJobs.map((job) => <JobCard key={job.id} job={job} themeColor={themeColor} />)
-        )}
-
-        {/* Upcoming Jobs */}
-        {!loading && upcomingJobs.length > 0 && (
           <>
-            <View style={[styles.sectionHeader, { marginTop: 8 }]}>
-              <Text style={styles.sectionTitle}>Upcoming</Text>
-              <Text style={styles.sectionCount}>{upcomingJobs.length}</Text>
-            </View>
-            {upcomingJobs.map((job) => <JobCard key={job.id} job={job} themeColor={themeColor} />)}
+            <SectionHeader
+              title={next ? (next.kind === "job" && isActive(next.status) ? "In progress" : "Next up") : "Today"}
+              action={remaining > 1 ? `${remaining} today` : undefined}
+              onAction={remaining > 1 ? () => router.replace("/schedule") : undefined}
+            />
+            {next ? (
+              <NextCard item={next} onPress={() => open(next)} />
+            ) : (
+              <EmptyState
+                icon="checkmark-done-outline"
+                title={doneToday ? "All done for today" : "Nothing scheduled today"}
+                body={doneToday ? `You finished ${doneToday} visit${doneToday === 1 ? "" : "s"}. Nice work.` : "New jobs from the office will show up here."}
+                action="See your week"
+                onAction={() => router.replace("/schedule")}
+              />
+            )}
+
+            {rest.length > 0 && (
+              <>
+                <SectionHeader title="Later today" />
+                <Card>
+                  {rest.map((i, idx) => (
+                    <ItemRow key={i.kind + i.id} item={i} first={idx === 0} onPress={() => open(i)} />
+                  ))}
+                </Card>
+              </>
+            )}
+
+            {later.length > 0 && (
+              <>
+                <SectionHeader title="Coming up" action="Schedule" onAction={() => router.replace("/schedule")} />
+                <Card>
+                  {later.slice(0, 4).map((i, idx) => (
+                    <ItemRow key={i.kind + i.id} item={i} first={idx === 0} onPress={() => open(i)} showDay />
+                  ))}
+                </Card>
+              </>
+            )}
+
+            <SectionHeader title="Quick actions" />
+            <Card>
+              <Row first onPress={() => router.push("/onboard-pool")}>
+                <View style={[styles.qaIcon, { backgroundColor: tint }]}>
+                  <Ionicons name="water-outline" size={20} color={accent} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.rowTitle}>Onboard a pool</Text>
+                  <Text style={styles.rowSub}>Register a new client pool</Text>
+                </View>
+              </Row>
+              <Row onPress={() => router.replace("/supplies")}>
+                <View style={[styles.qaIcon, { backgroundColor: tint }]}>
+                  <Ionicons name="cube-outline" size={20} color={accent} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.rowTitle}>Request supplies</Text>
+                  <Text style={styles.rowSub}>Chemicals and equipment from the store</Text>
+                </View>
+              </Row>
+            </Card>
           </>
         )}
-
-        {/* Bottom padding for the floating nav */}
-        <View style={{ height: 100 }} />
       </ScrollView>
     </View>
   );
 }
 
-function JobCard({ job, themeColor }: { job: Job; themeColor: string }) {
-  const statusColor = getStatusColor(job.status, themeColor);
-  const isActive = job.status === "en_route" || job.status === "on_site";
-
-  return (
-    <TouchableOpacity
-      style={styles.jobCard}
-      onPress={() => router.push(`/jobs/${job.id}`)}
-      activeOpacity={0.7}
-    >
-      <View style={styles.jobCardRow}>
-        {job.pool?.imageUrl ? (
-          <Image source={{ uri: job.pool.imageUrl }} style={styles.poolThumb} />
-        ) : (
-          <View style={[styles.poolThumb, styles.poolThumbPlaceholder]}>
-            <Ionicons name="water" size={22} color="#9ca3af" />
-          </View>
-        )}
-
-        <View style={styles.jobCardBody}>
-          <View style={styles.jobCardTop}>
-            <View style={styles.jobCardLeft}>
-              <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
-              <View style={styles.jobInfo}>
-                <Text style={styles.poolName} numberOfLines={1}>
-                  {job.pool?.name || "Unnamed Pool"}
-                </Text>
-                {job.client?.name && (
-                  <Text style={styles.clientName}>{job.client.name}</Text>
-                )}
-              </View>
-            </View>
-            <View style={styles.jobCardRight}>
-              {job.date && (
-                <Text style={[styles.jobDate, isActive && { color: statusColor }]}>{job.date}</Text>
-              )}
-              <Ionicons name="chevron-forward" size={18} color="#d1d5db" style={{ marginTop: 2 }} />
-            </View>
-          </View>
-
-          <View style={styles.jobMeta}>
-            <View style={styles.metaItem}>
-              <Ionicons name="location-outline" size={14} color="#9ca3af" />
-              <Text style={styles.metaText} numberOfLines={1}>
-                {job.pool?.address || "No address"}
-              </Text>
-            </View>
-            <View style={styles.metaItem}>
-              <Ionicons name="time-outline" size={14} color="#9ca3af" />
-              <Text style={styles.metaText}>
-                {job.windowStart} – {job.windowEnd}
-              </Text>
-            </View>
-          </View>
-
-          {isActive && (
-            <View style={[styles.statusBadge, { backgroundColor: statusColor + "15", borderColor: statusColor + "30" }]}>
-              <View style={[styles.statusBadgeDot, { backgroundColor: statusColor }]} />
-              <Text style={[styles.statusBadgeText, { color: statusColor }]}>
-                {getStatusLabel(job.status)}
-              </Text>
-            </View>
-          )}
+function NextCard({ item, onPress }: { item: Item; onPress: () => void }) {
+  if (item.kind === "assessment") {
+    return (
+      <TouchableOpacity activeOpacity={0.85} onPress={onPress} style={[styles.next, shadow]}>
+        <View style={styles.assessHero}>
+          <Ionicons name="clipboard-outline" size={34} color="#ffffff" />
         </View>
+        <View style={styles.nextBody}>
+          <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
+            <Chip label="Assessment" tone="dark" />
+            <Text style={styles.when}>{fmtTime(item.at)}</Text>
+          </View>
+          <Text style={styles.nextTitle} numberOfLines={1}>
+            {item.name}
+          </Text>
+          {item.address ? (
+            <Text style={styles.nextSub} numberOfLines={1}>
+              {item.address}
+            </Text>
+          ) : null}
+          <Button title="Open brief" iconRight="arrow-forward" onPress={onPress} style={{ marginTop: 14 }} size="md" />
+        </View>
+      </TouchableOpacity>
+    );
+  }
+  const active = isActive(item.status);
+  return (
+    <TouchableOpacity activeOpacity={0.85} onPress={onPress} style={[styles.next, shadow]}>
+      <View style={styles.photo}>
+        <PoolThumb uri={item.imageUrl} size="fill" radius={0} />
+        <View style={styles.photoChips}>
+          <Chip label={active ? STATUS_LABEL[item.status] : fmtWindow(item.at, item.end)} tone={active ? "solid" : "neutral"} icon={active ? undefined : "time-outline"} style={{ backgroundColor: active ? undefined : "rgba(255,255,255,0.94)" }} />
+        </View>
+      </View>
+      <View style={styles.nextBody}>
+        <Text style={styles.nextTitle} numberOfLines={1}>
+          {item.poolName}
+        </Text>
+        <Text style={styles.nextSub} numberOfLines={1}>
+          {[item.clientName, item.address].filter(Boolean).join(" · ") || "No address on file"}
+        </Text>
+        <Button
+          title={item.status === "on_site" ? "Continue visit" : item.status === "en_route" ? "I've arrived" : "View job"}
+          iconRight="arrow-forward"
+          onPress={onPress}
+          style={{ marginTop: 14 }}
+          size="md"
+        />
       </View>
     </TouchableOpacity>
   );
 }
 
+function ItemRow({ item, first, onPress, showDay }: { item: Item; first: boolean; onPress: () => void; showDay?: boolean }) {
+  const when = showDay ? `${dayLabel(item.at)} · ${fmtTime(item.at)}` : fmtTime(item.at);
+  if (item.kind === "assessment") {
+    return (
+      <Row first={first} onPress={onPress}>
+        <View style={styles.assessThumb}>
+          <Ionicons name="clipboard-outline" size={20} color="#ffffff" />
+        </View>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text style={styles.rowTitle} numberOfLines={1}>
+            {item.name}
+          </Text>
+          <Text style={styles.rowSub} numberOfLines={1}>
+            Assessment · {when}
+          </Text>
+        </View>
+      </Row>
+    );
+  }
+  return (
+    <Row first={first} onPress={onPress}>
+      <PoolThumb uri={item.imageUrl} size={48} />
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text style={styles.rowTitle} numberOfLines={1}>
+          {item.poolName}
+        </Text>
+        <Text style={styles.rowSub} numberOfLines={1}>
+          {when}
+          {item.clientName ? ` · ${item.clientName}` : ""}
+        </Text>
+      </View>
+      {isActive(item.status) ? <Chip label={STATUS_LABEL[item.status]} tone="accent" /> : null}
+    </Row>
+  );
+}
+
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#f8fafc",
-  },
-  header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: 20,
-    paddingBottom: 16,
-    backgroundColor: "#ffffff",
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "#e5e7eb",
-  },
-  headerLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-  },
-  avatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    borderWidth: 1,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  avatarImage: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-  },
-  greeting: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#111827",
-  },
-  dateLabel: {
-    fontSize: 12,
-    color: "#9ca3af",
-    marginTop: 1,
-  },
-  notificationBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: "#f3f4f6",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  notifBadge: {
-    position: "absolute",
-    top: -4,
-    right: -4,
-    minWidth: 18,
-    height: 18,
-    borderRadius: 9,
-    justifyContent: "center",
-    alignItems: "center",
-    paddingHorizontal: 4,
-    borderWidth: 2,
-    borderColor: "#ffffff",
-  },
-  notifBadgeText: {
-    fontSize: 10,
-    fontWeight: "700",
-    color: "#ffffff",
-  },
-  scrollView: { flex: 1 },
-  content: {
-    paddingHorizontal: 16,
-    paddingTop: 20,
-  },
-  // Earnings card
-  earningsCard: {
-    backgroundColor: "#ffffff",
-    borderRadius: 20,
-    overflow: "hidden",
-    marginBottom: 24,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 10,
-    elevation: 3,
-  },
-  earningsTop: {
-    flexDirection: "row",
-    overflow: "hidden",
-    minHeight: 100,
-  },
-  earningsTopContent: {
-    flex: 1,
-    padding: 20,
-    paddingBottom: 16,
-    justifyContent: "center",
-  },
-  homeCardImage: {
-    width: 96,
-    alignSelf: "stretch",
-  },
-  earningsLabel: {
-    fontSize: 13,
-    color: "#6b7280",
-    fontWeight: "500",
-    marginBottom: 8,
-  },
-  earningsValue: {
-    fontSize: 34,
-    fontWeight: "700",
-    color: "#111827",
-  },
-  earningsDivider: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: "#e5e7eb",
-    marginBottom: 16,
-  },
-  earningsRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 20,
-    paddingBottom: 20,
-  },
-  earningsStat: {
-    flex: 1,
-  },
-  earningsStatSep: {
-    width: 1,
-    height: 36,
-    backgroundColor: "#e5e7eb",
-    marginHorizontal: 16,
-  },
-  earningsStatValue: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#111827",
-    marginBottom: 2,
-  },
-  earningsStatLabel: {
-    fontSize: 11,
-    color: "#9ca3af",
-  },
-  // Quick action
-  quickActionBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    borderRadius: 14,
-    borderWidth: 1,
-    padding: 14,
-    marginBottom: 20,
-    gap: 12,
-  },
-  quickActionIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  quickActionText: { flex: 1 },
-  quickActionTitle: {
-    fontSize: 15,
-    fontWeight: "700",
-    marginBottom: 2,
-  },
-  quickActionSubtitle: {
-    fontSize: 12,
-    color: "#9ca3af",
-  },
-  // Section header
-  sectionHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 12,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#111827",
-  },
-  sectionCount: {
-    fontSize: 13,
-    color: "#9ca3af",
-    fontWeight: "500",
-  },
-  // Empty state
-  emptyCard: {
-    backgroundColor: "#ffffff",
-    borderRadius: 16,
-    paddingVertical: 32,
-    alignItems: "center",
-    gap: 8,
-    marginBottom: 12,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "#e5e7eb",
-  },
-  emptyTitle: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: "#374151",
-  },
-  emptySubtitle: {
-    fontSize: 13,
-    color: "#9ca3af",
-  },
-  // Job card
-  jobCard: {
-    backgroundColor: "#ffffff",
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 10,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 6,
-    elevation: 2,
-  },
-  jobCardRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-  },
-  jobCardBody: {
-    flex: 1,
-    minWidth: 0,
-  },
-  poolThumb: {
-    width: 56,
-    height: 56,
-    borderRadius: 12,
-    marginRight: 12,
-    backgroundColor: "#f3f4f6",
-  },
-  poolThumbPlaceholder: {
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  jobCardTop: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    marginBottom: 12,
-  },
-  jobCardLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    flex: 1,
-    gap: 10,
-  },
-  statusDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    flexShrink: 0,
-  },
-  jobInfo: { flex: 1 },
-  poolName: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: "#111827",
-    marginBottom: 2,
-  },
-  clientName: {
-    fontSize: 13,
-    color: "#6b7280",
-  },
-  jobCardRight: {
-    alignItems: "flex-end",
-    gap: 2,
-    marginLeft: 8,
-  },
-  jobDate: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: "#9ca3af",
-  },
-  jobMeta: {
-    gap: 6,
-  },
-  metaItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-  metaText: {
-    fontSize: 13,
-    color: "#6b7280",
-    flex: 1,
-  },
-  statusBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    marginTop: 12,
-    alignSelf: "flex-start",
-    borderRadius: 20,
-    borderWidth: 1,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-  },
-  statusBadgeDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-  },
-  statusBadgeText: {
-    fontSize: 11,
-    fontWeight: "600",
-  },
-  center: {
-    paddingVertical: 48,
-    alignItems: "center",
-  },
+  container: { flex: 1, backgroundColor: C.bg },
+  header: { flexDirection: "row", alignItems: "center", gap: 12 },
+  hello: { fontSize: 22, fontWeight: "700", color: C.ink, marginTop: 2, letterSpacing: -0.2 },
+  next: { backgroundColor: C.card, borderRadius: 20, overflow: "hidden" },
+  photo: { height: 150, backgroundColor: "#3f9ac4" },
+  photoChips: { position: "absolute", left: 12, top: 12 },
+  assessHero: { height: 96, backgroundColor: C.ink, alignItems: "center", justifyContent: "center" },
+  nextBody: { padding: 16 },
+  nextTitle: { fontSize: 20, fontWeight: "700", color: C.ink, marginTop: 6, letterSpacing: -0.2 },
+  nextSub: { fontSize: 14, color: C.muted, marginTop: 2 },
+  when: { fontSize: 13, color: C.muted, fontWeight: "500" },
+  rowTitle: { fontSize: 15, fontWeight: "600", color: C.ink },
+  rowSub: { fontSize: 13, color: C.muted, marginTop: 2 },
+  qaIcon: { width: 40, height: 40, borderRadius: 12, alignItems: "center", justifyContent: "center" },
+  assessThumb: { width: 48, height: 48, borderRadius: 12, backgroundColor: C.ink, alignItems: "center", justifyContent: "center" },
 });

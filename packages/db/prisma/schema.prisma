@@ -1730,6 +1730,10 @@ model AssessmentReport {
   formToken  String?   @unique
   formSentAt DateTime? @db.Timestamptz(6)
 
+  // Brief for the assessor (shown in the carer app) and who assigned it.
+  assignmentNote String?
+  assignedById   String?   @db.Uuid
+
   // Observed pool details
   poolType       String? // infinity, skimmer, outdoor_spa, etc.
   surfaceType    String?

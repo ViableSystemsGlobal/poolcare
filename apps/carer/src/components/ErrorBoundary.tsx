@@ -69,14 +69,14 @@ export class ErrorBoundary extends React.Component<Props, State> {
 }
 
 const styles = StyleSheet.create({
-  wrap: { flex: 1, backgroundColor: "#fff", padding: 20, paddingTop: 70 },
-  title: { fontSize: 22, fontWeight: "600", color: "#111827" },
-  sub: { fontSize: 14, color: "#6b7280", marginTop: 6, marginBottom: 16 },
-  box: { flex: 1, backgroundColor: "#f9fafb", borderRadius: 12, borderWidth: 1, borderColor: "#e5e7eb" },
-  mono: { fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace", fontSize: 11, color: "#374151", lineHeight: 16 },
+  wrap: { flex: 1, backgroundColor: "#f4f5f2", padding: 20, paddingTop: 70 },
+  title: { fontSize: 24, fontWeight: "700", color: "#10231a" },
+  sub: { fontSize: 14, color: "#5b6b62", marginTop: 6, marginBottom: 16, lineHeight: 20 },
+  box: { flex: 1, backgroundColor: "#ffffff", borderRadius: 18 },
+  mono: { fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace", fontSize: 11, color: "#3c4a42", lineHeight: 16 },
   row: { flexDirection: "row", gap: 10, marginTop: 16, marginBottom: 10 },
-  btn: { flex: 1, height: 46, borderRadius: 12, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "#e5e7eb" },
-  btnText: { fontSize: 15, color: "#374151" },
-  btnPrimary: { backgroundColor: "#397d54", borderColor: "#397d54" },
-  btnPrimaryText: { fontSize: 15, color: "#fff", fontWeight: "500" },
+  btn: { flex: 1, height: 56, borderRadius: 16, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "#dfe3dc" },
+  btnText: { fontSize: 16, color: "#10231a" },
+  btnPrimary: { backgroundColor: "#2f6a47", borderColor: "#2f6a47" },
+  btnPrimaryText: { fontSize: 16, color: "#ffffff", fontWeight: "600" },
 });

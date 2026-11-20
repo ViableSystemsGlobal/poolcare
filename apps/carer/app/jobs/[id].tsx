@@ -43,6 +43,23 @@ const NATIVE_MAP_PROVIDER = Platform.OS === "android" ? PROVIDER_GOOGLE : undefi
 import { api, getApiUrl } from "../../src/lib/api-client";
 import { fixUrlForMobile } from "../../src/lib/network-utils";
 import { ChecklistWizard, ChecklistItem as WizardChecklistItem, useToast, wizardProgressKey, clearWizardProgress } from "../../src/components";
+import {
+  C,
+  Card,
+  Row,
+  Chip,
+  Avatar,
+  Button,
+  Footer,
+  Notice,
+  Eyebrow,
+  PoolThumb,
+  IconButton,
+  EmptyState,
+  ScreenHeader,
+  SectionHeader,
+  fmtTime,
+} from "../../src/ui";
 // COLORS removed — replaced with literals below
 
 interface ChecklistItem {
@@ -670,8 +687,8 @@ export default function JobDetailScreen() {
         id: jobData?.id || id,
         poolName: pool?.name || "Unknown Pool",
         address: pool?.address || "",
-        windowStart: windowStart.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
-        windowEnd: windowEnd.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+        windowStart: fmtTime(windowStart),
+        windowEnd: fmtTime(windowEnd),
         status: jobStatus,
         scheduledDate: jobDate,
         isScheduledForToday,
@@ -679,6 +696,7 @@ export default function JobDetailScreen() {
         clientName: client?.name || null,
         clientPhone: client?.phone || null,
         siteSafety: pool?.siteSafety || null,
+        notes: jobData?.notes || null,
       });
       if (pool?.id) {
         api.getClientChemicalStock(pool.id).then(setClientStock).catch(() => setClientStock([]));
@@ -1472,194 +1490,133 @@ export default function JobDetailScreen() {
     if (url) Linking.openURL(url);
   };
 
-  const STATUS_CONFIG: Record<string, { label: string; color: string; bgColor: string; dotColor: string }> = {
-    scheduled:  { label: "Scheduled",  color: "#2563eb", bgColor: "#eff6ff", dotColor: "#2563eb" },
-    en_route:   { label: "En Route",   color: "#d97706", bgColor: "#fffbeb", dotColor: "#f59e0b" },
-    on_site:    { label: "On Site",    color: "#16a34a", bgColor: "#f0fdf4", dotColor: "#22c55e" },
-    completed:  { label: "Completed",  color: "#2f6a47", bgColor: "#f2f7f4", dotColor: "#397d54" },
-    failed:     { label: "Failed",     color: "#dc2626", bgColor: "#fef2f2", dotColor: "#ef4444" },
-    cancelled:  { label: "Cancelled",  color: "#6b7280", bgColor: "#f9fafb", dotColor: "#9ca3af" },
+  const distanceText =
+    distanceMeters == null
+      ? null
+      : distanceMeters < 1000
+      ? `${Math.round(distanceMeters)} m away`
+      : `${(distanceMeters / 1000).toFixed(1)} km away`;
+
+  const openReport = async () => {
+    if (!visitId) return;
+    setLoadingReport(true);
+    try {
+      const report = await api.getVisitReport(visitId, "json");
+      setReportData(report);
+      setShowReportPreview(true);
+    } catch (error) {
+      console.error("Error loading report:", error);
+      showToast("Couldn't load the report", "error");
+    }
+    setLoadingReport(false);
   };
 
   if (loading) {
     return (
-      <View style={styles.container}>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#397d54" />
-          <Text style={styles.loadingText}>Loading job details...</Text>
-        </View>
+      <View style={[styles.container, styles.center]}>
+        <ActivityIndicator size="large" color={themeColor} />
+        <Text style={styles.centerText}>Loading job…</Text>
       </View>
     );
   }
 
   if (!job) {
     return (
-      <View style={styles.container}>
-        <View style={styles.loadingContainer}>
-          <Ionicons name="alert-circle-outline" size={64} color="#d1d5db" />
-          <Text style={styles.loadingText}>Job not found</Text>
-          <TouchableOpacity 
-            style={styles.retryButton}
-            onPress={loadJob}
-          >
-            <Text style={styles.retryButtonText}>Retry</Text>
-          </TouchableOpacity>
-        </View>
+      <View style={[styles.container, styles.center, { paddingHorizontal: 24 }]}>
+        <EmptyState icon="alert-circle-outline" title="Couldn't load this job" body="Check your connection and try again." action="Try again" onAction={loadJob} />
+        <Button title="Back" variant="secondary" onPress={() => router.back()} style={{ marginTop: 16, alignSelf: "stretch" }} />
       </View>
     );
   }
 
-  const completedCount = checklist.filter(item => item.completed).length;
-  const requiredCount = checklist.filter(item => item.required).length;
-  const requiredCompleted = checklist.filter(item => item.required && item.completed).length;
-
-  // Show transition loading screen
+  // Transition between steps (starting journey / arriving)
   if (transitioning) {
     return (
-      <View style={styles.transitionContainer}>
-        <View style={styles.transitionContent}>
-          <View style={styles.transitionIconContainer}>
-            <ActivityIndicator size="large" color={"#ffffff"} />
-          </View>
-          <Text style={styles.transitionTitle}>{transitionMessage}</Text>
-          <Text style={styles.transitionSubtitle}>{job?.poolName}</Text>
-        </View>
+      <View style={[styles.container, styles.center, { backgroundColor: themeColor }]}>
+        <ActivityIndicator size="large" color="#ffffff" />
+        <Text style={styles.transitionTitle}>{transitionMessage}</Text>
+        <Text style={styles.transitionSub}>{job?.poolName}</Text>
       </View>
     );
   }
 
-  // Show completion screen when job is completed
+  const reportModal = (
+    <Modal visible={showReportPreview} animationType="slide" onRequestClose={() => setShowReportPreview(false)}>
+      <View style={styles.container}>
+        <ScreenHeader title="Service report" eyebrow={job?.poolName} backIcon="close" backLabel="Close" onBack={() => setShowReportPreview(false)} />
+        <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 32, gap: 12 }}>
+          {reportData && (
+            <>
+              <Card padded>
+                <Eyebrow>Pool</Eyebrow>
+                <Text style={styles.reportStrong}>{reportData.pool?.name}</Text>
+                {reportData.pool?.address ? <Text style={styles.reportMuted}>{reportData.pool.address}</Text> : null}
+              </Card>
+              <Card padded>
+                <Eyebrow>Service</Eyebrow>
+                <Text style={styles.reportText}>Duration: {reportData.serviceDuration || "—"}</Text>
+                <Text style={styles.reportText}>Carer: {reportData.carer?.name || "—"}</Text>
+              </Card>
+              {reportData.readings ? (
+                <Card padded>
+                  <Eyebrow>Water</Eyebrow>
+                  {reportData.readings.ph != null && <Text style={styles.reportText}>pH {reportData.readings.ph}</Text>}
+                  {reportData.readings.chlorineFree != null && <Text style={styles.reportText}>Free chlorine {reportData.readings.chlorineFree} ppm</Text>}
+                  {reportData.readings.alkalinity != null && <Text style={styles.reportText}>Alkalinity {reportData.readings.alkalinity} ppm</Text>}
+                </Card>
+              ) : null}
+              {reportData.checklist?.length ? (
+                <Card padded>
+                  <Eyebrow>Tasks done</Eyebrow>
+                  {reportData.checklist
+                    .filter((item: any) => item.completed)
+                    .map((item: any, idx: number) => (
+                      <View key={idx} style={{ flexDirection: "row", gap: 8, marginTop: 8 }}>
+                        <Ionicons name="checkmark-circle" size={18} color={themeColor} />
+                        <Text style={[styles.reportText, { flex: 1, marginTop: 0 }]}>{item.task || item.label}</Text>
+                      </View>
+                    ))}
+                </Card>
+              ) : null}
+            </>
+          )}
+        </ScrollView>
+      </View>
+    </Modal>
+  );
+
+  // Completed
   if (job?.status === "completed") {
     return (
-      <View style={styles.completionContainer}>
-        <View style={styles.completionContent}>
-          <View style={styles.completionIconContainer}>
-            <Ionicons name="checkmark-circle" size={80} color={"#22c55e"} />
+      <View style={styles.container}>
+        <View style={[styles.doneHero, { paddingTop: insets.top + 56 }]}>
+          <View style={[styles.doneBadge, { backgroundColor: themeColor + "1F" }]}>
+            <Ionicons name="checkmark" size={44} color={themeColor} />
           </View>
-          <Text style={styles.completionTitle}>Job Completed!</Text>
-          <Text style={styles.completionPoolName}>{job?.poolName}</Text>
-          <Text style={styles.completionSubtitle}>
-            Great work! This job has been completed successfully.
-          </Text>
-          
-          {/* View Report Button */}
-          <TouchableOpacity
-            style={styles.completionReportButton}
-            onPress={async () => {
-              setLoadingReport(true);
-              try {
-                if (visitId) {
-                  const report = await api.getVisitReport(visitId, "json");
-                  setReportData(report);
-                  setShowReportPreview(true);
-                }
-              } catch (error) {
-                console.error("Error loading report:", error);
-                Alert.alert("Error", "Could not load report");
-              }
-              setLoadingReport(false);
-            }}
-            disabled={loadingReport}
-          >
-            {loadingReport ? (
-              <ActivityIndicator size="small" color={"#397d54"} />
-            ) : (
-              <>
-                <Ionicons name="document-text-outline" size={20} color={"#397d54"} />
-                <Text style={styles.completionReportButtonText}>View Report</Text>
-              </>
-            )}
-          </TouchableOpacity>
-          
-          {/* Done Button */}
-          <TouchableOpacity
-            style={styles.completionDoneButton}
-            onPress={() => router.back()}
-          >
-            <Text style={styles.completionDoneButtonText}>Back to Jobs</Text>
-          </TouchableOpacity>
+          <Text style={styles.doneTitle}>Visit complete</Text>
+          <Text style={styles.doneSub}>{job?.poolName}</Text>
+          <Text style={styles.doneBody}>The client gets the report and can rate the visit. Ratings show on your Performance tab.</Text>
         </View>
-        
-        {/* Report Preview Modal */}
-        <Modal
-          visible={showReportPreview}
-          animationType="slide"
-          transparent={false}
-          onRequestClose={() => setShowReportPreview(false)}
-        >
-          <View style={styles.reportPreviewContainer}>
-            <View style={styles.reportPreviewHeader}>
-              <Text style={styles.reportPreviewTitle}>Service Report</Text>
-              <TouchableOpacity onPress={() => setShowReportPreview(false)}>
-                <Ionicons name="close" size={24} color={"#111827"} />
-              </TouchableOpacity>
-            </View>
-            <ScrollView style={styles.reportPreviewContent}>
-              {reportData && (
-                <>
-                  <View style={styles.reportSection}>
-                    <Text style={styles.reportSectionTitle}>Pool Information</Text>
-                    <Text style={styles.reportText}>{reportData.pool?.name}</Text>
-                    <Text style={styles.reportTextSecondary}>{reportData.pool?.address}</Text>
-                  </View>
-                  
-                  <View style={styles.reportSection}>
-                    <Text style={styles.reportSectionTitle}>Service Details</Text>
-                    <Text style={styles.reportText}>Duration: {reportData.serviceDuration || "N/A"}</Text>
-                    <Text style={styles.reportText}>Technician: {reportData.carer?.name || "N/A"}</Text>
-                  </View>
-                  
-                  {reportData.readings && (
-                    <View style={styles.reportSection}>
-                      <Text style={styles.reportSectionTitle}>Water Chemistry</Text>
-                      {reportData.readings.ph != null && <Text style={styles.reportText}>pH: {reportData.readings.ph}</Text>}
-                      {reportData.readings.chlorineFree != null && <Text style={styles.reportText}>Free Chlorine: {reportData.readings.chlorineFree} ppm</Text>}
-                      {reportData.readings.alkalinity != null && <Text style={styles.reportText}>Alkalinity: {reportData.readings.alkalinity} ppm</Text>}
-                    </View>
-                  )}
-                  
-                  {reportData.checklist && reportData.checklist.length > 0 && (
-                    <View style={styles.reportSection}>
-                      <Text style={styles.reportSectionTitle}>Completed Tasks</Text>
-                      {reportData.checklist.filter((item: any) => item.completed).map((item: any, idx: number) => (
-                        <View key={idx} style={styles.reportChecklistItem}>
-                          <Ionicons name="checkmark-circle" size={16} color={"#22c55e"} />
-                          <Text style={styles.reportText}>{item.task || item.label}</Text>
-                        </View>
-                      ))}
-                    </View>
-                  )}
-                </>
-              )}
-            </ScrollView>
-            <TouchableOpacity
-              style={styles.reportCloseButton}
-              onPress={() => setShowReportPreview(false)}
-            >
-              <Text style={styles.reportCloseButtonText}>Close</Text>
-            </TouchableOpacity>
-          </View>
-        </Modal>
+        <View style={{ paddingHorizontal: 20, gap: 10 }}>
+          {visitId ? (
+            <Button title="View report" variant="secondary" icon="document-text-outline" onPress={openReport} loading={loadingReport} />
+          ) : null}
+          <Button title="Back to today" onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))} />
+        </View>
+        {reportModal}
       </View>
     );
   }
 
-  // Show wizard mode when on site (arrived) and job is not completed
-  if (arrived && job?.status === "on_site" && job?.status !== "completed" && wizardChecklist.length > 0) {
+  // On site → step-by-step visit
+  if (arrived && job?.status === "on_site" && wizardChecklist.length > 0) {
     return (
       <View style={styles.container}>
-        {/* Simplified header for wizard mode */}
-        <View style={[styles.wizardHeader, { paddingTop: insets.top + 10 }]}>
-          <View style={styles.wizardHeaderLeft}>
-            <Ionicons name="water" size={20} color={"#397d54"} />
-            <Text style={styles.wizardPoolName}>{job?.poolName}</Text>
-          </View>
-          <View style={styles.wizardStatusBadge}>
-            <Ionicons name="location" size={14} color={"#16a34a"} />
-            <Text style={styles.wizardStatusText}>On Site</Text>
-          </View>
-        </View>
-        
+        <ScreenHeader
+          eyebrow="On site"
+          title={job?.poolName}
+          onBack={() => router.back()}
+        />
         <ChecklistWizard
           key={visitId || "no-visit"}
           persistKey={visitId ? wizardProgressKey(visitId) : undefined}
@@ -1677,1761 +1634,331 @@ export default function JobDetailScreen() {
     );
   }
 
-  const sc = STATUS_CONFIG[job?.status] || STATUS_CONFIG.scheduled;
-  const TIMELINE_STEPS = [
-    { key: "scheduled", label: "Scheduled", icon: "calendar-outline" },
-    { key: "en_route",  label: "En Route",  icon: "navigate-outline" },
-    { key: "on_site",   label: "On Site",   icon: "location-outline" },
-    { key: "completed", label: "Done",      icon: "checkmark-circle-outline" },
-  ] as const;
-  const currentStepIdx = TIMELINE_STEPS.findIndex(s => s.key === job?.status);
+  const STEPS = [
+    { key: "scheduled", label: "Scheduled" },
+    { key: "en_route", label: "On the way" },
+    { key: "on_site", label: "On site" },
+    { key: "completed", label: "Done" },
+  ];
+  const stepIdx = Math.max(0, STEPS.findIndex((s) => s.key === job?.status));
+  const isOpen = ACTIVE_STATUSES.includes(job.status);
+  const showMapHero = !!poolLocation && !arrived && isOpen;
+  const canAct = !arrived && isOpen && job.isScheduledForToday;
+  const hasSafety =
+    !!job.siteSafety &&
+    ((job.siteSafety.hazards || []).length > 0 || !!job.siteSafety.details || !!job.siteSafety.accessInstructions);
+
+  const mapHero = poolLocation ? (
+    NATIVE_MAP_AVAILABLE ? (
+      <MapView
+        provider={NATIVE_MAP_PROVIDER}
+        style={StyleSheet.absoluteFill}
+        initialRegion={{
+          latitude: carerLocation?.lat || poolLocation.lat,
+          longitude: carerLocation?.lng || poolLocation.lng,
+          latitudeDelta: 0.01,
+          longitudeDelta: 0.01,
+        }}
+        region={{
+          latitude: carerLocation ? (carerLocation.lat + poolLocation.lat) / 2 : poolLocation.lat,
+          longitude: carerLocation ? (carerLocation.lng + poolLocation.lng) / 2 : poolLocation.lng,
+          latitudeDelta: Math.max(0.008, distanceMeters ? (distanceMeters / 111000) * 2.4 : 0.008),
+          longitudeDelta: Math.max(0.008, distanceMeters ? (distanceMeters / 111000) * 2.4 : 0.008),
+        }}
+        showsUserLocation
+        showsMyLocationButton={false}
+        toolbarEnabled={false}
+      >
+        <Marker coordinate={{ latitude: poolLocation.lat, longitude: poolLocation.lng }} title={job?.poolName} description={job?.address || "Pool"} pinColor={themeColor} />
+        <Circle
+          center={{ latitude: poolLocation.lat, longitude: poolLocation.lng }}
+          radius={GEOFENCE_RADIUS_METERS}
+          strokeColor={isWithinGeofence ? themeColor : "#c2410c"}
+          fillColor={isWithinGeofence ? themeColor + "22" : "#c2410c18"}
+          strokeWidth={2}
+        />
+      </MapView>
+    ) : mapHtml ? (
+      <WebView
+        style={StyleSheet.absoluteFill}
+        ref={mapWebViewRef}
+        // A real origin so the tile server accepts the requests
+        source={{ html: mapHtml, baseUrl: "https://poolcare.africa" }}
+        javaScriptEnabled
+        onError={(e) => console.error("WebView error:", e.nativeEvent)}
+      />
+    ) : (
+      <View style={[StyleSheet.absoluteFill, styles.center, { backgroundColor: themeColor + "1F" }]}>
+        <Ionicons name="map-outline" size={40} color={themeColor} />
+      </View>
+    )
+  ) : null;
 
   return (
     <View style={styles.container}>
-      {/* ── Hero image header ── */}
-      <View style={[styles.hero, { height: 220 + insets.top }]}>
-        {job?.poolImageUrl && !poolImageLoadError ? (
-          <Image
-            source={{ uri: job.poolImageUrl }}
-            style={StyleSheet.absoluteFill}
-            resizeMode="cover"
-            onError={() => setPoolImageLoadError(true)}
-          />
-        ) : (
-          <View style={[StyleSheet.absoluteFill, styles.heroPlaceholder]}>
-            <Ionicons name="water" size={72} color="rgba(255,255,255,0.2)" />
-          </View>
-        )}
-        <View style={[StyleSheet.absoluteFill, styles.heroOverlay]} />
-
-        {/* Back + status badge */}
-        <View style={[styles.heroTop, { paddingTop: insets.top + 12 }]}>
-          <TouchableOpacity style={styles.heroBackBtn} onPress={() => router.back()}>
-            <Ionicons name="arrow-back" size={20} color="#ffffff" />
-          </TouchableOpacity>
-          <View style={[styles.heroStatusBadge, { backgroundColor: sc.bgColor }]}>
-            <View style={[styles.heroStatusDot, { backgroundColor: sc.dotColor }]} />
-            <Text style={[styles.heroStatusLabel, { color: sc.color }]}>{sc.label}</Text>
-          </View>
-        </View>
-
-        {/* Pool name + address */}
-        <View style={styles.heroBottom}>
-          <Text style={styles.heroPoolName} numberOfLines={2}>{job?.poolName}</Text>
-          {job?.address ? (
-            <TouchableOpacity style={styles.heroAddressRow} onPress={openInMaps} activeOpacity={0.8}>
-              <Ionicons name="location-outline" size={13} color="rgba(255,255,255,0.75)" />
-              <Text style={styles.heroAddressText} numberOfLines={1}>{job.address}</Text>
-            </TouchableOpacity>
-          ) : null}
-        </View>
-      </View>
-
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* ── Status timeline ── */}
-        <View style={styles.timelineRow}>
-          {TIMELINE_STEPS.map((step, i) => {
-            const isActive = i <= currentStepIdx;
-            const isCurrent = i === currentStepIdx;
-            return (
-              <View key={step.key} style={styles.timelineStep}>
-                <View style={styles.timelineStepInner}>
-                  <View style={[
-                    styles.timelineDot,
-                    isActive && { backgroundColor: themeColor },
-                    isCurrent && styles.timelineDotCurrent,
-                  ]}>
-                    <Ionicons name={step.icon as any} size={13} color={isActive ? "#ffffff" : "#d1d5db"} />
-                  </View>
-                  {i < TIMELINE_STEPS.length - 1 && (
-                    <View style={[styles.timelineLine, isActive && i < currentStepIdx && { backgroundColor: themeColor }]} />
-                  )}
-                </View>
-                <Text style={[styles.timelineLabel, isCurrent && { color: themeColor, fontWeight: "600" }]}>{step.label}</Text>
-              </View>
-            );
-          })}
-        </View>
-
-        {/* ── Schedule card ── */}
-        <View style={styles.card}>
-          <View style={styles.cardRow}>
-            <View style={[styles.cardIconWrap, { backgroundColor: themeColor + "18" }]}>
-              <Ionicons name="calendar-outline" size={18} color={themeColor} />
-            </View>
-            <View style={styles.cardBody}>
-              <Text style={styles.cardLabel}>Date</Text>
-              <Text style={styles.cardValue}>
-                {job?.scheduledDate?.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
-              </Text>
-            </View>
-            {job?.isScheduledForToday && (
-              <View style={[styles.todayBadge, { backgroundColor: themeColor }]}>
-                <Text style={styles.todayBadgeText}>Today</Text>
-              </View>
-            )}
-          </View>
-          <View style={styles.cardDivider} />
-          <View style={styles.cardRow}>
-            <View style={[styles.cardIconWrap, { backgroundColor: themeColor + "18" }]}>
-              <Ionicons name="time-outline" size={18} color={themeColor} />
-            </View>
-            <View style={styles.cardBody}>
-              <Text style={styles.cardLabel}>Time window</Text>
-              <Text style={styles.cardValue}>{job?.windowStart} – {job?.windowEnd}</Text>
-            </View>
-          </View>
-        </View>
-
-        {/* ── Client card ── */}
-        {(job?.clientName || job?.clientPhone) && (
-          <View style={styles.card}>
-            <View style={styles.cardRow}>
-              <View style={[styles.cardIconWrap, { backgroundColor: "#f0fdf4" }]}>
-                <Ionicons name="person-outline" size={18} color="#16a34a" />
-              </View>
-              <View style={styles.cardBody}>
-                <Text style={styles.cardLabel}>Client</Text>
-                <Text style={styles.cardValue}>{job?.clientName || "Client"}</Text>
-                {job?.clientPhone && <Text style={styles.cardSub}>{job.clientPhone}</Text>}
-              </View>
-              {job?.clientPhone && (
-                <View style={styles.contactBtns}>
-                  <TouchableOpacity
-                    style={styles.contactBtn}
-                    onPress={() => Linking.openURL(`tel:${job.clientPhone}`)}
-                  >
-                    <Ionicons name="call-outline" size={17} color="#2563eb" />
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.contactBtn, { marginLeft: 8 }]}
-                    onPress={() => Linking.openURL(`https://wa.me/${job.clientPhone?.replace(/\D/g, "")}`)}
-                  >
-                    <Ionicons name="logo-whatsapp" size={17} color="#22c55e" />
-                  </TouchableOpacity>
-                </View>
-              )}
-            </View>
-          </View>
-        )}
-
-        {/* ── Navigate card ── */}
-        {poolLocation && (
-          <TouchableOpacity style={styles.navigateCard} onPress={openInMaps} activeOpacity={0.85}>
-            <View style={[styles.cardIconWrap, { backgroundColor: "#eff6ff" }]}>
-              <Ionicons name="navigate-outline" size={18} color="#2563eb" />
-            </View>
-            <View style={styles.cardBody}>
-              <Text style={styles.cardValue}>Get directions</Text>
-              {distanceMeters !== null ? (
-                <Text style={[styles.cardSub, isWithinGeofence && { color: "#16a34a" }]}>
-                  {distanceMeters < 1000
-                    ? `${Math.round(distanceMeters)}m away`
-                    : `${(distanceMeters / 1000).toFixed(1)}km away`}
-                  {isWithinGeofence ? " · You're close!" : ""}
-                </Text>
-              ) : (
-                <Text style={styles.cardSub}>Tap to open in Maps</Text>
-              )}
-            </View>
-            <Ionicons name="chevron-forward" size={18} color="#9ca3af" />
-          </TouchableOpacity>
-        )}
-
-        {/* ── Map View with Geofence ── */}
-        {poolLocation && !arrived && job.status !== "completed" && (
-        <View style={styles.mapCard}>
-          <View style={styles.mapHeader}>
-            <Ionicons name="map-outline" size={20} color="#374151" />
-            <Text style={styles.mapTitle}>Location Check</Text>
-            {distanceMeters !== null && (
-              <View style={[styles.distanceBadge, isWithinGeofence && styles.distanceBadgeSuccess]}>
-                <Text style={[styles.distanceText, isWithinGeofence && styles.distanceTextSuccess]}>
-                  {distanceMeters < 1000 
-                    ? `${Math.round(distanceMeters)}m away`
-                    : `${(distanceMeters / 1000).toFixed(1)}km away`}
-                </Text>
-              </View>
-            )}
-          </View>
-          
-          {/* Google Maps View */}
-          <View style={styles.mapContainer}>
-            {poolLocation && NATIVE_MAP_AVAILABLE ? (
-              <MapView
-                provider={NATIVE_MAP_PROVIDER}
-                style={styles.map}
-                initialRegion={{
-                  latitude: carerLocation?.lat || poolLocation.lat,
-                  longitude: carerLocation?.lng || poolLocation.lng,
-                  latitudeDelta: 0.01,
-                  longitudeDelta: 0.01,
-                }}
-                region={{
-                  latitude: carerLocation?.lat || poolLocation.lat,
-                  longitude: carerLocation?.lng || poolLocation.lng,
-                  latitudeDelta: Math.max(
-                    0.01,
-                    distanceMeters ? (distanceMeters / 111000) * 2 : 0.01
-                  ),
-                  longitudeDelta: Math.max(
-                    0.01,
-                    distanceMeters ? (distanceMeters / 111000) * 2 : 0.01
-                  ),
-                }}
-                showsUserLocation={true}
-                showsMyLocationButton={true}
-                followsUserLocation={carerLocation !== null}
-              >
-                {/* Pool Location Marker */}
-                <Marker
-                  coordinate={{
-                    latitude: poolLocation.lat,
-                    longitude: poolLocation.lng,
-                  }}
-                  title="Pool Location"
-                  description={job?.address || "Pool"}
-                  pinColor="#397d54"
-                />
-                
-                {/* Carer Location Marker */}
-                {carerLocation && (
-                  <Marker
-                    coordinate={{
-                      latitude: carerLocation.lat,
-                      longitude: carerLocation.lng,
-                    }}
-                    title="Your Location"
-                    description="You are here"
-                    pinColor={isWithinGeofence ? "#10b981" : "#ef4444"}
-                  />
-                )}
-                
-                {/* Geofence Circle */}
-                <Circle
-                  center={{
-                    latitude: poolLocation.lat,
-                    longitude: poolLocation.lng,
-                  }}
-                  radius={GEOFENCE_RADIUS_METERS}
-                  strokeColor={isWithinGeofence ? "#10b981" : "#ef4444"}
-                  fillColor={isWithinGeofence ? "#10b98120" : "#ef444420"}
-                  strokeWidth={2}
-                />
-              </MapView>
-            ) : poolLocation ? (
-              // WebView map (Leaflet/OpenStreetMap — no key needed)
-              mapHtml ? (
-                <WebView
-                  style={styles.map}
-                  ref={mapWebViewRef}
-                  // A real origin so the tile server accepts the requests
-                  source={{ html: mapHtml, baseUrl: "https://poolcare.africa" }}
-                  javaScriptEnabled={true}
-                  onError={(syntheticEvent) => {
-                    const { nativeEvent } = syntheticEvent;
-                    console.error('WebView error:', nativeEvent);
-                  }}
-                  onHttpError={(syntheticEvent) => {
-                    const { nativeEvent } = syntheticEvent;
-                    console.error('WebView HTTP error:', nativeEvent);
-                  }}
-                />
-              ) : (
-                // Fallback when no API key
-                <View style={styles.mapFallback}>
-              <TouchableOpacity
-                    style={styles.mapFallbackButton}
-                    onPress={() => {
-                      const url = Platform.select({
-                        ios: `maps://maps.apple.com/?daddr=${poolLocation.lat},${poolLocation.lng}&ll=${carerLocation?.lat || poolLocation.lat},${carerLocation?.lng || poolLocation.lng}`,
-                        android: `geo:${poolLocation.lat},${poolLocation.lng}?q=${poolLocation.lat},${poolLocation.lng}`,
-                      });
-                      if (url) {
-                        Linking.openURL(url);
-                      }
-                    }}
-                  >
-                    <Ionicons name="map" size={48} color={isWithinGeofence ? "#10b981" : "#ef4444"} />
-                    <Text style={styles.mapFallbackText}>
-                      {carerLocation 
-                        ? isWithinGeofence 
-                          ? "✓ You are within range"
-                          : "Move closer to the pool location"
-                        : "Getting your location..."}
+      <ScrollView contentContainerStyle={{ paddingBottom: canAct ? 200 : 48 }} showsVerticalScrollIndicator={false}>
+        {/* Hero: live map while travelling, otherwise the pool photo */}
+        <View style={[styles.hero, { height: (showMapHero ? 280 : 230) + insets.top }]}>
+          {showMapHero ? (
+            mapHero
+          ) : (
+            <PoolThumb uri={!poolImageLoadError ? job?.poolImageUrl : null} size="fill" radius={0} />
+          )}
+          {!showMapHero ? <View style={[StyleSheet.absoluteFill, styles.heroShade]} pointerEvents="none" /> : null}
+          <View style={[styles.heroBar, { top: insets.top + 8 }]} pointerEvents="box-none">
+            <IconButton icon="chevron-back" label="Back" variant="white" onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))} />
+            <View style={{ flexDirection: "row", gap: 8 }}>
+              {showMapHero && distanceText ? (
+                <View style={[styles.heroPill, isWithinGeofence && { backgroundColor: themeColor }]}>
+                  <Ionicons name={isWithinGeofence ? "checkmark-circle" : "navigate"} size={14} color={isWithinGeofence ? "#ffffff" : C.ink} />
+                  <Text style={[styles.heroPillText, isWithinGeofence && { color: "#ffffff" }]}>
+                    {isWithinGeofence ? "You're here" : distanceText}
                   </Text>
-                    <Text style={styles.mapFallbackSubtext}>
-                      Tap to open in Maps app
-                    </Text>
-                    {poolLocation && (
-                      <Text style={styles.mapFallbackSubtext}>
-                        Pool: {poolLocation.lat.toFixed(4)}, {poolLocation.lng.toFixed(4)}
-                      </Text>
-                    )}
-                    {carerLocation && (
-                      <Text style={styles.mapFallbackSubtext}>
-                        You: {carerLocation.lat.toFixed(4)}, {carerLocation.lng.toFixed(4)}
-                      </Text>
-                    )}
-        </TouchableOpacity>
-      </View>
-              )
-            ) : null}
-            
-            {/* Status Overlay */}
-            <View style={styles.mapStatusOverlay}>
-              {carerLocation ? (
-                isWithinGeofence ? (
-                  <View style={styles.geofenceIndicator}>
-                    <Ionicons name="checkmark-circle" size={20} color="#10b981" />
-                    <Text style={styles.geofenceText}>Within 200m</Text>
                 </View>
-                ) : (
-                  <View style={[styles.geofenceIndicator, styles.geofenceIndicatorWarning]}>
-                    <Ionicons name="close-circle" size={20} color="#ef4444" />
-                    <Text style={[styles.geofenceText, styles.geofenceTextWarning]}>
-                      {distanceMeters ? `${Math.round(distanceMeters)}m away` : "Too far"}
-              </Text>
-      </View>
-                )
-              ) : (
-                <View style={styles.geofenceIndicator}>
-                  <ActivityIndicator size="small" color="#397d54" />
-                  <Text style={styles.geofenceText}>Getting location...</Text>
-                </View>
-              )}
+              ) : null}
+              {poolLocation ? (
+                <TouchableOpacity style={styles.heroPill} onPress={openInMaps} accessibilityRole="button">
+                  <Ionicons name="navigate-outline" size={15} color={C.ink} />
+                  <Text style={styles.heroPillText}>Directions</Text>
+                </TouchableOpacity>
+              ) : null}
             </View>
           </View>
-          
-          {/* Open in Maps button */}
-          <TouchableOpacity
-            style={[styles.openMapsButton, { borderColor: themeColor }]}
-            onPress={openInMaps}
-          >
-            <Ionicons name="navigate-outline" size={18} color={themeColor} />
-            <Text style={[styles.openMapsText, { color: themeColor }]}>Open in Maps</Text>
-          </TouchableOpacity>
-              </View>
-            )}
+        </View>
 
-        {/* Client-disclosed hazards and access (service agreement cl. 12.2) */}
-        {job.status !== "completed" &&
-          job.siteSafety &&
-          ((job.siteSafety.hazards || []).length > 0 || !!job.siteSafety.details || !!job.siteSafety.accessInstructions) && (
-            <View style={styles.siteSafetyCard}>
-              <View style={styles.siteSafetyHeader}>
-                <Ionicons name="warning-outline" size={18} color="#b45309" />
-                <Text style={styles.siteSafetyTitle}>Site safety & access</Text>
-              </View>
-              {(job.siteSafety.hazards || []).length > 0 && (
-                <Text style={styles.siteSafetyText}>
-                  {(job.siteSafety.hazards as string[])
-                    .map((h) => SITE_HAZARD_LABELS[h] || h)
-                    .join(" · ")}
+        <View style={styles.sheet}>
+          {/* Title */}
+          <View style={{ flexDirection: "row", gap: 12, alignItems: "center" }}>
+            {showMapHero ? <PoolThumb uri={!poolImageLoadError ? job?.poolImageUrl : null} size={56} radius={14} /> : null}
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={styles.title} numberOfLines={2}>
+                {job?.poolName}
+              </Text>
+              {job?.address ? (
+                <Text style={styles.sub} numberOfLines={2}>
+                  {job.address}
                 </Text>
-              )}
-              {!!job.siteSafety.details && <Text style={styles.siteSafetyText}>{job.siteSafety.details}</Text>}
-              {!!job.siteSafety.accessInstructions && (
-                <Text style={styles.siteSafetyText}>Access: {job.siteSafety.accessInstructions}</Text>
-              )}
-              {!!job.siteSafety.accessContactName && (
-                <Text style={styles.siteSafetyText}>
+              ) : null}
+            </View>
+          </View>
+
+          {/* Progress */}
+          {job.status === "failed" || job.status === "cancelled" ? (
+            <Notice tone={job.status === "failed" ? "danger" : "neutral"} style={{ marginTop: 14 }}>
+              {job.status === "failed" ? "This visit was recorded as not completed." : "This visit was cancelled by the office."}
+            </Notice>
+          ) : (
+            <View style={styles.steps} accessibilityLabel={`Progress: ${STEPS[stepIdx].label}`}>
+              {STEPS.map((s, i) => (
+                <View key={s.key} style={{ flex: 1 }}>
+                  <View style={[styles.stepBar, { backgroundColor: i <= stepIdx ? themeColor : C.line }]} />
+                  <Text style={[styles.stepLabel, i === stepIdx && { color: themeColor, fontWeight: "700" }]}>{s.label}</Text>
+                </View>
+              ))}
+            </View>
+          )}
+
+          {/* When */}
+          <Card style={{ marginTop: 16 }}>
+            <Row first>
+              <Ionicons name="calendar-outline" size={20} color={C.muted} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.rowTitle}>
+                  {job?.scheduledDate?.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" })}
+                </Text>
+                <Text style={styles.rowSub}>
+                  {job?.windowStart} – {job?.windowEnd}
+                </Text>
+              </View>
+              {job?.isScheduledForToday ? <Chip label="Today" tone="accent" /> : null}
+            </Row>
+            {job?.clientName || job?.clientPhone ? (
+              <Row>
+                <Avatar name={job?.clientName || "Client"} size={36} />
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={styles.rowTitle} numberOfLines={1}>
+                    {job?.clientName || "Client"}
+                  </Text>
+                  <Text style={styles.rowSub}>{job?.clientPhone || "No phone on file"}</Text>
+                </View>
+                {job?.clientPhone ? (
+                  <>
+                    <IconButton
+                      icon="logo-whatsapp"
+                      label="WhatsApp client"
+                      variant="outline"
+                      onPress={() => Linking.openURL(`https://wa.me/${job.clientPhone?.replace(/\D/g, "")}`)}
+                    />
+                    <IconButton icon="call-outline" label="Call client" variant="outline" onPress={() => Linking.openURL(`tel:${job.clientPhone}`)} />
+                  </>
+                ) : null}
+              </Row>
+            ) : null}
+          </Card>
+
+          {/* Office notes */}
+          {job?.notes ? (
+            <Card padded style={{ marginTop: 12 }}>
+              <Text style={styles.blockLabel}>Note from the office</Text>
+              <Text style={styles.blockText}>{job.notes}</Text>
+            </Card>
+          ) : null}
+
+          {/* Client-disclosed hazards and access (service agreement cl. 12.2) */}
+          {isOpen && hasSafety ? (
+            <View style={styles.safety}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                <Ionicons name="warning-outline" size={18} color={C.warnInk} />
+                <Text style={[styles.blockLabel, { color: C.warnInk }]}>Site safety & access</Text>
+              </View>
+              {(job.siteSafety.hazards || []).length > 0 ? (
+                <Text style={styles.safetyText}>{(job.siteSafety.hazards as string[]).map((h) => SITE_HAZARD_LABELS[h] || h).join(" · ")}</Text>
+              ) : null}
+              {job.siteSafety.details ? <Text style={styles.safetyText}>{job.siteSafety.details}</Text> : null}
+              {job.siteSafety.accessInstructions ? <Text style={styles.safetyText}>Access: {job.siteSafety.accessInstructions}</Text> : null}
+              {job.siteSafety.accessContactName ? (
+                <Text style={styles.safetyText}>
                   Contact: {job.siteSafety.accessContactName}
                   {job.siteSafety.accessContactPhone ? ` · ${job.siteSafety.accessContactPhone}` : ""}
                 </Text>
-              )}
+              ) : null}
             </View>
-          )}
+          ) : null}
 
-        {/* Chemicals the client keeps on site (service agreement cl. 7.1) */}
-        {job.status !== "completed" && clientStock.length > 0 && (
-          <View style={styles.clientStockCard}>
-            <Text style={styles.clientStockTitle}>Client&apos;s chemicals on site</Text>
-            {clientStock.map((s) => {
-              const low = s.onHand <= 0 || (s.lowAt != null && s.onHand <= s.lowAt);
-              return (
-                <View key={s.id} style={styles.clientStockRow}>
-                  <Text style={styles.clientStockName}>{s.name}</Text>
-                  <Text style={[styles.clientStockQty, low && { color: s.onHand <= 0 ? "#dc2626" : "#d97706" }]}>
-                    {Math.round(s.onHand * 100) / 100} {s.unit}
-                    {s.onHand <= 0 ? " · out" : low ? " · low" : ""}
-                  </Text>
-                </View>
-              );
-            })}
-          </View>
-        )}
-
-        {/* Swipe Action Buttons */}
-        {!arrived && ACTIVE_STATUSES.includes(job.status) && job.isScheduledForToday && (
-          <View style={styles.swipeActionContainer}>
-          {/* Wait for location to be determined before showing actions */}
-          {!poolLocation ? (
-            /* No coordinates on file for this pool, so arrival can't be checked
-               against a geofence — let the carer confirm it themselves. */
+          {/* Chemicals the client keeps on site (service agreement cl. 7.1) */}
+          {isOpen && clientStock.length > 0 ? (
             <>
-              <View style={styles.swipeHintContainer}>
-                <Ionicons name="information-circle" size={20} color={"#6b7280"} />
-                <Text style={styles.swipeHintText}>
-                  This pool has no map location on file. Swipe when you arrive.
-                </Text>
-              </View>
-              <SwipeButton
-                title="I am here"
-                onSwipeComplete={handleIAmHere}
-                variant="success"
-                iconName="checkmark"
-              />
+              <SectionHeader title="Client's chemicals on site" style={{ marginTop: 20 }} />
+              <Card>
+                {clientStock.map((s, i) => {
+                  const out = s.onHand <= 0;
+                  const low = out || (s.lowAt != null && s.onHand <= s.lowAt);
+                  return (
+                    <Row key={s.id} first={i === 0}>
+                      <Text style={[styles.rowTitle, { flex: 1 }]}>{s.name}</Text>
+                      <Text style={[styles.rowSub, { marginTop: 0 }, low && { color: out ? C.dangerInk : C.warnInk, fontWeight: "600" }]}>
+                        {Math.round(s.onHand * 100) / 100} {s.unit}
+                        {out ? " · out" : low ? " · low" : ""}
+                      </Text>
+                    </Row>
+                  );
+                })}
+              </Card>
             </>
+          ) : null}
+
+          {/* Not today */}
+          {!arrived && isOpen && !job.isScheduledForToday ? (
+            <Notice tone="warn" icon="calendar-outline" style={{ marginTop: 16 }}>
+              This visit is on {job.scheduledDate?.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "short" }) || "another day"}. You can start it on that day.
+            </Notice>
+          ) : null}
+
+          {/* No location on file */}
+          {canAct && !poolLocation ? (
+            <Notice tone="neutral" style={{ marginTop: 16 }}>
+              This pool has no map location on file, so arrival isn't checked. Swipe when you get there.
+            </Notice>
+          ) : null}
+        </View>
+      </ScrollView>
+
+      {/* Pinned action */}
+      {canAct ? (
+        <Footer>
+          {!poolLocation ? (
+            <SwipeButton title="I'm here" onSwipeComplete={handleIAmHere} variant="success" iconName="checkmark" />
           ) : !carerLocation && locationIssue ? (
-            <View style={[styles.locationLoadingContainer, { flexDirection: "column", gap: 8 }]}>
-              <Ionicons name="location-outline" size={20} color={"#ef4444"} />
-              <Text style={[styles.locationLoadingText, { textAlign: "center" }]}>{locationIssue}</Text>
-              <TouchableOpacity onPress={() => setLocationRetry((n) => n + 1)}>
-                <Text style={[styles.locationLoadingText, { color: themeColor, fontWeight: "600" }]}>Try again</Text>
-              </TouchableOpacity>
+            <View style={{ alignItems: "center", gap: 6, paddingVertical: 6 }}>
+              <Text style={[styles.rowSub, { textAlign: "center", color: C.dangerInk }]}>{locationIssue}</Text>
+              <Button title="Try again" variant="secondary" size="md" icon="refresh" onPress={() => setLocationRetry((n) => n + 1)} />
             </View>
           ) : !carerLocation ? (
-            <View style={styles.locationLoadingContainer}>
-              <ActivityIndicator size="small" color={"#397d54"} />
-              <Text style={styles.locationLoadingText}>Getting your location...</Text>
+            <View style={styles.locating}>
+              <ActivityIndicator size="small" color={themeColor} />
+              <Text style={styles.rowSub}>Finding your location…</Text>
             </View>
           ) : isWithinGeofence ? (
-            /* Show "I am here" if within geofence - ONE swipe does everything */
-            <>
-              <View style={styles.swipeHintContainer}>
-                <Ionicons name="checkmark-circle" size={20} color={"#22c55e"} />
-                <Text style={styles.swipeHintText}>
-                  You're at the location! Swipe to start and begin work.
-                    </Text>
-              </View>
-              <SwipeButton
-                title="I am here"
-                onSwipeComplete={handleIAmHere}
-                variant="success"
-                iconName="checkmark"
-              />
-            </>
+            <SwipeButton title="I'm here — start visit" onSwipeComplete={handleIAmHere} variant="success" iconName="checkmark" />
+          ) : job.status === "scheduled" ? (
+            <SwipeButton title="I'm on my way" onSwipeComplete={handleOnMyWay} variant="primary" iconName="navigate" />
           ) : (
-            /* Location known but not within geofence */
-            <>
-              {/* Show distance indicator */}
-              {distanceMeters !== null && (
-                <View style={styles.swipeHintContainer}>
-                  <Ionicons name="navigate" size={20} color={"#6b7280"} />
-                  <Text style={styles.swipeHintText}>
-                    {distanceMeters < 1000 
-                      ? `${Math.round(distanceMeters)}m to destination`
-                      : `${(distanceMeters / 1000).toFixed(1)}km to destination`}
-                    </Text>
-                </View>
-              )}
-              {/* Show "I'm on my way" if not started yet */}
-              {job.status === "scheduled" && (
-                <SwipeButton
-                  title="I'm on my way"
-                  onSwipeComplete={handleOnMyWay}
-                  variant="primary"
-                  iconName="navigate"
-                />
-              )}
-              {/* Show en_route status message if already started */}
-              {job.status === "en_route" && (
-                <View style={styles.enRouteCard}>
-                  <View style={styles.enRouteIconContainer}>
-                    <Ionicons name="car" size={24} color={"#f59e0b"} />
+            <View style={styles.locating}>
+              <Ionicons name="car-outline" size={20} color={themeColor} />
+              <Text style={[styles.rowSub, { marginTop: 0, flex: 1 }]}>
+                On your way{distanceText ? ` · ${distanceText}` : ""}. Arrival unlocks within {GEOFENCE_RADIUS_METERS} m.
+              </Text>
             </View>
-                  <View style={styles.enRouteTextContainer}>
-                    <Text style={styles.enRouteTitle}>On your way!</Text>
-                    <Text style={styles.enRouteSubtitle}>
-                      Move within {GEOFENCE_RADIUS_METERS}m to confirm arrival
-                    </Text>
-      </View>
-                </View>
           )}
-        </>
-      )}
-          {(carerLocation || !poolLocation || locationIssue) && (job.status === "scheduled" || job.status === "en_route") && (
-            <TouchableOpacity style={styles.accessFailureLink} onPress={() => setShowAccessFailure(true)}>
-              <Ionicons name="lock-closed-outline" size={16} color="#6b7280" />
-              <Text style={styles.accessFailureLinkText}>Couldn't get access?</Text>
+          {(carerLocation || !poolLocation || locationIssue) && (job.status === "scheduled" || job.status === "en_route") ? (
+            <TouchableOpacity style={styles.accessLink} onPress={() => setShowAccessFailure(true)} hitSlop={8}>
+              <Ionicons name="lock-closed-outline" size={15} color={C.muted} />
+              <Text style={styles.accessLinkText}>Couldn't get access?</Text>
             </TouchableOpacity>
-          )}
-          <AccessFailureSheet
-            visible={showAccessFailure}
-            jobId={id as string}
-            themeColor={themeColor}
-            onClose={() => setShowAccessFailure(false)}
-            onRecorded={() => {
-              setShowAccessFailure(false);
-              Alert.alert("Recorded", "The office and client have the report. You can leave this site.", [
-                { text: "OK", onPress: () => router.back() },
-              ]);
-            }}
-          />
-                  </View>
-      )}
-      
-        {/* Date warning for jobs not scheduled today */}
-        {!arrived && ACTIVE_STATUSES.includes(job.status) && !job.isScheduledForToday && (
-          <View style={styles.dateWarningCard}>
-            <Ionicons name="calendar-outline" size={20} color="#f59e0b" />
-            <Text style={styles.dateWarningText}>
-              This job is scheduled for {job.scheduledDate?.toLocaleDateString() || "another day"}.
-              You can only start this job on the scheduled date.
-            </Text>
-          </View>
-        )}
+          ) : null}
+        </Footer>
+      ) : null}
 
-
-        {/* All old checklist/readings/chemicals/photos sections removed - now handled by wizard */}
-      </ScrollView>
+      <AccessFailureSheet
+        visible={showAccessFailure}
+        jobId={id as string}
+        themeColor={themeColor}
+        onClose={() => setShowAccessFailure(false)}
+        onRecorded={() => {
+          setShowAccessFailure(false);
+          Alert.alert("Recorded", "The office and client have the report. You can leave this site.", [
+            { text: "OK", onPress: () => router.back() },
+          ]);
+        }}
+      />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#f8fafc",
-  },
-
-  // ── Hero ──
-  hero: {
-    backgroundColor: "#1e293b",
-    justifyContent: "flex-end",
-    overflow: "hidden",
-  },
-  heroPlaceholder: {
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#1e293b",
-  },
-  heroOverlay: {
-    backgroundColor: "rgba(0,0,0,0.52)",
-  },
-  heroTop: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 16,
-  },
-  heroBackBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: "rgba(0,0,0,0.35)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  heroStatusBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-  },
-  heroStatusDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-  },
-  heroStatusLabel: {
-    fontSize: 12,
-    fontWeight: "700",
-    letterSpacing: 0.3,
-  },
-  heroBottom: {
-    paddingHorizontal: 20,
-    paddingBottom: 20,
-  },
-  heroPoolName: {
-    fontSize: 22,
-    fontWeight: "800",
-    color: "#ffffff",
-    marginBottom: 4,
-  },
-  heroAddressRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-  },
-  heroAddressText: {
-    fontSize: 13,
-    color: "rgba(255,255,255,0.75)",
-    flex: 1,
-  },
-
-  // ── Scroll body ──
-  scroll: { flex: 1 },
-  scrollContent: {
-    padding: 16,
-    paddingBottom: 120,
-    gap: 12,
-  },
-
-  // ── Status timeline ──
-  timelineRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    backgroundColor: "#ffffff",
-    borderRadius: 16,
-    padding: 16,
-    paddingBottom: 12,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  timelineStep: {
-    flex: 1,
-    alignItems: "center",
-  },
-  timelineStepInner: {
-    flexDirection: "row",
-    alignItems: "center",
-    width: "100%",
-    justifyContent: "center",
-    marginBottom: 6,
-  },
-  timelineDot: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: "#e5e7eb",
-    alignItems: "center",
-    justifyContent: "center",
-    zIndex: 1,
-  },
-  timelineDotCurrent: {
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  timelineLine: {
-    flex: 1,
-    height: 2,
-    backgroundColor: "#e5e7eb",
-    marginLeft: -4,
-  },
-  timelineLabel: {
-    fontSize: 10,
-    color: "#9ca3af",
-    textAlign: "center",
-    fontWeight: "500",
-  },
-
-  // ── Cards ──
-  card: {
-    backgroundColor: "#ffffff",
-    borderRadius: 16,
-    paddingHorizontal: 16,
-    paddingVertical: 4,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  cardRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 12,
-    gap: 12,
-  },
-  cardIconWrap: {
-    width: 38,
-    height: 38,
-    borderRadius: 10,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  cardBody: {
-    flex: 1,
-  },
-  cardLabel: {
-    fontSize: 11,
-    color: "#9ca3af",
-    fontWeight: "500",
-    marginBottom: 2,
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-  },
-  cardValue: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: "#111827",
-  },
-  cardSub: {
-    fontSize: 12,
-    color: "#6b7280",
-    marginTop: 1,
-  },
-  cardDivider: {
-    height: 1,
-    backgroundColor: "#f3f4f6",
-    marginLeft: 50,
-  },
-  todayBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 20,
-  },
-  todayBadgeText: {
-    fontSize: 11,
-    fontWeight: "700",
-    color: "#ffffff",
-  },
-  contactBtns: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  contactBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: "#f3f4f6",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  navigateCard: {
-    backgroundColor: "#ffffff",
-    borderRadius: 16,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-
-  content: {
-    padding: 20,
-    paddingBottom: 40,
-  },
-  // Wizard mode styles
-  wizardHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    backgroundColor: "#ffffff",
-    borderBottomWidth: 1,
-    borderBottomColor: "#e5e7eb",
-  },
-  wizardHeaderLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    flex: 1,
-  },
-  wizardPoolName: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#111827",
-  },
-  wizardStatusBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    backgroundColor: "#dcfce7",
-    borderRadius: 16,
-    gap: 4,
-  },
-  wizardStatusText: {
-    fontSize: 12,
-    color: "#16a34a",
-    fontWeight: "600",
-  },
-  // Completion screen styles
-  completionContainer: {
-    flex: 1,
-    backgroundColor: "#ffffff",
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 24,
-  },
-  completionContent: {
-    alignItems: "center",
-    width: "100%",
-  },
-  completionIconContainer: {
-    marginBottom: 24,
-  },
-  completionTitle: {
-    fontSize: 28,
-    fontWeight: "700",
-    color: "#111827",
-    marginBottom: 8,
-  },
-  completionPoolName: {
-    fontSize: 18,
-    fontWeight: "600",
-    color: "#397d54",
-    marginBottom: 16,
-  },
-  completionSubtitle: {
-    fontSize: 15,
-    color: "#6b7280",
-    textAlign: "center",
-    marginBottom: 32,
-    paddingHorizontal: 20,
-  },
-  completionReportButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#f2f7f4",
-    borderWidth: 1,
-    borderColor: "#397d54",
-    paddingVertical: 14,
-    paddingHorizontal: 24,
-    borderRadius: 12,
-    marginBottom: 12,
-    width: "100%",
-    gap: 8,
-  },
-  completionReportButtonText: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#397d54",
-  },
-  completionDoneButton: {
-    backgroundColor: "#397d54",
-    paddingVertical: 16,
-    paddingHorizontal: 24,
-    borderRadius: 12,
-    width: "100%",
-    alignItems: "center",
-  },
-  completionDoneButtonText: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#ffffff",
-  },
-  // Report preview styles for completion screen
-  reportPreviewContainer: {
-    flex: 1,
-    backgroundColor: "#ffffff",
-  },
-  reportPreviewHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: "#e5e7eb",
-  },
-  reportPreviewTitle: {
-    fontSize: 18,
-    fontWeight: "600",
-    color: "#111827",
-  },
-  reportPreviewContent: {
-    flex: 1,
-    padding: 16,
-  },
-  reportCloseButton: {
-    backgroundColor: "#397d54",
-    padding: 16,
-    margin: 16,
-    borderRadius: 12,
-    alignItems: "center",
-  },
-  reportCloseButtonText: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#ffffff",
-  },
-  reportText: {
-    fontSize: 15,
-    color: "#111827",
-    marginBottom: 4,
-  },
-  reportTextSecondary: {
-    fontSize: 14,
-    color: "#6b7280",
-  },
-  transitionContainer: {
-    flex: 1,
-    backgroundColor: "#397d54", // Theme primary color
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  transitionContent: {
-    alignItems: "center",
-    padding: 40,
-  },
-  transitionIconContainer: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    backgroundColor: "rgba(255,255,255,0.2)",
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: 24,
-  },
-  transitionTitle: {
-    fontSize: 24,
-    fontWeight: "700",
-    color: "#ffffff",
-    marginBottom: 8,
-    textAlign: "center",
-  },
-  transitionSubtitle: {
-    fontSize: 16,
-    color: "rgba(255,255,255,0.8)",
-    textAlign: "center",
-  },
-  jobInfoCard: {
-    backgroundColor: "#ffffff",
-    borderRadius: 20,
-    overflow: "hidden",
-    marginBottom: 20,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    elevation: 4,
-  },
-  poolImage: {
-    width: "100%",
-    height: 160,
-  },
-  poolImagePlaceholder: {
-    width: "100%",
-    height: 120,
-    backgroundColor: "#f3f4f6",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  jobInfoContent: {
-    padding: 20,
-  },
-  jobInfoHeader: {
-    marginBottom: 16,
-  },
-  jobInfoHeaderLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  jobStatusIndicator: {
-    width: 4,
-    height: 48,
-    borderRadius: 2,
-    marginRight: 16,
-  },
-  jobInfoText: {
-    flex: 1,
-  },
-  jobInfoTitle: {
-    fontSize: 22,
-    fontWeight: "700",
-    color: "#111827",
-    marginBottom: 4,
-  },
-  jobInfoSubtitle: {
-    fontSize: 15,
-    color: "#6b7280",
-  },
-  jobInfoDetails: {
-    gap: 12,
-    paddingTop: 16,
-    borderTopWidth: 1,
-    borderTopColor: "#f3f4f6",
-  },
-  jobInfoDetailItem: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  jobInfoDetailText: {
-    fontSize: 14,
-    color: "#6b7280",
-    marginLeft: 10,
-  },
-  primaryActionButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#397d54",
-    padding: 18,
-    borderRadius: 16,
-    marginBottom: 20,
-    shadowColor: "#397d54",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  primaryActionButtonText: {
-    color: "#ffffff",
-    fontSize: 17,
-    fontWeight: "600",
-    marginLeft: 10,
-  },
-  progressCard: {
-    backgroundColor: "#ffffff",
-    borderRadius: 20,
-    padding: 24,
-    marginBottom: 16,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 2,
-  },
-  progressHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 16,
-  },
-  progressTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#111827",
-  },
-  progressCount: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#6b7280",
-  },
-  progressBar: {
-    height: 10,
-    backgroundColor: "#f3f4f6",
-    borderRadius: 5,
-    overflow: "hidden",
-    marginBottom: 12,
-  },
-  progressFill: {
-    height: "100%",
-    backgroundColor: "#16a34a",
-  },
-  progressWarning: {
-    fontSize: 13,
-    color: "#397d54",
-    fontWeight: "600",
-    marginTop: 4,
-  },
-  progressCompleted: {
-    fontSize: 13,
-    color: "#16a34a",
-    fontWeight: "600",
-    marginTop: 4,
-  },
-  sectionCard: {
-    backgroundColor: "#ffffff",
-    borderRadius: 20,
-    padding: 24,
-    marginBottom: 16,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 2,
-  },
-  sectionHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 20,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#111827",
-  },
-  sectionSubtitle: {
-    fontSize: 14,
-    color: "#6b7280",
-  },
-  checklistItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: "#f3f4f6",
-  },
-  checklistItemDisabled: {
-    opacity: 0.6,
-  },
-  checklistTextReadOnly: {
-    color: "#6b7280",
-  },
-  checklistContent: {
-    flex: 1,
-    marginLeft: 14,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  checklistText: {
-    fontSize: 15,
-    color: "#111827",
-    flex: 1,
-    fontWeight: "500",
-  },
-  checklistTextCompleted: {
-    textDecorationLine: "line-through",
-    color: "#9ca3af",
-  },
-  requiredBadge: {
-    backgroundColor: "#397d5415",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-  },
-  requiredBadgeText: {
-    fontSize: 11,
-    color: "#397d54",
-    fontWeight: "600",
-  },
-  completedBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#16a34a15",
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 12,
-  },
-  completedBadgeText: {
-    fontSize: 12,
-    color: "#16a34a",
-    fontWeight: "600",
-    marginLeft: 6,
-  },
-  sectionActionButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    padding: 16,
-    backgroundColor: "#fafafa",
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
-  },
-  sectionActionButtonDisabled: {
-    opacity: 0.5,
-    backgroundColor: "#f3f4f6",
-  },
-  sectionActionIcon: {
-    width: 40,
+  container: { flex: 1, backgroundColor: C.bg },
+  center: { flex: 1, alignItems: "center", justifyContent: "center" },
+  centerText: { marginTop: 12, color: C.muted, fontSize: 14 },
+  transitionTitle: { color: "#ffffff", fontSize: 22, fontWeight: "700", marginTop: 18 },
+  transitionSub: { color: "rgba(255,255,255,0.8)", fontSize: 15, marginTop: 4 },
+  hero: { backgroundColor: "#3f9ac4", overflow: "hidden" },
+  heroShade: { backgroundColor: "rgba(16,35,26,0.12)" },
+  heroBar: { position: "absolute", left: 16, right: 16, flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  heroPill: {
     height: 40,
-    borderRadius: 20,
-    justifyContent: "center",
-    alignItems: "center",
-    marginRight: 12,
-  },
-  sectionActionText: {
-    flex: 1,
-    fontSize: 15,
-    fontWeight: "600",
-    color: "#111827",
-  },
-  chemicalsList: {
-    marginTop: 12,
-  },
-  chemicalItem: {
-    padding: 8,
-    backgroundColor: "#f9fafb",
-    borderRadius: 6,
-    marginBottom: 6,
-  },
-  chemicalText: {
-    fontSize: 14,
-    color: "#111827",
-  },
-  photoButtons: {
-    flexDirection: "row",
-    gap: 12,
-  },
-  photoButton: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 12,
-    backgroundColor: "#fff7ed",
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "#397d54",
-  },
-  photoButtonDisabled: {
-    opacity: 0.5,
-    backgroundColor: "#f3f4f6",
-    borderColor: "#d1d5db",
-  },
-  photoButtonCompleted: {
-    backgroundColor: "#16a34a20",
-    borderColor: "#16a34a",
-  },
-  photoButtonText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#397d54",
-    marginLeft: 8,
-  },
-  photoButtonTextCompleted: {
-    color: "#16a34a",
-  },
-  completeButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#16a34a",
-    padding: 16,
-    borderRadius: 12,
-    marginTop: 8,
-    marginBottom: 24,
-  },
-  completeButtonDisabled: {
-    backgroundColor: "#9ca3af",
-    opacity: 0.6,
-  },
-  completeButtonText: {
-    color: "#ffffff",
-    fontSize: 18,
-    fontWeight: "600",
-    marginLeft: 8,
-  },
-  mapCard: {
-    backgroundColor: "#ffffff",
-    borderRadius: 20,
-    padding: 20,
-    marginBottom: 16,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 2,
-  },
-  mapHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 16,
-    gap: 8,
-  },
-  mapTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#111827",
-    flex: 1,
-  },
-  distanceBadge: {
-    backgroundColor: "#ef444415",
     paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 12,
-  },
-  distanceBadgeSuccess: {
-    backgroundColor: "#10b98115",
-  },
-  distanceText: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: "#ef4444",
-  },
-  distanceTextSuccess: {
-    color: "#10b981",
-  },
-  mapContainer: {
-    height: 300,
-    borderRadius: 12,
-    marginBottom: 12,
-    overflow: "hidden",
-    position: "relative",
-    backgroundColor: "#f9fafb",
-  },
-  map: {
-    flex: 1,
-    width: "100%",
-    height: "100%",
-  },
-  mapFallback: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "#f9fafb",
-    padding: 20,
-  },
-  mapFallbackButton: {
-    alignItems: "center",
-    width: "100%",
-  },
-  mapFallbackText: {
-    fontSize: 16,
-    color: "#374151",
-    marginTop: 16,
-    textAlign: "center",
-    fontWeight: "600",
-  },
-  mapFallbackSubtext: {
-    fontSize: 13,
-    color: "#6b7280",
-    marginTop: 8,
-    textAlign: "center",
-  },
-  mapStatusOverlay: {
-    position: "absolute",
-    top: 12,
-    right: 12,
-  },
-  geofenceIndicator: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#ffffff",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
     borderRadius: 20,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    backgroundColor: "#ffffff",
+    flexDirection: "row",
+    alignItems: "center",
     gap: 6,
-  },
-  geofenceIndicatorWarning: {
-    backgroundColor: "#fef2f2",
-  },
-  geofenceText: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: "#10b981",
-  },
-  geofenceTextWarning: {
-    color: "#ef4444",
-  },
-  openMapsButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 12,
-    backgroundColor: "#f2f7f4",
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#397d54",
-    gap: 8,
-  },
-  openMapsText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#397d54",
-  },
-  primaryActionButtonSuccess: {
-    backgroundColor: "#10b981",
-  },
-  primaryActionButtonDisabled: {
-    backgroundColor: "#9ca3af",
-    opacity: 0.6,
-  },
-  dateWarningCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#fef3c7",
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: "#fbbf24",
-  },
-  dateWarningText: {
-    flex: 1,
-    fontSize: 14,
-    color: "#92400e",
-    marginLeft: 12,
-    lineHeight: 20,
-  },
-  geofenceWarning: {
-    fontSize: 13,
-    color: "#ef4444",
-    textAlign: "center",
-    marginTop: 8,
-    marginBottom: 16,
-    paddingHorizontal: 16,
-    fontWeight: "500",
-  },
-  swipeActionContainer: {
-    marginBottom: 20,
-  },
-  clientStockCard: { backgroundColor: "#f9fafb", borderRadius: 12, padding: 14, marginBottom: 16, gap: 6 },
-  clientStockTitle: { fontSize: 15, fontWeight: "700", color: "#111827", marginBottom: 2 },
-  clientStockRow: { flexDirection: "row", justifyContent: "space-between" },
-  clientStockName: { fontSize: 14, color: "#374151" },
-  clientStockQty: { fontSize: 14, color: "#111827", fontWeight: "600" },
-  siteSafetyCard: {
-    backgroundColor: "#fffbeb",
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 16,
-    gap: 6,
-  },
-  siteSafetyHeader: { flexDirection: "row", alignItems: "center", gap: 6 },
-  siteSafetyTitle: { fontSize: 15, fontWeight: "700", color: "#92400e" },
-  siteSafetyText: { fontSize: 14, color: "#78350f", lineHeight: 20 },
-  accessFailureLink: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    paddingVertical: 12,
-  },
-  accessFailureLinkText: {
-    fontSize: 14,
-    color: "#6b7280",
-    fontWeight: "600",
-  },
-  locationLoadingContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 20,
-    backgroundColor: "#f2f7f4",
-    borderRadius: 12,
-    gap: 12,
-  },
-  locationLoadingText: {
-    fontSize: 14,
-    color: "#397d54",
-    fontWeight: "500",
-  },
-  swipeHintContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 8,
-    gap: 8,
-  },
-  swipeHintText: {
-    fontSize: 14,
-    color: "#6b7280",
-    fontWeight: "500",
-  },
-  enRouteCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#fef3c7",
-    padding: 20,
-    borderRadius: 16,
-    marginVertical: 12,
-  },
-  enRouteIconContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: "#fef3c7",
-    borderWidth: 2,
-    borderColor: "#f59e0b",
-    justifyContent: "center",
-    alignItems: "center",
-    marginRight: 16,
-  },
-  enRouteTextContainer: {
-    flex: 1,
-  },
-  enRouteTitle: {
-    fontSize: 17,
-    fontWeight: "700",
-    color: "#92400e",
-    marginBottom: 4,
-  },
-  enRouteSubtitle: {
-    fontSize: 14,
-    color: "#a16207",
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
-    justifyContent: "flex-end",
-  },
-  modalContent: {
-    backgroundColor: "#ffffff",
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    padding: 20,
-    maxHeight: "80%",
-  },
-  modalHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 20,
-  },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: "600",
-    color: "#111827",
-  },
-  inputGroup: {
-    marginBottom: 16,
-  },
-  inputLabel: {
-    fontSize: 14,
-    fontWeight: "500",
-    color: "#111827",
-    marginBottom: 8,
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 16,
-    backgroundColor: "#ffffff",
-  },
-  chemicalInputGroup: {
-    flexDirection: "row",
-    marginBottom: 12,
-  },
-  addButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 12,
-    borderWidth: 1,
-    borderColor: "#397d54",
-    borderRadius: 8,
-    marginTop: 8,
-  },
-  addButtonText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#397d54",
-    marginLeft: 8,
-  },
-  modalButton: {
-    backgroundColor: "#397d54",
-    padding: 16,
-    borderRadius: 12,
-    alignItems: "center",
-    marginTop: 20,
-  },
-  modalButtonText: {
-    color: "#ffffff",
-    fontSize: 16,
-    fontWeight: "600",
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    paddingVertical: 64,
-  },
-  loadingText: {
-    fontSize: 16,
-    color: "#6b7280",
-    marginTop: 16,
-    marginBottom: 24,
-  },
-  retryButton: {
-    backgroundColor: "#397d54",
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 8,
-  },
-  retryButtonText: {
-    color: "#ffffff",
-    fontSize: 16,
-    fontWeight: "600",
-  },
-  reportButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#ffffff",
-    paddingVertical: 16,
-    paddingHorizontal: 24,
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: "#397d54",
-    marginTop: 12,
-    gap: 8,
-  },
-  reportButtonText: {
-    color: "#397d54",
-    fontSize: 16,
-    fontWeight: "600",
-  },
-  reportModalContainer: {
-    flex: 1,
-    backgroundColor: "#ffffff",
-  },
-  reportModalHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    padding: 20,
-    paddingTop: 60,
-    borderBottomWidth: 1,
-    borderBottomColor: "#f3f4f6",
-  },
-  reportModalTitle: {
-    fontSize: 24,
-    fontWeight: "700",
-    color: "#111827",
-  },
-  reportModalCloseButton: {
-    padding: 8,
-  },
-  reportLoadingContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 40,
-  },
-  reportLoadingText: {
-    marginTop: 16,
-    fontSize: 16,
-    color: "#6b7280",
-  },
-  reportContent: {
-    flex: 1,
-    padding: 20,
-  },
-  reportSection: {
-    marginBottom: 24,
-    paddingBottom: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: "#f3f4f6",
-  },
-  reportSectionTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#111827",
-    marginBottom: 16,
-  },
-  reportInfoRow: {
-    flexDirection: "row",
-    marginBottom: 12,
-    flexWrap: "wrap",
-  },
-  reportInfoLabel: {
-    fontSize: 14,
-    color: "#6b7280",
-    fontWeight: "500",
-    minWidth: 120,
-  },
-  reportInfoValue: {
-    fontSize: 14,
-    color: "#111827",
-    flex: 1,
-  },
-  reportChecklistItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 12,
-  },
-  reportChecklistText: {
-    fontSize: 14,
-    color: "#111827",
-    flex: 1,
-  },
-  reportChecklistTextIncomplete: {
-    color: "#9ca3af",
-    textDecorationLine: "line-through",
-  },
-  reportRequiredMark: {
-    fontSize: 12,
-    color: "#6b7280",
-    fontStyle: "italic",
-  },
-  reportPhotoSection: {
-    marginBottom: 12,
-  },
-  reportPhotoLabel: {
-    fontSize: 14,
-    color: "#6b7280",
-    fontWeight: "500",
-  },
-  reportSuccessCard: {
-    backgroundColor: "#f0fdf4",
-    borderRadius: 16,
-    padding: 24,
-    alignItems: "center",
-    marginTop: 8,
-    marginBottom: 24,
-    borderWidth: 1,
-    borderColor: "#d1fae5",
-  },
-  reportSuccessTitle: {
-    fontSize: 20,
-    fontWeight: "700",
-    color: "#065f46",
-    marginTop: 12,
-    marginBottom: 8,
-  },
-  reportSuccessText: {
-    fontSize: 14,
-    color: "#047857",
-    textAlign: "center",
-    lineHeight: 20,
-  },
-  reportActions: {
-    paddingBottom: 40,
-  },
-  reportDownloadButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#f2f7f4",
-    padding: 16,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#397d54",
-  },
-  reportDownloadButtonText: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#397d54",
-  },
-  reportDoneButton: {
-    backgroundColor: "#397d54",
-    padding: 16,
-    borderRadius: 12,
-    alignItems: "center",
-  },
-  reportDoneButtonText: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#ffffff",
-  },
-  reportErrorContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 40,
-  },
-  reportErrorText: {
-    fontSize: 16,
-    color: "#6b7280",
-    marginTop: 16,
-    marginBottom: 24,
-  },
-  reportRetryButton: {
-    backgroundColor: "#397d54",
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 8,
-  },
-  reportRetryButtonText: {
-    color: "#ffffff",
-    fontSize: 16,
-    fontWeight: "600",
-  },
+    ...Platform.select({
+      ios: { shadowColor: "#000", shadowOpacity: 0.15, shadowRadius: 4, shadowOffset: { width: 0, height: 1 } },
+      default: { elevation: 3 },
+    }),
+  },
+  heroPillText: { fontSize: 13, fontWeight: "600", color: C.ink },
+  sheet: { marginTop: -24, backgroundColor: C.bg, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: 16, paddingTop: 20 },
+  title: { fontSize: 22, fontWeight: "700", color: C.ink, letterSpacing: -0.2 },
+  sub: { fontSize: 14, color: C.muted, marginTop: 2 },
+  steps: { flexDirection: "row", gap: 6, marginTop: 18 },
+  stepBar: { height: 4, borderRadius: 2 },
+  stepLabel: { fontSize: 11, color: C.muted, marginTop: 6, fontWeight: "500" },
+  rowTitle: { fontSize: 15, fontWeight: "600", color: C.ink },
+  rowSub: { fontSize: 13, color: C.muted, marginTop: 2 },
+  blockLabel: { fontSize: 13, fontWeight: "600", color: C.ink },
+  blockText: { fontSize: 14, color: C.body, lineHeight: 20, marginTop: 4 },
+  safety: { marginTop: 12, backgroundColor: C.warnBg, borderRadius: 18, padding: 14, gap: 4 },
+  safetyText: { fontSize: 14, color: "#5e3405", lineHeight: 20 },
+  locating: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10, minHeight: 56 },
+  accessLink: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, marginTop: 12 },
+  accessLinkText: { fontSize: 14, color: C.muted, fontWeight: "500" },
+  doneHero: { alignItems: "center", paddingHorizontal: 28, paddingBottom: 32 },
+  doneBadge: { width: 88, height: 88, borderRadius: 44, alignItems: "center", justifyContent: "center" },
+  doneTitle: { fontSize: 26, fontWeight: "700", color: C.ink, marginTop: 20 },
+  doneSub: { fontSize: 16, color: C.body, marginTop: 4, fontWeight: "500" },
+  doneBody: { fontSize: 14, color: C.muted, marginTop: 10, textAlign: "center", lineHeight: 20 },
+  reportStrong: { fontSize: 16, fontWeight: "600", color: C.ink, marginTop: 6 },
+  reportMuted: { fontSize: 14, color: C.muted, marginTop: 2 },
+  reportText: { fontSize: 14, color: C.body, marginTop: 6 },
 });

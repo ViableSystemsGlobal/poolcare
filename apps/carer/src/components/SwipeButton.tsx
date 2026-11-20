@@ -20,9 +20,9 @@ interface SwipeButtonProps {
   variant?: "primary" | "success" | "warning";
 }
 
-const BUTTON_WIDTH = Dimensions.get("window").width - 48;
+const BUTTON_WIDTH = Dimensions.get("window").width - 40;
 const SWIPE_THRESHOLD = BUTTON_WIDTH * 0.6; // Lower threshold for easier completion
-const THUMB_SIZE = 60; // Slightly larger for better touch target
+const THUMB_SIZE = 52;
 const THUMB_PADDING = 4;
 
 export default function SwipeButton({
@@ -48,9 +48,9 @@ export default function SwipeButton({
     switch (variant) {
       case "success":
         return {
-          bg: "#10b981",
-          thumb: "#059669",
-          track: "#d1fae5",
+          bg: backgroundColor || "#2f6a47",
+          thumb: "#20452f",
+          track: "#e6f0ea",
         };
       case "warning":
         return {
@@ -59,11 +59,11 @@ export default function SwipeButton({
           track: "#fef3c7",
         };
       default:
-        // Primary variant uses theme teal color
+        // Primary: ink, so "on my way" reads differently from "I'm here"
         return {
-          bg: backgroundColor || "#397d54",
-          thumb: "#2f6a47",
-          track: "#dcebe2",
+          bg: backgroundColor || "#10231a",
+          thumb: "#000000",
+          track: "#eceee9",
         };
     }
   };
@@ -232,12 +232,12 @@ export default function SwipeButton({
 const styles = StyleSheet.create({
   container: {
     width: BUTTON_WIDTH,
-    height: 64,
-    borderRadius: 32,
+    height: 60,
+    borderRadius: 18,
     justifyContent: "center",
     alignItems: "center",
     overflow: "hidden",
-    marginVertical: 12,
+    marginVertical: 0,
     alignSelf: "center",
   },
   containerDisabled: {
@@ -266,7 +266,7 @@ const styles = StyleSheet.create({
     left: THUMB_PADDING,
     width: THUMB_SIZE,
     height: THUMB_SIZE,
-    borderRadius: THUMB_SIZE / 2,
+    borderRadius: 14,
     justifyContent: "center",
     alignItems: "center",
     shadowColor: "#000",

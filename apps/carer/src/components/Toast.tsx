@@ -39,24 +39,25 @@ const ICONS: Record<ToastType, keyof typeof Ionicons.glyphMap> = {
 };
 
 const ICON_COLORS: Record<ToastType, string> = {
-  success: COLORS.success[500],
-  error: COLORS.error[500],
-  warning: COLORS.warning[500],
-  info: COLORS.primary[500],
+  success: "#8fd3a8",
+  error: "#ff9b9b",
+  warning: "#f5c36b",
+  info: "#bcd8c7",
 };
 
+// Dark ink toasts read on any background (map, photo, white card)
 const BG_COLORS: Record<ToastType, string> = {
-  success: COLORS.success[50],
-  error: COLORS.error[50],
-  warning: COLORS.warning[50],
-  info: COLORS.primary[50],
+  success: "#10231a",
+  error: "#10231a",
+  warning: "#10231a",
+  info: "#10231a",
 };
 
 const BORDER_COLORS: Record<ToastType, string> = {
-  success: COLORS.success[200],
-  error: COLORS.error[200],
-  warning: COLORS.warning[200],
-  info: COLORS.primary[200],
+  success: "#10231a",
+  error: "#10231a",
+  warning: "#10231a",
+  info: "#10231a",
 };
 
 export const Toast: React.FC<ToastProps> = ({
@@ -127,7 +128,7 @@ export const Toast: React.FC<ToastProps> = ({
     >
       <View style={styles.content}>
         <Ionicons name={ICONS[type]} size={22} color={ICON_COLORS[type]} />
-        <Text style={[styles.message, { color: COLORS.text.primary }]}>
+        <Text style={[styles.message, { color: "#ffffff" }]}>
           {message}
         </Text>
       </View>
@@ -144,7 +145,7 @@ export const Toast: React.FC<ToastProps> = ({
           </TouchableOpacity>
         )}
         <TouchableOpacity onPress={hideToast} style={styles.closeButton}>
-          <Ionicons name="close" size={18} color={COLORS.neutral[500]} />
+          <Ionicons name="close" size={18} color="rgba(255,255,255,0.7)" />
         </TouchableOpacity>
       </View>
     </Animated.View>
@@ -210,9 +211,10 @@ const styles = StyleSheet.create({
     top: 60,
     left: SPACING.lg,
     right: SPACING.lg,
-    borderRadius: BORDER_RADIUS.lg,
+    borderRadius: 16,
     borderWidth: 1,
-    padding: SPACING.md,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
@@ -241,7 +243,7 @@ const styles = StyleSheet.create({
     borderRadius: BORDER_RADIUS.md,
   },
   actionText: {
-    color: COLORS.text.inverse,
+    color: "#10231a",
     fontSize: FONT_SIZES.sm,
     fontWeight: "600",
   },

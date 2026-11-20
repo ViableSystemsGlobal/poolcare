@@ -5,6 +5,7 @@ import { CreateOpportunityDto, UpdateOpportunityDto, SendMessageDto, UpsertAsses
 import { CrmMessagingService } from "./crm-messaging.service";
 import { PushAdapter } from "../notifications/adapters/push.adapter";
 import { EmailAdapter } from "../notifications/adapters/email.adapter";
+import { NotificationsService } from "../notifications/notifications.service";
 import { createEmailTemplate, getOrgEmailSettings } from "../email/email-template.util";
 import { MapsService } from "../maps/maps.service";
 import { SettingsService } from "../settings/settings.service";
@@ -22,6 +23,7 @@ export class OpportunitiesService {
     private readonly email: EmailAdapter,
     private readonly maps: MapsService,
     private readonly settings: SettingsService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   async list(
@@ -223,19 +225,27 @@ export class OpportunitiesService {
 
     const scheduledAt = new Date(scheduledAtIso);
     const token = randomBytes(24).toString("hex");
+    // A carer assignee gets it in the carer app (Today/Schedule + push);
+    // anyone else keeps the emailed no-login form link.
+    const carer = await prisma.carer.findFirst({
+      where: { orgId, userId: assignee.id },
+      select: { id: true },
+    });
+    const assignment = {
+      assessorId: assignee.id,
+      assignedCarerId: carer?.id ?? null,
+      assignmentNote: note?.trim() || null,
+      assignedById: byUserId ?? null,
+      scheduledAt,
+      dispatchedAt: new Date(),
+      formToken: token,
+      formSentAt: new Date(),
+    };
 
     const report = await prisma.assessmentReport.upsert({
       where: { opportunityId: oppId },
-      create: {
-        orgId, opportunityId: oppId, status: "DISPATCHED",
-        assessorId: assignee.id, scheduledAt, dispatchedAt: new Date(),
-        formToken: token, formSentAt: new Date(),
-      },
-      update: {
-        status: "DISPATCHED",
-        assessorId: assignee.id, scheduledAt, dispatchedAt: new Date(),
-        formToken: token, formSentAt: new Date(),
-      },
+      create: { orgId, opportunityId: oppId, status: "DISPATCHED", ...assignment },
+      update: { status: "DISPATCHED", ...assignment },
       include: { assessor: { select: { id: true, name: true } } },
     });
 
@@ -259,10 +269,27 @@ export class OpportunitiesService {
       } catch { emailed = false; }
     }
 
+    let pushed = false;
+    if (carer) {
+      try {
+        await this.notifications.send(orgId, {
+          channel: "push",
+          to: "",
+          recipientId: assignee.id,
+          recipientType: "carer",
+          subject: "New assessment assigned",
+          body: `${account} · ${when}`,
+          metadata: { type: "assessment", assessmentId: report.id, url: `/assessments/${report.id}` },
+        } as any);
+        pushed = true;
+      } catch { pushed = false; }
+    }
+
     await prisma.activity.create({
       data: {
         orgId, type: "STATUS_CHANGE",
-        body: `Assessment assigned to ${assignee.name || assignee.email || "team member"} for ${when}` + (emailed ? " (emailed form link)" : " (no email on file)"),
+        body: `Assessment assigned to ${assignee.name || assignee.email || "team member"} for ${when}` +
+          (pushed ? " (sent to the carer app)" : emailed ? " (emailed form link)" : " (no email on file)"),
         createdById: byUserId, opportunityId: oppId,
       },
     });
@@ -280,7 +307,7 @@ export class OpportunitiesService {
       },
     });
     if (!r) throw new NotFoundException("This assessment link is invalid or has expired");
-    const { formToken, orgId, opportunityId, assessorId, dispatchedAt, formSentAt, assignedCarerId, ...fields } = r as any;
+    const { formToken, orgId, opportunityId, assessorId, dispatchedAt, formSentAt, assignedCarerId, assignedById, assignmentNote, ...fields } = r as any;
     return {
       account: r.opportunity?.account?.name || r.opportunity?.name || "Pool assessment",
       assessorName: r.assessor?.name || null,

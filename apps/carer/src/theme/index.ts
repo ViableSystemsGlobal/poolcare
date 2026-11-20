@@ -20,74 +20,74 @@ export const COLORS = {
 
   // Success - Green
   success: {
-    50: "#f0fdf4",
-    100: "#dcfce7",
-    200: "#bbf7d0",
-    300: "#86efac",
-    400: "#4ade80",
-    500: "#22c55e",
-    600: "#16a34a",
-    700: "#15803d",
+    50: "#eef5f0",
+    100: "#dcebe2",
+    200: "#bcd8c7",
+    300: "#8fbda3",
+    400: "#5d9c76",
+    500: "#2f6a47",
+    600: "#2f6a47",
+    700: "#20452f",
   },
 
   // Warning - Amber
   warning: {
-    50: "#fffbeb",
-    100: "#fef3c7",
-    200: "#fde68a",
-    300: "#fcd34d",
-    400: "#fbbf24",
-    500: "#f59e0b",
-    600: "#d97706",
-    700: "#b45309",
+    50: "#fff4e5",
+    100: "#ffe9cc",
+    200: "#fcd9a3",
+    300: "#f5c36b",
+    400: "#e0a100",
+    500: "#c27c0e",
+    600: "#a3620a",
+    700: "#8a4b08",
   },
 
   // Error - Red
   error: {
-    50: "#fef2f2",
-    100: "#fee2e2",
-    200: "#fecaca",
-    300: "#fca5a5",
-    400: "#f87171",
-    500: "#ef4444",
-    600: "#dc2626",
-    700: "#b91c1c",
+    50: "#fdf2f2",
+    100: "#fde8e8",
+    200: "#f8c8c8",
+    300: "#f09a9a",
+    400: "#e06060",
+    500: "#c81e1e",
+    600: "#b41a1a",
+    700: "#9b1c1c",
   },
 
   // Neutral - Gray
   neutral: {
-    50: "#f9fafb",
-    100: "#f3f4f6",
-    200: "#e5e7eb",
-    300: "#d1d5db",
-    400: "#9ca3af",
-    500: "#6b7280",
-    600: "#4b5563",
-    700: "#374151",
-    800: "#1f2937",
-    900: "#111827",
+    50: "#f8f9f6",
+    100: "#f4f5f2",
+    200: "#eceee9",
+    300: "#dfe3dc",
+    400: "#8a968f",
+    500: "#5b6b62",
+    600: "#4a5a51",
+    700: "#3c4a42",
+    800: "#1f3329",
+    900: "#10231a",
   },
 
   // Background
   background: {
     primary: "#ffffff",
-    secondary: "#f3f4f6",
-    tertiary: "#e5e7eb",
+    secondary: "#f4f5f2",
+    tertiary: "#eceee9",
   },
 
   // Text
   text: {
-    primary: "#111827",
-    secondary: "#6b7280",
-    tertiary: "#9ca3af",
+    primary: "#10231a",
+    secondary: "#5b6b62",
+    tertiary: "#8a968f",
     inverse: "#ffffff",
   },
 
   // Borders
   border: {
-    light: "#e5e7eb",
-    medium: "#d1d5db",
-    dark: "#9ca3af",
+    light: "#eceee9",
+    medium: "#dfe3dc",
+    dark: "#8a968f",
   },
 };
 
@@ -102,10 +102,10 @@ export const SPACING = {
 };
 
 export const BORDER_RADIUS = {
-  sm: 4,
-  md: 8,
-  lg: 12,
-  xl: 16,
+  sm: 8,
+  md: 12,
+  lg: 16,
+  xl: 20,
   full: 9999,
 };
 
