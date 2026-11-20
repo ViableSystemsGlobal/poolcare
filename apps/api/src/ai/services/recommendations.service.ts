@@ -59,7 +59,7 @@ export class RecommendationsService {
     tomorrow.setDate(tomorrow.getDate() + 1);
 
     const sevenDaysAgo = new Date(Date.now() - 7 * 86400000);
-    const [pendingQuotes, todayUnassigned, atRiskJobs, urgentSupplies, totalClients, activePools, phOutOfRange, overdueInvoices] =
+    const [pendingQuotes, todayUnassigned, atRiskJobs, urgentSupplies, phOutOfRange, overdueInvoices, poolsAwaitingApproval, clientsAwaitingApproval] =
       await Promise.all([
         prisma.quote.count({ where: { orgId, status: "pending" } }),
         prisma.job.count({
@@ -81,13 +81,6 @@ export class RecommendationsService {
         prisma.supplyRequest.count({
           where: { orgId, status: "pending", priority: "urgent" },
         }),
-        prisma.client.count({ where: { orgId } }),
-        prisma.pool.count({
-          where: {
-            orgId,
-            servicePlans: { some: { status: "active" } },
-          },
-        }),
         prisma.reading.count({
           where: {
             orgId,
@@ -102,9 +95,38 @@ export class RecommendationsService {
             dueDate: { lt: new Date() },
           },
         }),
+        prisma.pool.count({ where: { orgId, approvalStatus: "pending" } }),
+        // Pending clients not covered by a pending pool (pool approval covers its client)
+        prisma.client.count({
+          where: { orgId, approvalStatus: "pending", pools: { none: { approvalStatus: "pending" } } },
+        }),
       ]);
 
     const recommendations: AiRecommendation[] = [];
+
+    if (poolsAwaitingApproval > 0) {
+      recommendations.push({
+        id: "approve-pools",
+        title: "Approve onboarded pools",
+        description: `${poolsAwaitingApproval} pool${poolsAwaitingApproval !== 1 ? "s" : ""} onboarded by carers ${poolsAwaitingApproval !== 1 ? "are" : "is"} awaiting approval`,
+        priority: "high",
+        completed: false,
+        action: "Review Pools",
+        href: "/pools",
+      });
+    }
+
+    if (clientsAwaitingApproval > 0) {
+      recommendations.push({
+        id: "approve-clients",
+        title: "Approve new clients",
+        description: `${clientsAwaitingApproval} client${clientsAwaitingApproval !== 1 ? "s" : ""} added by carers ${clientsAwaitingApproval !== 1 ? "are" : "is"} awaiting approval`,
+        priority: "high",
+        completed: false,
+        action: "Review Clients",
+        href: "/clients",
+      });
+    }
 
     if (pendingQuotes > 0) {
       recommendations.push({
@@ -154,19 +176,6 @@ export class RecommendationsService {
       });
     }
 
-    if (activePools > 0) {
-      const poolsNeedingMaintenance = Math.ceil(activePools * 0.3);
-      recommendations.push({
-        id: "schedule-maintenance",
-        title: "🔧 Smart maintenance scheduling",
-        description: `AI suggests scheduling ${poolsNeedingMaintenance} pools for preventive maintenance`,
-        priority: "medium",
-        completed: false,
-        action: "Schedule Jobs",
-        href: "/plans",
-      });
-    }
-
     if (phOutOfRange > 0) {
       recommendations.push({
         id: "water-quality-insights",
@@ -176,18 +185,6 @@ export class RecommendationsService {
         completed: false,
         action: "View Visits",
         href: "/visits",
-      });
-    }
-
-    if (totalClients >= 3) {
-      recommendations.push({
-        id: "revenue-optimization",
-        title: "💰 Revenue opportunity detected",
-        description: `AI identified ${Math.ceil(totalClients * 0.25)} clients for service upgrades`,
-        priority: "medium",
-        completed: false,
-        action: "View Insights",
-        href: "/analytics",
       });
     }
 

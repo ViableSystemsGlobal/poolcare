@@ -347,7 +347,7 @@ export default function ApplicationDetailPage() {
       </Card>
 
       {/* Content grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 even-cols">
         <div className="lg:col-span-2 space-y-6">
           {/* Cover note */}
           <Card className="p-6">

@@ -44,9 +44,13 @@ import {
 } from "@/components/ui/table";
 import { useTheme } from "@/contexts/theme-context";
 import { SkeletonMetricCard } from "@/components/ui/skeleton";
+import { PoolApprovalBanner } from "@/components/pools/pool-approval";
 
 interface Pool {
   id: string;
+  approvalStatus?: string;
+  reviewNote?: string | null;
+  submittedBy?: { id: string; name?: string | null } | null;
   name?: string;
   address?: string;
   imageUrls?: string[];
@@ -208,7 +212,8 @@ export default function PoolDetailPage() {
 
       if (visitsRes.ok) {
         const visitsData = await visitsRes.json();
-        setVisits(visitsData.items || []);
+        // The visits endpoint returns a bare array; older builds wrapped it in { items }.
+        setVisits(Array.isArray(visitsData) ? visitsData : visitsData.items || []);
       }
 
       // Fetch issues for this pool
@@ -383,6 +388,46 @@ export default function PoolDetailPage() {
 
   return (
     <div className="space-y-6">
+      {/* Pool photos: large banner at the top; arrows and dots when there are several */}
+      {pool.imageUrls && pool.imageUrls.length > 0 && (
+        <div className="relative overflow-hidden rounded-xl shadow-sm bg-gray-100">
+          <img
+            src={pool.imageUrls[Math.min(currentImageIndex, pool.imageUrls.length - 1)]}
+            alt={pool.name || "Pool"}
+            className="w-full h-56 sm:h-80 object-cover cursor-zoom-in"
+            onClick={() => window.open(pool.imageUrls![currentImageIndex], "_blank")}
+          />
+          {pool.imageUrls.length > 1 && (
+            <>
+              <button
+                aria-label="Previous photo"
+                className="absolute left-3 top-1/2 -translate-y-1/2 rounded-full bg-white/90 p-2 shadow hover:bg-white"
+                onClick={() => setCurrentImageIndex(currentImageIndex > 0 ? currentImageIndex - 1 : pool.imageUrls!.length - 1)}
+              >
+                <ChevronLeft className="h-4 w-4 text-gray-700" />
+              </button>
+              <button
+                aria-label="Next photo"
+                className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full bg-white/90 p-2 shadow hover:bg-white"
+                onClick={() => setCurrentImageIndex(currentImageIndex < pool.imageUrls!.length - 1 ? currentImageIndex + 1 : 0)}
+              >
+                <ChevronRight className="h-4 w-4 text-gray-700" />
+              </button>
+              <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5 rounded-full bg-black/30 px-2 py-1">
+                {pool.imageUrls.map((_, i) => (
+                  <button
+                    key={i}
+                    aria-label={`Photo ${i + 1}`}
+                    onClick={() => setCurrentImageIndex(i)}
+                    className={`h-1.5 rounded-full transition-all ${i === currentImageIndex ? "w-5 bg-white" : "w-1.5 bg-white/60"}`}
+                  />
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
@@ -442,6 +487,8 @@ export default function PoolDetailPage() {
         </div>
       </div>
 
+      <PoolApprovalBanner pool={pool} onReviewed={fetchPoolData} />
+
       {/* Metrics Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card>
@@ -498,7 +545,7 @@ export default function PoolDetailPage() {
         </Card>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 even-cols">
         {/* Left Column - Pool Info */}
         <div ref={leftColumnRef} className="lg:col-span-1 space-y-6">
           {/* Pool Information */}
@@ -594,131 +641,12 @@ export default function PoolDetailPage() {
             )}
           </div>
 
-          {/* Pool Images Gallery */}
-          {pool.imageUrls && pool.imageUrls.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Pool Images</CardTitle>
-                {pool.imageUrls.length > 1 && (
-                  <CardDescription>
-                    {currentImageIndex + 1} of {pool.imageUrls.length}
-                  </CardDescription>
-                )}
-              </CardHeader>
-              <CardContent>
-                <div className="relative">
-                  <div
-                    className="relative overflow-hidden rounded-lg"
-                    onTouchStart={(e) => setTouchStart(e.targetTouches[0].clientX)}
-                    onTouchMove={(e) => setTouchEnd(e.targetTouches[0].clientX)}
-                    onTouchEnd={() => {
-                      if (!touchStart || !touchEnd) return;
-                      const distance = touchStart - touchEnd;
-                      const isLeftSwipe = distance > 50;
-                      const isRightSwipe = distance < -50;
-                      
-                      if (isLeftSwipe && currentImageIndex < pool.imageUrls!.length - 1) {
-                        setCurrentImageIndex(currentImageIndex + 1);
-                      }
-                      if (isRightSwipe && currentImageIndex > 0) {
-                        setCurrentImageIndex(currentImageIndex - 1);
-                      }
-                      setTouchStart(null);
-                      setTouchEnd(null);
-                    }}
-                  >
-                    <div
-                      className="flex transition-transform duration-300 ease-in-out"
-                      style={{
-                        transform: `translateX(-${currentImageIndex * 100}%)`,
-                      }}
-                    >
-                      {pool.imageUrls.map((imageUrl, index) => (
-                        <div
-                          key={index}
-                          className="min-w-full flex-shrink-0"
-                        >
-                          <img
-                            src={imageUrl}
-                            alt={`Pool image ${index + 1}`}
-                            className="w-full h-64 object-cover rounded-lg border-2 border-gray-200 cursor-pointer"
-                            onClick={() => {
-                              window.open(imageUrl, '_blank');
-                            }}
-                          />
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Navigation Arrows */}
-                  {pool.imageUrls.length > 1 && (
-                    <>
-                      <Button
-                        variant="outline"
-                        size="icon"
-                        className="absolute left-2 top-1/2 -translate-y-1/2 bg-white/80 hover:bg-white shadow-lg"
-                        onClick={() => {
-                          setCurrentImageIndex(
-                            currentImageIndex > 0
-                              ? currentImageIndex - 1
-                              : pool.imageUrls!.length - 1
-                          );
-                        }}
-                        disabled={pool.imageUrls.length <= 1}
-                      >
-                        <ChevronLeft className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="icon"
-                        className="absolute right-2 top-1/2 -translate-y-1/2 bg-white/80 hover:bg-white shadow-lg"
-                        onClick={() => {
-                          setCurrentImageIndex(
-                            currentImageIndex < pool.imageUrls!.length - 1
-                              ? currentImageIndex + 1
-                              : 0
-                          );
-                        }}
-                        disabled={pool.imageUrls.length <= 1}
-                      >
-                        <ChevronRight className="h-4 w-4" />
-                      </Button>
-                    </>
-                  )}
-
-                  {/* Dots Indicator */}
-                  {pool.imageUrls.length > 1 && (
-                    <div className="flex justify-center gap-2 mt-4">
-                      {pool.imageUrls.map((_, index) => (
-                        <button
-                          key={index}
-                          className={`h-2 rounded-full transition-all ${
-                            index === currentImageIndex
-                              ? "w-8 bg-emerald-600"
-                              : "w-2 bg-gray-300"
-                          }`}
-                          onClick={() => setCurrentImageIndex(index)}
-                          aria-label={`Go to image ${index + 1}`}
-                        />
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          )}
 
         </div>
 
         {/* Right Column - Service Plans, Visits, Issues */}
         <div 
-          className="lg:col-span-2 space-y-6 pr-2" 
-          style={{ 
-            maxHeight: rightColumnHeight ? `${rightColumnHeight}px` : '100%',
-            overflowY: 'auto',
-            overflowX: 'hidden'
-          }}
+          className="lg:col-span-2 space-y-6"
         >
           {/* Service Plans */}
           <Card>

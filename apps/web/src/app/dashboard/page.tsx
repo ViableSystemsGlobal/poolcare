@@ -1,49 +1,79 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useTheme } from "@/contexts/theme-context";
 import { useAuth } from "@/contexts/auth-context";
-import { DashboardAICard } from "@/components/dashboard-ai-card";
-import { RevenueTrendChart, PlanMixDonut, RevenuePoint, PlanMixSlice } from "@/components/dashboard-charts";
+import { useConfirm } from "@/components/ui/confirm-provider";
+import { useToast } from "@/hooks/use-toast";
+import { RevenueTrendChart, RevenuePoint } from "@/components/dashboard-charts";
+import {
+  TimelineJob,
+  TimelineCarer,
+} from "@/components/dashboard/dispatch-timeline";
+import { LiveMap, MapPool, MapCarer } from "@/components/dashboard/live-map";
+import { ReviewActions, ReviewablePool, ReviewableClient } from "@/components/pools/pool-approval";
 import {
   Calendar,
-  Users,
-  Droplet,
   FileText,
-  ClipboardList,
-  TrendingUp,
-  Plus,
   ArrowRight,
-  Receipt,
-  ClipboardCheck,
-  AlertCircle,
+  ArrowUpRight,
+  ArrowDownRight,
   CheckCircle,
-  Navigation,
-  MapPin,
   Clock,
-  DollarSign,
   Package,
   Send,
   UserPlus,
-  BarChart3,
-  Zap,
-  XCircle,
+  FlaskConical,
+  Wallet,
+  Star,
 } from "lucide-react";
+
+/*
+ * Dashboard, split in two:
+ *   Today: the day's visits per carer (drag to assign) and a to-do list you
+ *          can act on in place (approve, send reminders).
+ *   Business: this month against last, money owed, revenue, team, water.
+ * Every number comes from the API; nothing is estimated.
+ */
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+const authHeaders = (): Record<string, string> => ({
+  Authorization: `Bearer ${localStorage.getItem("auth_token") || ""}`,
+});
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-interface PeriodJobStats {
-  total: number;
-  completed: number;
-  upcoming: number;
-  unassigned: number;
-  missed: number;
-  cancelled: number;
+interface UnpaidInvoice {
+  id: string;
+  invoiceNumber: string;
+  status: string;
+  balanceCents: number;
+  dueDate: string | null;
+  client?: { id: string; name: string } | null;
+}
+
+interface OutOfRangePool {
+  poolId: string;
+  poolName: string | null;
+  clientName: string | null;
+  ph: number | null;
+  cl: number | null;
+  measuredAt: string;
+  visitId?: string;
+}
+
+interface TeamMember {
+  id: string;
+  name: string | null;
+  imageUrl: string | null;
+  visits30d: number;
+  onTimePct: number | null;
+  rating: number | null;
+  ratingCount: number;
 }
 
 interface DashboardData {
@@ -55,13 +85,6 @@ interface DashboardData {
       enRoute: number;
       onSite: number;
       atRisk: number;
-    };
-    week?: PeriodJobStats;
-    month?: PeriodJobStats;
-    operations?: {
-      jobsCompleted30d: number;
-      onTimePercentage: number;
-      avgVisitDuration: number;
     };
     business?: {
       totalClients: number;
@@ -76,44 +99,19 @@ interface DashboardData {
       monthlyCollected: number;
       accountsReceivable: number;
     };
-    quality?: {
-      photoCompliance: number;
-      totalVisits30d: number;
-    };
     payablesDue?: {
       outstandingAmountCents: number;
       overdueCount: number;
       dueWithin7DaysCount: number;
     };
-    supplies?: {
-      pendingRequests: number;
-      urgentRequests: number;
-    };
-    // Legacy support
-    todayJobs?: number;
-    totalClients?: number;
-    activePools?: number;
-    pendingQuotes?: number;
-    monthlyRevenue?: number;
+    water?: { poolsTested: number; poolsInRange: number; outOfRange?: OutOfRangePool[] };
+    supplies?: { pendingRequests: number; urgentRequests: number };
+    approvals?: { pools: number; clients: number };
+    growth?: { newClientsThisMonth: number; newClientsLastMonth: number };
+    unpaidInvoices?: UnpaidInvoice[];
+    team?: TeamMember[];
   };
-  recentActivity: Array<{
-    id: string;
-    type: string;
-    title: string;
-    description: string;
-    timestamp: string;
-  }>;
 }
-
-type AIRecommendation = {
-  id: string;
-  title: string;
-  description: string;
-  priority: "high" | "medium" | "low";
-  completed: boolean;
-  action?: string;
-  href?: string;
-};
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -126,559 +124,885 @@ function getGreeting(): string {
   return "Good evening";
 }
 
-function formatDate(): string {
-  return new Date().toLocaleDateString("en-US", {
-    weekday: "long",
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
-}
-
-function currency(cents: number): string {
-  return `GH\u20B5${(cents / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
-
-function timeAgo(ts: string): string {
-  const diff = Date.now() - new Date(ts).getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return "just now";
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
-}
-
-function generateFallbackRecommendations(data: DashboardData | null): AIRecommendation[] {
-  const m = data?.metrics || {};
-  const todayM = m.today || { unassigned: 0, atRisk: 0 };
-  const businessM = m.business || { pendingQuotes: 0, activePools: 0, totalClients: 0 };
-  const suppliesM = m.supplies || { urgentRequests: 0 };
-  const recs: AIRecommendation[] = [];
-
-  if ((businessM.pendingQuotes ?? 0) > 0)
-    recs.push({ id: "follow-up-quotes", title: "Follow up on pending quotes", description: `${businessM.pendingQuotes} quotes awaiting client approval`, priority: "high", action: "Review Quotes", href: "/quotes", completed: false });
-  if ((todayM.unassigned ?? 0) > 0)
-    recs.push({ id: "assign-jobs", title: "Assign today's jobs", description: `${todayM.unassigned} jobs need carer assignment`, priority: "high", action: "View Jobs", href: "/jobs", completed: false });
-  if ((todayM.atRisk ?? 0) > 0)
-    recs.push({ id: "at-risk-jobs", title: "Jobs at risk", description: `${todayM.atRisk} jobs past their window`, priority: "high", action: "View Jobs", href: "/jobs?status=at_risk", completed: false });
-  if ((suppliesM.urgentRequests ?? 0) > 0)
-    recs.push({ id: "urgent-supplies", title: "Urgent supply requests", description: `${suppliesM.urgentRequests} urgent requests need attention`, priority: "high", action: "View Supplies", href: "/supplies?priority=urgent", completed: false });
-  if ((businessM.activePools ?? 0) > 0)
-    recs.push({ id: "schedule-maintenance", title: "Smart maintenance scheduling", description: `Schedule ${Math.ceil((businessM.activePools ?? 0) * 0.3)} pools for preventive maintenance`, priority: "medium", action: "Schedule Jobs", href: "/plans", completed: false });
-  recs.push({ id: "water-quality-insights", title: "Water quality insights", description: "pH trends detected — 3 pools may need attention this week", priority: "high", action: "View Analysis", href: "/visits", completed: false });
-  recs.push({ id: "payment-followups", title: "Smart payment reminders", description: "Send gentle reminders to 2 clients for faster collection", priority: "medium", action: "Send Reminders", href: "/invoices", completed: false });
-
-  return recs.slice(0, 5);
-}
+const money = (cents: number, decimals = 2) =>
+  `GH₵${(cents / 100).toLocaleString("en-US", { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}`;
+const fmtShortDate = (iso: string) =>
+  new Date(iso).toLocaleDateString([], { day: "numeric", month: "short" });
+const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+const daysLate = (due: string | null) =>
+  due ? Math.max(0, Math.floor((Date.now() - new Date(due).getTime()) / 86400000)) : 0;
+const phOk = (v: number | null | undefined) => v == null || (v >= 7.2 && v <= 7.8);
+const clOk = (v: number | null | undefined) => v == null || (v >= 1 && v <= 3);
 
 // ---------------------------------------------------------------------------
-// Skeleton Components
+// Building blocks
 // ---------------------------------------------------------------------------
 
-function StatCardSkeleton() {
+function Section({
+  title,
+  action,
+  children,
+  className = "",
+}: {
+  title: string;
+  action?: React.ReactNode;
+  children: React.ReactNode;
+  className?: string;
+}) {
   return (
-    <div className="bg-white rounded-xl p-5 shadow-sm animate-pulse">
-      <div className="flex items-center justify-between mb-3">
-        <div className="h-3 w-16 bg-gray-200 rounded" />
-        <div className="h-8 w-8 bg-gray-100 rounded-lg" />
+    <section className={`bg-white rounded-xl shadow-sm p-5 sm:p-6 h-full ${className}`}>
+      <div className="flex items-center justify-between mb-4 gap-3">
+        <h2 className="text-sm font-medium text-gray-500 uppercase tracking-wider">{title}</h2>
+        {action}
       </div>
-      <div className="h-7 w-12 bg-gray-200 rounded mb-1" />
-      <div className="h-3 w-20 bg-gray-100 rounded" />
+      {children}
+    </section>
+  );
+}
+
+function BandTitle({ children, aside }: { children: React.ReactNode; aside?: React.ReactNode }) {
+  return (
+    <div className="flex items-baseline justify-between gap-4 pt-2">
+      <h2 className="text-lg font-semibold text-gray-900 tracking-tight">{children}</h2>
+      {aside}
     </div>
   );
 }
 
-function CardSkeleton({ lines = 4, className = "" }: { lines?: number; className?: string }) {
+function LinkButton({ href, children }: { href: string; children: React.ReactNode }) {
+  const router = useRouter();
+  const { getThemeColor } = useTheme();
   return (
-    <div className={`bg-white rounded-xl p-6 shadow-sm animate-pulse ${className}`}>
-      <div className="h-5 w-32 bg-gray-200 rounded mb-4" />
-      <div className="space-y-3">
-        {Array.from({ length: lines }).map((_, i) => (
-          <div key={i} className="flex items-center gap-3">
-            <div className="h-9 w-9 bg-gray-100 rounded-lg shrink-0" />
-            <div className="flex-1 space-y-1.5">
-              <div className="h-3.5 bg-gray-200 rounded w-3/4" />
-              <div className="h-3 bg-gray-100 rounded w-1/2" />
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
+    <button
+      onClick={() => router.push(href)}
+      className="text-xs font-medium flex items-center gap-1 hover:underline whitespace-nowrap"
+      style={{ color: getThemeColor() }}
+    >
+      {children} <ArrowRight className="h-3 w-3" />
+    </button>
   );
 }
 
+function Delta({ now, prev, money: isMoney }: { now: number; prev: number; money?: boolean }) {
+  if (prev === 0 && now === 0)
+    return <span className="text-gray-400">No change from last month</span>;
+  if (prev === 0)
+    return <span className="text-gray-500">Last month: {isMoney ? money(0, 0) : 0}</span>;
+  const pct = Math.round(((now - prev) / prev) * 100);
+  const up = pct >= 0;
+  const Icon = up ? ArrowUpRight : ArrowDownRight;
+  return (
+    <span className="inline-flex items-center gap-1">
+      <span
+        className={`inline-flex items-center font-medium ${up ? "text-green-600" : "text-red-600"}`}
+      >
+        <Icon className="h-3.5 w-3.5" />
+        {Math.abs(pct)}%
+      </span>
+      <span className="text-gray-500">vs {isMoney ? money(prev, 0) : prev} last month</span>
+    </span>
+  );
+}
+
+/** Six tiny bars (last 6 months), the current month in the theme colour. */
+function Spark({ values, color }: { values: number[]; color: string }) {
+  const max = Math.max(...values, 1);
+  return (
+    <span className="absolute right-5 top-5 flex items-end gap-[3px] h-7" aria-hidden>
+      {values.map((v, i) => (
+        <span
+          key={i}
+          className="w-[5px] rounded-sm"
+          style={{
+            height: `${Math.max(8, (v / max) * 100)}%`,
+            backgroundColor: i === values.length - 1 ? color : "#e5e7eb",
+          }}
+        />
+      ))}
+    </span>
+  );
+}
+
+function Skeleton({ className = "" }: { className?: string }) {
+  return <div className={`bg-gray-100 rounded animate-pulse ${className}`} />;
+}
+
 // ---------------------------------------------------------------------------
-// Main Dashboard
+// Page
 // ---------------------------------------------------------------------------
 
 export default function Dashboard() {
   const { getThemeColor } = useTheme();
   const { user } = useAuth();
   const router = useRouter();
+  const confirm = useConfirm();
+  const { toast } = useToast();
   const themeHex = getThemeColor();
 
-  const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
-  const [overviewRange, setOverviewRange] = useState<"today" | "week" | "month">("today");
-  const [trends, setTrends] = useState<{ revenue: RevenuePoint[]; planMix: PlanMixSlice[] } | null>(null);
-  const [aiRecommendations, setAiRecommendations] = useState<AIRecommendation[]>([]);
-  const [aiRecommendationsSource, setAiRecommendationsSource] = useState<"api" | "fallback" | null>(null);
+  const [data, setData] = useState<DashboardData | null>(null);
+  const [revenue, setRevenue] = useState<RevenuePoint[]>([]);
+  const [todayJobs, setTodayJobs] = useState<TimelineJob[]>([]);
+  const [carers, setCarers] = useState<TimelineCarer[]>([]);
+  const [pendingPools, setPendingPools] = useState<ReviewablePool[]>([]);
+  const [pendingClients, setPendingClients] = useState<ReviewableClient[]>([]);
+  const [sending, setSending] = useState<string | null>(null);
+  const [mapData, setMapData] = useState<{ pools: MapPool[]; carers: MapCarer[] }>({
+    pools: [],
+    carers: [],
+  });
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const fetchAll = async () => {
-      try {
-        const token = localStorage.getItem("auth_token");
-        const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
-        const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
-
-        const [dashRes, trendsRes, recRes] = await Promise.all([
-          fetch(`${API_URL}/dashboard`, { headers, cache: "no-store" as RequestCache }),
-          fetch(`${API_URL}/dashboard/trends`, { headers, cache: "no-store" as RequestCache }),
-          fetch(`${API_URL}/ai/recommendations?context=dashboard`, { headers, cache: "no-store" as RequestCache }),
+  const load = useCallback(async () => {
+    try {
+      const headers = authHeaders();
+      const d = new Date();
+      const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      const [dashRes, trendsRes, jobsRes, carersRes, poolsRes, clientsRes, mapRes] =
+        await Promise.all([
+          fetch(`${API_URL}/dashboard`, { headers, cache: "no-store" }),
+          fetch(`${API_URL}/dashboard/trends`, { headers, cache: "no-store" }),
+          fetch(`${API_URL}/jobs?date=${today}&limit=200`, { headers, cache: "no-store" }),
+          fetch(`${API_URL}/carers?active=true&limit=100`, { headers, cache: "no-store" }),
+          fetch(`${API_URL}/pools?approvalStatus=pending&limit=5`, { headers, cache: "no-store" }),
+          fetch(`${API_URL}/clients?approvalStatus=pending&limit=5`, {
+            headers,
+            cache: "no-store",
+          }),
+          fetch(`${API_URL}/dashboard/map`, { headers, cache: "no-store" }),
         ]);
-
-        const data: DashboardData | null = dashRes.ok ? await dashRes.json() : null;
-        if (data) setDashboardData(data);
-        if (trendsRes.ok) setTrends(await trendsRes.json());
-
-        if (recRes.ok) {
-          const recData = await recRes.json();
-          if (Array.isArray(recData) && recData.length > 0) {
-            setAiRecommendations(recData);
-            setAiRecommendationsSource("api");
-          } else {
-            setAiRecommendations(generateFallbackRecommendations(data));
-            setAiRecommendationsSource("fallback");
-          }
-        } else {
-          setAiRecommendations(generateFallbackRecommendations(data));
-          setAiRecommendationsSource("fallback");
-        }
-      } catch (err) {
-        console.error("Dashboard fetch error:", err);
-        setAiRecommendations(generateFallbackRecommendations(null));
-        setAiRecommendationsSource("fallback");
-      } finally {
-        setLoading(false);
+      if (mapRes.ok) setMapData(await mapRes.json());
+      if (dashRes.ok) setData(await dashRes.json());
+      if (trendsRes.ok) setRevenue((await trendsRes.json()).revenue || []);
+      if (jobsRes.ok) {
+        const j = await jobsRes.json();
+        setTodayJobs(Array.isArray(j) ? j : j.items || []);
       }
-    };
-
-    fetchAll();
+      if (carersRes.ok) {
+        const c = await carersRes.json();
+        setCarers(
+          (Array.isArray(c) ? c : c.items || []).map((x: any) => ({
+            id: x.id,
+            name: x.name || x.user?.name,
+            imageUrl: x.imageUrl,
+          }))
+        );
+      }
+      if (poolsRes.ok) setPendingPools((await poolsRes.json()).items || []);
+      if (clientsRes.ok) {
+        // Clients whose pool is also pending are approved through the pool.
+        const items: ReviewableClient[] = (await clientsRes.json()).items || [];
+        setPendingClients(items);
+      }
+    } catch (err) {
+      console.error("Dashboard fetch error:", err);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  // Derived metrics (support legacy + new structure)
-  const metrics = dashboardData?.metrics || {};
-  const today = metrics.today || { total: metrics.todayJobs || 0, completed: 0, unassigned: 0, enRoute: 0, onSite: 0, atRisk: 0 };
-  const business = metrics.business || { totalClients: metrics.totalClients || 0, totalPools: 0, activePools: metrics.activePools || 0, activeServicePlans: 0, pendingQuotes: metrics.pendingQuotes || 0 };
-  const finance = metrics.finance || { monthlyRevenue: metrics.monthlyRevenue || 0, monthlyInvoiced: 0, monthlyCollected: 0, accountsReceivable: 0 };
-  const operations = metrics.operations || { jobsCompleted30d: 0, onTimePercentage: 0, avgVisitDuration: 0 };
-  const supplies = metrics.supplies || { pendingRequests: 0, urgentRequests: 0 };
-  const recentActivity = (dashboardData?.recentActivity || []).slice(0, 8);
+  useEffect(() => {
+    load();
+  }, [load]);
 
-  const invoiced = finance.monthlyInvoiced;
-  const collected = finance.monthlyCollected;
-  const outstanding = finance.accountsReceivable;
-  const collectionPct = invoiced > 0 ? Math.round((collected / invoiced) * 100) : 0;
+  const m = data?.metrics || {};
+  const today = m.today || {
+    total: 0,
+    completed: 0,
+    unassigned: 0,
+    enRoute: 0,
+    onSite: 0,
+    atRisk: 0,
+  };
+  const business = m.business || {
+    totalClients: 0,
+    totalPools: 0,
+    activePools: 0,
+    activeServicePlans: 0,
+    pendingQuotes: 0,
+  };
+  const finance = m.finance || {
+    monthlyRevenue: 0,
+    monthlyInvoiced: 0,
+    monthlyCollected: 0,
+    accountsReceivable: 0,
+  };
+  const payables = m.payablesDue || {
+    outstandingAmountCents: 0,
+    overdueCount: 0,
+    dueWithin7DaysCount: 0,
+  };
+  const water = m.water || { poolsTested: 0, poolsInRange: 0, outOfRange: [] };
+  const supplies = m.supplies || { pendingRequests: 0, urgentRequests: 0 };
+  const growth = m.growth || { newClientsThisMonth: 0, newClientsLastMonth: 0 };
+  const unpaid = m.unpaidInvoices || [];
+  const overdue = unpaid.filter((i) => i.status === "overdue");
+  const overdueTotal = overdue.reduce((s, i) => s + i.balanceCents, 0);
+  const team = m.team || [];
+  const outOfRange = water.outOfRange || [];
+  const poolIdsPending = new Set(pendingPools.map((p) => p.client?.id).filter(Boolean));
+  const standaloneClients = pendingClients.filter((c) => !poolIdsPending.has(c.id));
 
-  // Stat card definitions — Today keeps live statuses; week/month show schedule health
-  const emptyPeriod: PeriodJobStats = { total: 0, completed: 0, upcoming: 0, unassigned: 0, missed: 0, cancelled: 0 };
-  const week = metrics.week || emptyPeriod;
-  const month = metrics.month || emptyPeriod;
+  // Today numbers from the jobs list itself (always matches the timeline).
+  const activeToday = todayJobs.filter((j) => j.status !== "cancelled");
+  const doneToday = activeToday.filter((j) => j.status === "completed").length;
+  const inProgress = activeToday.filter(
+    (j) => j.status === "en_route" || j.status === "on_site"
+  ).length;
+  const unassignedToday = activeToday.filter((j) => !j.assignedCarerId).length;
 
-  const statCards = useMemo(() => {
-    if (overviewRange === "today") {
-      return [
-        { label: "Total Jobs", value: today.total, sub: "Scheduled today", color: themeHex, icon: Calendar },
-        { label: "Completed", value: today.completed, sub: "Done today", color: "#16a34a", icon: CheckCircle },
-        { label: "Unassigned", value: today.unassigned, sub: "Need assignment", color: "#d97706", icon: AlertCircle },
-        { label: "En Route", value: today.enRoute, sub: "In transit", color: "#2563eb", icon: Navigation },
-        { label: "On Site", value: today.onSite, sub: "In progress", color: "#9333ea", icon: MapPin },
-        { label: "At Risk", value: today.atRisk, sub: "Past window", color: "#dc2626", icon: AlertCircle },
-      ];
+  // Last month from the 12-month series (last entry is this month).
+  const lastMonth =
+    revenue.length >= 2 ? revenue[revenue.length - 2] : { invoiced: 0, collected: 0 };
+  const last6 = revenue.slice(-6);
+
+  const sendReminder = async (inv: UnpaidInvoice) => {
+    const ok = await confirm({
+      title: `Send a reminder to ${inv.client?.name || "the client"}?`,
+      description: `${inv.invoiceNumber} (${money(inv.balanceCents)} outstanding) will be emailed again.`,
+      confirmLabel: "Send reminder",
+    });
+    if (!ok) return;
+    setSending(inv.id);
+    try {
+      const res = await fetch(`${API_URL}/invoices/${inv.id}/send`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({}),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.message || "Couldn't send the reminder");
+      }
+      toast({
+        title: "Reminder sent",
+        description: `${inv.invoiceNumber} to ${inv.client?.name || "client"}`,
+      });
+    } catch (e: any) {
+      toast({ title: "Couldn't send", description: e.message, variant: "destructive" });
+    } finally {
+      setSending(null);
     }
-    const p = overviewRange === "week" ? week : month;
-    const noun = overviewRange === "week" ? "this week" : "this month";
-    return [
-      { label: "Total Jobs", value: p.total, sub: `Scheduled ${noun}`, color: themeHex, icon: Calendar },
-      { label: "Completed", value: p.completed, sub: `Done ${noun}`, color: "#16a34a", icon: CheckCircle },
-      { label: "Upcoming", value: p.upcoming, sub: "Still to come", color: "#2563eb", icon: Clock },
-      { label: "Unassigned", value: p.unassigned, sub: "Need assignment", color: "#d97706", icon: AlertCircle },
-      { label: "Missed", value: p.missed, sub: "Past window", color: "#dc2626", icon: AlertCircle },
-      { label: "Cancelled", value: p.cancelled, sub: `Cancelled ${noun}`, color: "#6b7280", icon: XCircle },
-    ];
-  }, [overviewRange, today, week, month, themeHex]);
-
-  const quickActions = [
-    { label: "Create Job", sub: "Schedule a new service job", href: "/jobs?new=1", icon: Calendar },
-    { label: "Create Service Plan", sub: "Set up recurring maintenance", href: "/plans?new=1", icon: FileText },
-    { label: "Add New Client", sub: "Register a new client", href: "/clients?new=1", icon: UserPlus },
-    { label: "Create Quote", sub: "Generate a new quote", href: "/quotes?new=1", icon: FileText },
-    { label: "Send Newsletter", sub: "Compose and send", href: "/newsletter/compose", icon: Send },
-  ];
-
-  const activityIconMap: Record<string, typeof ClipboardCheck> = {
-    visit: ClipboardCheck,
-    quote: FileText,
-    invoice: Receipt,
-    job: Calendar,
-    client: Users,
   };
 
-  const activityColorMap: Record<string, string> = {
-    visit: "#16a34a",
-    quote: "#2563eb",
-    invoice: "#d97706",
-    job: themeHex,
-    client: "#9333ea",
-  };
+  // One-line summary of the day under the greeting.
+  const summary = loading
+    ? ""
+    : [
+        activeToday.length === 0
+          ? "No visits today"
+          : doneToday === activeToday.length
+            ? `All ${plural(activeToday.length, "visit")} done today`
+            : `${doneToday} of ${plural(activeToday.length, "visit")} done${inProgress ? `, ${inProgress} in progress` : ""}`,
+        unassignedToday > 0 ? `${unassignedToday} without a carer` : null,
+        overdue.length > 0 ? `${money(overdueTotal, 0)} overdue` : null,
+      ]
+        .filter(Boolean)
+        .join(" · ");
 
+  const otherTodos = [
+    today.atRisk > 0 && {
+      key: "late",
+      icon: Clock,
+      text: `${plural(today.atRisk, "visit")} past the window`,
+      href: "/jobs",
+    },
+    supplies.urgentRequests > 0 && {
+      key: "sup",
+      icon: Package,
+      text: plural(supplies.urgentRequests, "urgent supply request"),
+      href: "/supplies",
+    },
+    business.pendingQuotes > 0 && {
+      key: "quotes",
+      icon: FileText,
+      text: `${plural(business.pendingQuotes, "quote")} waiting on the client`,
+      href: "/quotes",
+    },
+    payables.dueWithin7DaysCount > 0 && {
+      key: "due",
+      icon: Wallet,
+      text: `${plural(payables.dueWithin7DaysCount, "invoice")} due this week`,
+      href: "/invoices",
+    },
+  ].filter(Boolean) as Array<{ key: string; icon: any; text: string; href: string }>;
+
+  const todoCount =
+    pendingPools.length +
+    standaloneClients.length +
+    overdue.length +
+    (outOfRange.length > 0 ? 1 : 0) +
+    otherTodos.length;
   const userName = user?.name?.split(" ")[0] || "there";
 
-  // ---------------------------------------------------------------------------
-  // Render
-  // ---------------------------------------------------------------------------
-
   return (
-    <div className="space-y-8 pb-12">
-      {/* ------------------------------------------------------------------ */}
-      {/* Header                                                              */}
-      {/* ------------------------------------------------------------------ */}
-      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+    <div className="space-y-6 pb-12">
+      {/* Header */}
+      <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold text-gray-900 tracking-tight">
+          <p className="text-sm text-gray-500">
+            {new Date().toLocaleDateString("en-US", {
+              weekday: "long",
+              month: "long",
+              day: "numeric",
+            })}
+          </p>
+          <h1 className="text-2xl font-semibold text-gray-900 tracking-tight mt-0.5">
             {getGreeting()}, {userName}
           </h1>
-          <p className="text-sm text-gray-500 mt-1">{formatDate()}</p>
+          {summary ? (
+            <p className="text-sm text-gray-600 mt-1">{summary}</p>
+          ) : (
+            <Skeleton className="h-4 w-64 mt-2" />
+          )}
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          {quickActions.map((qa) => {
-            const Icon = qa.icon;
-            return (
-              <Button
-                key={qa.label}
-                variant="outline"
-                size="sm"
-                className="h-9"
-                onClick={() => router.push(qa.href)}
-              >
-                <Icon className="h-3.5 w-3.5 mr-1.5" />
-                {qa.label}
-              </Button>
-            );
-          })}
+          <Button size="sm" className="h-9" onClick={() => router.push("/jobs?new=1")}>
+            <Calendar className="h-3.5 w-3.5 mr-1.5" />
+            Create Job
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-9"
+            onClick={() => router.push("/clients?new=1")}
+          >
+            <UserPlus className="h-3.5 w-3.5 mr-1.5" />
+            Add Client
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-9"
+            onClick={() => router.push("/quotes?new=1")}
+          >
+            <FileText className="h-3.5 w-3.5 mr-1.5" />
+            Create Quote
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-9"
+            onClick={() => router.push("/plans?new=1")}
+          >
+            <FileText className="h-3.5 w-3.5 mr-1.5" />
+            Service Plan
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-9"
+            onClick={() => router.push("/newsletter/compose")}
+          >
+            <Send className="h-3.5 w-3.5 mr-1.5" />
+            Newsletter
+          </Button>
         </div>
       </div>
 
-      {/* ------------------------------------------------------------------ */}
-      {/* AI card + Operations Overview — side by side like the list pages       */}
-      {/* ------------------------------------------------------------------ */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
-        {/* Operations Overview — one KPI card, hairline-divided cells, period switcher */}
-        <section className="lg:col-span-2 bg-white rounded-xl shadow-sm p-5 sm:p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-sm font-medium text-gray-500 uppercase tracking-wider">
-              Operations Overview
-            </h2>
-            <div className="flex items-center bg-gray-50 rounded-lg p-0.5">
-              {(
-                [
-                  { key: "today", label: "Today" },
-                  { key: "week", label: "This Week" },
-                  { key: "month", label: "This Month" },
-                ] as const
-              ).map((r) => (
-                <button
-                  key={r.key}
-                  onClick={() => setOverviewRange(r.key)}
-                  className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors ${
-                    overviewRange === r.key
-                      ? "bg-white text-gray-900 shadow-sm"
-                      : "text-gray-400 hover:text-gray-600"
-                  }`}
-                >
-                  {r.label}
-                </button>
-              ))}
-            </div>
-          </div>
-          {loading ? (
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-              {Array.from({ length: 6 }).map((_, i) => (
-                <div key={i} className="h-16 bg-gray-50 rounded-lg animate-pulse" />
-              ))}
-            </div>
-          ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-px bg-gray-100 rounded-lg overflow-hidden">
-              {statCards.map((c) => {
-                const Icon = c.icon;
-                return (
-                  <div key={c.label} title={c.sub} className="bg-white px-4 py-4">
-                    <div className="flex items-center gap-1.5 mb-1.5">
-                      <Icon className="h-3.5 w-3.5" style={{ color: c.color }} />
-                      <span className="text-[11px] font-medium text-gray-500 uppercase tracking-wide truncate">{c.label}</span>
-                    </div>
-                    <div className="text-2xl font-bold text-gray-900 tabular-nums leading-none">{c.value.toLocaleString()}</div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </section>
+      {/* =============================== NUMBERS =============================== */}
+      <section className="bg-white rounded-xl shadow-sm grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-px bg-gray-100 overflow-hidden">
+        {[
+          {
+            label: "Collected",
+            value: money(finance.monthlyCollected, 0),
+            foot: <Delta now={finance.monthlyCollected} prev={lastMonth.collected} money />,
+            spark: last6.map((r) => r.collected),
+            href: "/invoices",
+          },
+          {
+            label: "Invoiced",
+            value: money(finance.monthlyInvoiced, 0),
+            foot: <Delta now={finance.monthlyInvoiced} prev={lastMonth.invoiced} money />,
+            spark: last6.map((r) => r.invoiced),
+            href: "/invoices",
+          },
+          {
+            label: "Owed to you",
+            value: money(finance.accountsReceivable, 0),
+            foot:
+              overdueTotal > 0 ? (
+                <span className="text-red-600">{money(overdueTotal, 0)} overdue</span>
+              ) : (
+                <span className="text-gray-500">Nothing overdue</span>
+              ),
+            href: "/invoices",
+          },
+          {
+            label: "Clients",
+            value: String(business.totalClients),
+            foot: (
+              <span className="text-gray-500">
+                {growth.newClientsThisMonth > 0 ? (
+                  <span className="text-green-600 font-medium">
+                    +{growth.newClientsThisMonth} new
+                  </span>
+                ) : null}
+                {growth.newClientsThisMonth > 0 ? " · " : ""}
+                {`${business.activeServicePlans} on a plan`}
+              </span>
+            ),
+            href: "/clients",
+          },
+          {
+            label: "Pools",
+            value: String(business.totalPools),
+            foot: <span className="text-gray-500">{business.activePools} serviced regularly</span>,
+            href: "/pools",
+          },
+          {
+            label: "Water in range",
+            value: water.poolsTested
+              ? `${Math.round((water.poolsInRange / water.poolsTested) * 100)}%`
+              : "—",
+            foot: water.poolsTested ? (
+              <span
+                className={
+                  water.poolsInRange < water.poolsTested ? "text-amber-600" : "text-gray-500"
+                }
+              >
+                {water.poolsInRange} of {plural(water.poolsTested, "tested pool")}
+              </span>
+            ) : (
+              <span className="text-gray-500">No readings in 30 days</span>
+            ),
+            href: "/visits",
+          },
+        ].map((k: any) => (
+          <button
+            key={k.label}
+            onClick={() => router.push(k.href)}
+            className="relative text-left bg-white p-5 hover:bg-gray-50 transition-colors"
+          >
+            <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">{k.label}</p>
+            {loading ? (
+              <Skeleton className="h-9 w-28 mt-2" />
+            ) : (
+              <p className="text-2xl xl:text-[26px] font-semibold text-gray-900 tracking-tight mt-2">
+                {k.value}
+              </p>
+            )}
+            {k.spark && !loading && <Spark values={k.spark} color={themeHex} />}
+            <p className="text-xs mt-1.5 leading-snug">{loading ? "" : k.foot}</p>
+          </button>
+        ))}
+      </section>
 
-        <DashboardAICard
-          title="AI Suggestions"
-          subtitle="Your intelligent assistant"
-          recommendations={aiRecommendations}
-          onRecommendationComplete={(id) => console.log("Recommendation completed:", id)}
-          compact
-          maxItems={5}
-          recommendationsSource={aiRecommendationsSource}
-        />
-      </div>
-
-      {/* ------------------------------------------------------------------ */}
-      {/* Two-column body                                                     */}
-      {/* ------------------------------------------------------------------ */}
-      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-        {/* ============ Left column (3/5 = 60%) ============ */}
-        <div className="lg:col-span-3">
-          {/* Revenue Overview */}
-          {loading ? (
-            <CardSkeleton lines={3} />
-          ) : (
-            <div className="bg-white rounded-xl shadow-sm p-6 h-full">
-              <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wider mb-4">
-                Revenue Overview
-              </h3>
-
-              <div className="mb-5">
-                <span className="text-3xl font-bold text-gray-900 tabular-nums">
-                  {currency(finance.monthlyRevenue)}
-                </span>
-                <span className="text-sm text-gray-400 ml-2">this month</span>
-              </div>
-
-              {/* Three sub-stats — same hairline-cell language as Operations Overview */}
-              <div className="grid grid-cols-3 gap-px bg-gray-100 rounded-lg overflow-hidden mb-5">
-                <div className="bg-white px-4 py-3">
-                  <p className="text-[11px] font-medium text-gray-500 uppercase tracking-wide mb-1">Invoiced</p>
-                  <p className="text-lg font-semibold text-gray-900 tabular-nums leading-none">{currency(invoiced)}</p>
+      {/* ================================ TODAY ================================ */}
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 items-stretch">
+        <section className="xl:col-span-2 bg-white rounded-xl shadow-sm overflow-hidden h-[460px] sm:h-[540px]">
+          <LiveMap
+            pools={mapData.pools}
+            carers={mapData.carers}
+            themeHex={themeHex}
+            overlay={
+              <div className="rounded-xl bg-white/95 backdrop-blur shadow-md px-4 py-3 w-60">
+                <p className="text-[11px] font-medium text-gray-500 uppercase tracking-wider">
+                  Today in the field
+                </p>
+                <div className="flex items-baseline gap-1.5 mt-1">
+                  <span className="text-3xl font-semibold text-gray-900 tracking-tight">
+                    {doneToday}
+                  </span>
+                  <span className="text-sm text-gray-500">
+                    of {plural(activeToday.length, "visit")} done
+                  </span>
                 </div>
-                <div className="bg-white px-4 py-3">
-                  <p className="text-[11px] font-medium text-gray-500 uppercase tracking-wide mb-1">Collected</p>
-                  <p className="text-lg font-semibold text-green-600 tabular-nums leading-none">{currency(collected)}</p>
-                </div>
-                <div className="bg-white px-4 py-3">
-                  <p className="text-[11px] font-medium text-gray-500 uppercase tracking-wide mb-1">Outstanding</p>
-                  <p className="text-lg font-semibold text-amber-600 tabular-nums leading-none">{currency(outstanding)}</p>
-                </div>
-              </div>
-
-              {/* Collection bar */}
-              <div>
-                <div className="flex items-center justify-between text-xs text-gray-500 mb-1.5">
-                  <span>Collection rate</span>
-                  <span className="font-medium">{collectionPct}%</span>
-                </div>
-                <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                <div className="h-1.5 rounded-full bg-gray-100 overflow-hidden mt-2">
                   <div
                     className="h-full rounded-full transition-all"
                     style={{
-                      width: `${collectionPct}%`,
+                      width: `${activeToday.length ? (doneToday / activeToday.length) * 100 : 0}%`,
                       backgroundColor: themeHex,
                     }}
                   />
                 </div>
-              </div>
-
-              {/* 12-month trend */}
-              {trends && (
-                <div className="mt-6 pt-5 border-t border-gray-100">
-                  <div className="flex items-center justify-between mb-1">
-                    <h4 className="text-[11px] font-medium text-gray-400 uppercase tracking-wider">
-                      Last 12 months
-                    </h4>
-                  </div>
-                  <RevenueTrendChart data={trends.revenue} />
+                <div className="grid grid-cols-3 gap-2 mt-3 text-center">
+                  {[
+                    { n: inProgress, l: "Underway" },
+                    { n: mapData.carers.filter((c) => c.live).length, l: "Carers live" },
+                    {
+                      n: mapData.pools.filter((p) => p.water === "attention").length,
+                      l: "Water alerts",
+                      warn: true,
+                    },
+                  ].map((x) => (
+                    <div key={x.l}>
+                      <p
+                        className={`text-base font-semibold ${x.warn && x.n > 0 ? "text-amber-600" : "text-gray-900"}`}
+                      >
+                        {x.n}
+                      </p>
+                      <p className="text-[10px] text-gray-500 leading-tight">{x.l}</p>
+                    </div>
+                  ))}
                 </div>
-              )}
-
-            </div>
-          )}
-
-        </div>
-
-        {/* ============ Right column (2/5 = 40%) ============ */}
-        <div className="lg:col-span-2 flex flex-col gap-6">
-          {/* Business Snapshot */}
-          {loading ? (
-            <CardSkeleton lines={4} />
-          ) : (
-            <div className="bg-white rounded-xl shadow-sm p-6">
-              <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wider mb-2">
-                Business Snapshot
-              </h3>
-              <div className="divide-y divide-gray-50">
-                <SnapshotRow
-                  icon={Users}
-                  label="Active Clients"
-                  value={business.totalClients.toLocaleString()}
-                  color="#6b7280"
-                />
-                <SnapshotRow
-                  icon={Droplet}
-                  label="Total Pools"
-                  value={business.totalPools.toLocaleString()}
-                  color="#2563eb"
-                  onClick={() => router.push("/pools")}
-                />
-                <SnapshotRow
-                  icon={ClipboardList}
-                  label="Active Service Plans"
-                  value={business.activeServicePlans.toLocaleString()}
-                  sub={business.activeServicePlans === 0 && business.totalPools > 0
-                    ? `${business.totalPools} pool${business.totalPools === 1 ? "" : "s"} not yet on a plan`
-                    : undefined}
-                  color="#7c3aed"
-                  onClick={() => router.push("/plans")}
-                />
-                <SnapshotRow
-                  icon={FileText}
-                  label="Pending Quotes"
-                  value={business.pendingQuotes.toLocaleString()}
-                  color="#d97706"
-                  onClick={() => router.push("/quotes")}
-                />
-                <SnapshotRow
-                  icon={TrendingUp}
-                  label="On-Time Rate"
-                  value={`${operations.onTimePercentage}%`}
-                  color="#16a34a"
-                />
-                {supplies.pendingRequests > 0 && (
-                  <SnapshotRow
-                    icon={Package}
-                    label="Supply Requests"
-                    value={supplies.pendingRequests.toLocaleString()}
-                    color="#dc2626"
-                  />
+                {unassignedToday > 0 && (
+                  <p className="mt-3 text-xs font-medium text-red-600">
+                    {plural(unassignedToday, "visit")} without a carer
+                  </p>
                 )}
               </div>
-            </div>
-          )}
+            }
+          />
+        </section>
 
-          {/* Plan Mix — stretches so both columns end together */}
-          {loading ? (
-            <CardSkeleton lines={4} />
-          ) : (
-            trends && (
-              <div className="bg-white rounded-xl shadow-sm p-6 flex-1 flex flex-col">
-                <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wider mb-1">
-                  Plan Mix
-                </h3>
-                <p className="text-xs text-gray-400 mb-3">Active service plans by package</p>
-                <div className="flex-1 flex items-center min-w-0">
-                  <PlanMixDonut data={trends.planMix} />
-                </div>
+        <div className="flex flex-col xl:h-[540px]">
+          <Section
+            title="To do"
+            className="flex-1 min-h-0 overflow-y-auto"
+            action={
+              todoCount > 0 ? (
+                <span className="text-xs font-medium text-gray-500">{todoCount}</span>
+              ) : undefined
+            }
+          >
+            {loading ? (
+              <Skeleton className="h-40" />
+            ) : todoCount === 0 ? (
+              <div className="flex items-center gap-3 py-6">
+                <CheckCircle className="h-5 w-5 text-green-600" />
+                <p className="text-sm text-gray-600">All clear. Nothing needs you right now.</p>
               </div>
-            )
-          )}
+            ) : (
+              <div className="space-y-5">
+                {(pendingPools.length > 0 || standaloneClients.length > 0) && (
+                  <div>
+                    <p className="text-xs font-medium text-gray-500 mb-1">Approve</p>
+                    <ul className="divide-y divide-gray-100">
+                      {pendingPools.map((p) => (
+                        <li key={p.id} className="flex items-center gap-3 py-2.5">
+                          <button
+                            className="min-w-0 flex-1 text-left"
+                            onClick={() => router.push(`/pools/${p.id}`)}
+                          >
+                            <p className="text-sm text-gray-900 truncate hover:underline">
+                              {p.name || p.address || "Unnamed pool"}
+                            </p>
+                            <p className="text-xs text-gray-500 truncate">
+                              Pool · {p.client?.name}
+                              {p.client?.approvalStatus === "pending" ? " (new client)" : ""} · by{" "}
+                              {p.submittedBy?.name || "a carer"}
+                            </p>
+                          </button>
+                          <ReviewActions kind="pool" record={p} onReviewed={load} />
+                        </li>
+                      ))}
+                      {standaloneClients.map((c) => (
+                        <li key={c.id} className="flex items-center gap-3 py-2.5">
+                          <button
+                            className="min-w-0 flex-1 text-left"
+                            onClick={() => router.push(`/clients/${c.id}`)}
+                          >
+                            <p className="text-sm text-gray-900 truncate hover:underline">
+                              {c.name || "Unnamed client"}
+                            </p>
+                            <p className="text-xs text-gray-500 truncate">
+                              Client · by {c.submittedBy?.name || "a carer"}
+                            </p>
+                          </button>
+                          <ReviewActions kind="client" record={c} onReviewed={load} />
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {overdue.length > 0 && (
+                  <div>
+                    <p className="text-xs font-medium text-gray-500 mb-1">Chase payment</p>
+                    <ul className="divide-y divide-gray-100">
+                      {overdue.map((inv) => (
+                        <li key={inv.id} className="flex items-center gap-3 py-2.5">
+                          <button
+                            className="min-w-0 flex-1 text-left"
+                            onClick={() => router.push(`/invoices/${inv.id}`)}
+                          >
+                            <p className="text-sm text-gray-900 truncate hover:underline">
+                              {inv.client?.name || "Client"} · {money(inv.balanceCents)}
+                            </p>
+                            <p className="text-xs text-red-600">
+                              {inv.invoiceNumber} · {plural(daysLate(inv.dueDate), "day")} late
+                            </p>
+                          </button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={sending === inv.id}
+                            onClick={() => sendReminder(inv)}
+                          >
+                            <Send className="h-3.5 w-3.5 mr-1" />
+                            Remind
+                          </Button>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {(outOfRange.length > 0 || otherTodos.length > 0) && (
+                  <div>
+                    <p className="text-xs font-medium text-gray-500 mb-1">Check</p>
+                    <ul className="divide-y divide-gray-100">
+                      {outOfRange.length > 0 && (
+                        <li>
+                          <button
+                            onClick={() =>
+                              document
+                                .getElementById("water")
+                                ?.scrollIntoView({ behavior: "smooth" })
+                            }
+                            className="group w-full flex items-center gap-3 py-2.5 text-left text-sm text-gray-700"
+                          >
+                            <FlaskConical className="h-4 w-4 text-amber-500 flex-shrink-0" />
+                            <span className="flex-1">
+                              {plural(outOfRange.length, "pool")} with water out of range
+                            </span>
+                            <ArrowRight className="h-3.5 w-3.5 text-gray-300 group-hover:text-gray-500" />
+                          </button>
+                        </li>
+                      )}
+                      {otherTodos.map((t) => (
+                        <li key={t.key}>
+                          <button
+                            onClick={() => router.push(t.href)}
+                            className="group w-full flex items-center gap-3 py-2.5 text-left text-sm text-gray-700"
+                          >
+                            <t.icon className="h-4 w-4 text-gray-400 flex-shrink-0" />
+                            <span className="flex-1">{t.text}</span>
+                            <ArrowRight className="h-3.5 w-3.5 text-gray-300 group-hover:text-gray-500" />
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
+          </Section>
         </div>
       </div>
 
-      {/* ------------------------------------------------------------------ */}
-      {/* Recent Activity — full width                                        */}
-      {/* ------------------------------------------------------------------ */}
-      <div>
-          {loading ? (
-            <CardSkeleton lines={5} />
-          ) : (
-            <div className="bg-white rounded-xl shadow-sm p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wider">
-                  Recent Activity
-                </h3>
-                <button
-                  onClick={() => router.push("/activity")}
-                  className="text-xs font-medium flex items-center gap-1 hover:underline"
-                  style={{ color: themeHex }}
-                >
-                  View all <ArrowRight className="h-3 w-3" />
-                </button>
-              </div>
+      {/* =============================== BUSINESS =============================== */}
+      <BandTitle
+        aside={
+          <span className="text-sm text-gray-500">
+            {new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" })}
+          </span>
+        }
+      >
+        Money, team & water
+      </BandTitle>
 
-              {recentActivity.length === 0 ? (
-                <div className="text-center py-10">
-                  <FileText className="h-8 w-8 text-gray-300 mx-auto mb-3" />
-                  <p className="text-sm font-medium text-gray-900 mb-1">No activity yet</p>
-                  <p className="text-xs text-gray-500">Start by creating your first job or plan</p>
-                </div>
-              ) : (
-                <div className="divide-y divide-gray-50">
-                  {recentActivity.map((a) => {
-                    const Icon = activityIconMap[a.type] || FileText;
-                    const iconColor = activityColorMap[a.type] || themeHex;
-                    return (
-                      <div
-                        key={`${a.type}-${a.id}`}
-                        className="flex items-start gap-2.5 py-2.5 px-1 rounded-lg hover:bg-gray-50 transition-colors cursor-pointer"
-                      >
-                        <Icon className="h-4 w-4 shrink-0 mt-0.5" style={{ color: iconColor }} />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-gray-900 truncate">{a.title}</p>
-                          <p className="text-xs text-gray-500 truncate">{a.description}</p>
-                        </div>
-                        <span className="text-[11px] text-gray-400 whitespace-nowrap shrink-0">
-                          {timeAgo(a.timestamp)}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 items-stretch">
+        <Section
+          title="Revenue · last 6 months"
+          className="xl:col-span-2"
+          action={<LinkButton href="/invoices">Invoices</LinkButton>}
+        >
+          {loading ? <Skeleton className="h-56" /> : <RevenueTrendChart data={last6} />}
+        </Section>
+
+        <Section title="Owed to you" action={<LinkButton href="/invoices">View all</LinkButton>}>
+          {loading ? (
+            <Skeleton className="h-40" />
+          ) : unpaid.length === 0 ? (
+            <div className="flex items-center gap-3 py-6">
+              <CheckCircle className="h-5 w-5 text-green-600" />
+              <p className="text-sm text-gray-600">Every invoice is paid.</p>
             </div>
+          ) : (
+            <>
+              <ul className="divide-y divide-gray-100 -my-2">
+                {unpaid.map((inv) => {
+                  const late = inv.status === "overdue" ? daysLate(inv.dueDate) : 0;
+                  return (
+                    <li key={inv.id}>
+                      <button
+                        onClick={() => router.push(`/invoices/${inv.id}`)}
+                        className="w-full flex items-center gap-3 py-2.5 text-left hover:bg-gray-50/60 -mx-2 px-2 rounded-lg transition-colors"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-medium text-gray-900 truncate">
+                            {inv.client?.name || "Unknown client"}
+                          </p>
+                          <p className={`text-xs ${late > 0 ? "text-red-600" : "text-gray-500"}`}>
+                            {inv.invoiceNumber} ·{" "}
+                            {late > 0
+                              ? `${plural(late, "day")} late`
+                              : inv.dueDate
+                                ? `due ${fmtShortDate(inv.dueDate)}`
+                                : "no due date"}
+                          </p>
+                        </div>
+                        <span className="text-sm font-semibold text-gray-900 whitespace-nowrap">
+                          {money(inv.balanceCents)}
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+              <div className="mt-4 pt-3 border-t border-gray-100 flex justify-between text-sm">
+                <span className="text-gray-500">Total outstanding</span>
+                <span className="font-semibold text-gray-900">
+                  {money(finance.accountsReceivable)}
+                </span>
+              </div>
+            </>
           )}
+        </Section>
       </div>
 
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 items-stretch">
+        <Section
+          title="Team · last 30 days"
+          className="xl:col-span-2"
+          action={<LinkButton href="/carers">Carers</LinkButton>}
+        >
+          {loading ? (
+            <Skeleton className="h-32" />
+          ) : team.length === 0 ? (
+            <p className="text-sm text-gray-500 py-4">No active carers yet.</p>
+          ) : (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-xs text-gray-500">
+                  <th className="font-medium pb-2">Carer</th>
+                  <th className="font-medium pb-2 text-right">Visits</th>
+                  <th className="font-medium pb-2 text-right">On time</th>
+                  <th className="font-medium pb-2 text-right">Client rating</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {team.map((c) => (
+                  <tr
+                    key={c.id}
+                    onClick={() => router.push(`/carers/${c.id}`)}
+                    className="cursor-pointer hover:bg-gray-50/60"
+                  >
+                    <td className="py-2.5">
+                      <span className="flex items-center gap-2.5">
+                        {c.imageUrl ? (
+                          <img
+                            src={c.imageUrl}
+                            alt=""
+                            className="h-7 w-7 rounded-full object-cover"
+                          />
+                        ) : (
+                          <span className="h-7 w-7 rounded-full bg-gray-100 flex items-center justify-center text-xs font-medium text-gray-500">
+                            {(c.name || "?").charAt(0)}
+                          </span>
+                        )}
+                        <span className="text-gray-900">{c.name || "Carer"}</span>
+                      </span>
+                    </td>
+                    <td className="py-2.5 text-right text-gray-900 font-medium">{c.visits30d}</td>
+                    <td
+                      className={`py-2.5 text-right ${c.onTimePct != null && c.onTimePct < 80 ? "text-amber-600" : "text-gray-600"}`}
+                    >
+                      {c.onTimePct != null ? `${c.onTimePct}%` : "—"}
+                    </td>
+                    <td className="py-2.5 text-right text-gray-600">
+                      {c.rating != null ? (
+                        <span className="inline-flex items-center gap-1">
+                          <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400" />
+                          {c.rating.toFixed(1)}
+                          <span className="text-xs text-gray-400">({c.ratingCount})</span>
+                        </span>
+                      ) : (
+                        <span className="text-gray-400">No ratings</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </Section>
+
+        <div id="water" className="h-full">
+          <Section
+            title="Water health · 30 days"
+            action={<LinkButton href="/visits">Visits</LinkButton>}
+          >
+            {loading ? (
+              <Skeleton className="h-32" />
+            ) : water.poolsTested === 0 ? (
+              <p className="text-sm text-gray-500 py-4">No water readings in the last 30 days.</p>
+            ) : (
+              <>
+                <div className="flex items-end gap-3 mb-3">
+                  <p className="text-3xl font-semibold text-gray-900 tracking-tight">
+                    {water.poolsInRange}
+                    <span className="text-lg text-gray-400 font-normal">
+                      {" "}
+                      / {water.poolsTested}
+                    </span>
+                  </p>
+                  <p className="text-xs text-gray-500 pb-1.5">
+                    pools in range on their latest reading
+                  </p>
+                </div>
+                <div className="h-2 rounded-full bg-amber-100 overflow-hidden mb-4">
+                  <div
+                    className="h-full bg-green-500"
+                    style={{ width: `${(water.poolsInRange / water.poolsTested) * 100}%` }}
+                  />
+                </div>
+                {outOfRange.length === 0 ? (
+                  <p className="text-sm text-gray-600 flex items-center gap-2">
+                    <CheckCircle className="h-4 w-4 text-green-600" /> All in range (pH 7.2–7.8, Cl
+                    1–3 ppm)
+                  </p>
+                ) : (
+                  <ul className="divide-y divide-gray-100">
+                    {outOfRange.map((p) => (
+                      <li key={p.poolId}>
+                        <button
+                          onClick={() =>
+                            router.push(p.visitId ? `/visits/${p.visitId}` : `/pools/${p.poolId}`)
+                          }
+                          className="w-full flex items-center gap-3 py-2 text-left"
+                        >
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm text-gray-900 truncate">
+                              {p.poolName || "Unnamed pool"}
+                            </p>
+                            <p className="text-xs text-gray-500 truncate">
+                              {p.clientName} · {fmtShortDate(p.measuredAt)}
+                            </p>
+                          </div>
+                          <span className="text-xs text-right whitespace-nowrap">
+                            {p.ph != null && (
+                              <span
+                                className={
+                                  phOk(p.ph) ? "text-gray-500" : "text-amber-600 font-medium"
+                                }
+                              >
+                                pH {p.ph.toFixed(1)}
+                              </span>
+                            )}
+                            {p.ph != null && p.cl != null && " · "}
+                            {p.cl != null && (
+                              <span
+                                className={
+                                  clOk(p.cl) ? "text-gray-500" : "text-amber-600 font-medium"
+                                }
+                              >
+                                Cl {p.cl.toFixed(1)}
+                              </span>
+                            )}
+                          </span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </>
+            )}
+          </Section>
+        </div>
+      </div>
     </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Sub-components
-// ---------------------------------------------------------------------------
-
-function SnapshotRow({
-  icon: Icon,
-  label,
-  value,
-  color,
-  sub,
-  onClick,
-}: {
-  icon: typeof Users;
-  label: string;
-  value: string;
-  color: string;
-  sub?: string;
-  onClick?: () => void;
-}) {
-  const Wrapper = onClick ? "button" : "div";
-  return (
-    <Wrapper
-      className={`flex items-center gap-2.5 py-2 px-1 rounded-lg ${
-        onClick ? "hover:bg-gray-50 cursor-pointer w-full text-left" : ""
-      }`}
-      {...(onClick ? { onClick } : {})}
-    >
-      <Icon className="h-4 w-4 shrink-0" style={{ color }} />
-      <span className="flex-1 min-w-0">
-        <span className="block text-sm text-gray-600 truncate">{label}</span>
-        {sub && <span className="block text-xs text-amber-600 truncate">{sub}</span>}
-      </span>
-      <span className="text-sm font-semibold text-gray-900 tabular-nums">{value}</span>
-    </Wrapper>
   );
 }

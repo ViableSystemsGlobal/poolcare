@@ -257,7 +257,7 @@ export default function IssueDetailPage() {
         )}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 even-cols">
         {/* Left Column - Issue Info */}
         <div className="lg:col-span-1 space-y-6">
           {/* Issue Information */}
@@ -376,7 +376,7 @@ export default function IssueDetailPage() {
         </div>
 
         {/* Right Column - Quote, Photos */}
-        <div className="lg:col-span-2 space-y-6 max-h-[calc(100vh-200px)] overflow-y-auto pr-2">
+        <div className="lg:col-span-2 space-y-6">
           {/* Quote */}
           {issue.quote ? (
             <Card>

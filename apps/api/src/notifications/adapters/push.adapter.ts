@@ -116,13 +116,16 @@ export class PushAdapter {
             `Failed to send push notification to token ${messages[i].token}: ${errorMsg}`
           );
 
-          // Handle invalid device tokens (remove from database)
-          if (
-            errorMsg.includes("DeviceNotRegistered") ||
-            errorMsg.includes("InvalidCredentials") ||
-            errorMsg.includes("InvalidToken")
-          ) {
+          // Only remove tokens that are dead for this device. InvalidCredentials /
+          // MismatchSenderId mean the app's FCM/APNs setup is wrong, not the
+          // device — deleting the token then would wipe every carer's
+          // registration until they reopen the app after the setup is fixed.
+          if (errorMsg.includes("DeviceNotRegistered") || errorMsg.includes("InvalidToken")) {
             await this.handleInvalidToken(messages[i].token);
+          } else if (errorMsg.includes("InvalidCredentials") || errorMsg.includes("MismatchSenderId")) {
+            this.logger.error(
+              "Push credentials problem: the app's FCM (Android) or APNs (iOS) credentials aren't set up in EAS for this project. Tokens kept."
+            );
           }
 
           messageIds.push(`failed_${messages[i].token}`);

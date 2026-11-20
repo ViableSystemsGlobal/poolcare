@@ -391,6 +391,57 @@ export class CarersService {
     return updated;
   }
 
+  /**
+   * Send a test push to every carer-app device registered for this user and
+   * return Expo's per-device answer, so setup problems (missing FCM key,
+   * stale token) show up on the phone instead of only in server logs.
+   */
+  async testMyPush(orgId: string, userId: string) {
+    const carer = await prisma.carer.findFirst({ where: { orgId, userId }, select: { id: true, name: true } });
+    if (!carer) throw new NotFoundException("Carer profile not found");
+    const tokens = await prisma.deviceToken.findMany({
+      where: { orgId, carerId: carer.id, platform: { in: ["ios", "android"] } },
+      select: { token: true, platform: true, createdAt: true },
+    });
+    if (tokens.length === 0) {
+      return { ok: false, devices: 0, message: "This phone isn't registered for notifications yet." };
+    }
+    const res = await fetch("https://exp.host/--/api/v2/push/send", {
+      method: "POST",
+      headers: { Accept: "application/json", "Content-Type": "application/json" },
+      body: JSON.stringify(
+        tokens.map((t) => ({
+          to: t.token,
+          sound: "default",
+          title: "Test notification",
+          body: `Hi ${carer.name?.split(" ")[0] || "there"}, notifications are working.`,
+          data: { type: "test" },
+          priority: "high",
+          channelId: "default",
+        }))
+      ),
+    });
+    const body = (await res.json().catch(() => ({}))) as any;
+    const results = (body.data || []).map((r: any, i: number) => ({
+      platform: tokens[i]?.platform,
+      registeredAt: tokens[i]?.createdAt,
+      status: r.status,
+      error: r.details?.error || (r.status === "error" ? r.message : undefined),
+    }));
+    const ok = results.length > 0 && results.some((r: any) => r.status === "ok");
+    const credsProblem = results.find((r: any) => r.error === "InvalidCredentials");
+    return {
+      ok,
+      devices: tokens.length,
+      results,
+      message: ok
+        ? "Sent. It should arrive within a few seconds."
+        : credsProblem
+        ? "Expo has no valid Firebase (FCM V1) key for this app. Upload it on expo.dev → Credentials."
+        : body.errors?.[0]?.message || results[0]?.error || "Expo didn't accept the notification.",
+    };
+  }
+
   async registerMyDeviceToken(
     orgId: string,
     userId: string,

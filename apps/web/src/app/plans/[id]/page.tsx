@@ -579,7 +579,7 @@ export default function ServicePlanDetailPage() {
         </Card>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 even-cols">
         {/* Left Column - Plan Info */}
         <div className="lg:col-span-1 space-y-6">
           {/* Missed visits — 3+ in 30 days is a repeated service failure (contract cl. 19.3) */}
@@ -1076,7 +1076,7 @@ export default function ServicePlanDetailPage() {
         </div>
 
         {/* Right Column - Jobs */}
-        <div className="lg:col-span-2 space-y-6 max-h-[calc(100vh-200px)] overflow-y-auto pr-2">
+        <div className="lg:col-span-2 space-y-6">
           {/* View Mode Toggle */}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">

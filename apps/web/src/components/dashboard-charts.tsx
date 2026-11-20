@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import {
-  ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
+  ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
   PieChart, Pie, Cell,
 } from "recharts";
 
@@ -52,7 +52,7 @@ function RevenueTooltip({ active, payload, label }: any) {
       <p className="font-medium text-gray-900 mb-1">{label}</p>
       {payload.map((s: any) => (
         <p key={s.dataKey} className="flex items-center gap-1.5 text-gray-600">
-          <span className="h-2 w-2 rounded-full" style={{ backgroundColor: s.stroke }} />
+          <span className="h-2 w-2 rounded-full" style={{ backgroundColor: s.dataKey === "invoiced" ? INVOICED : COLLECTED }} />
           {s.dataKey === "invoiced" ? "Invoiced" : "Collected"}
           <span className="ml-auto pl-3 font-semibold text-gray-900">{fmtCedi(s.value)}</span>
         </p>
@@ -76,25 +76,41 @@ export function RevenueTrendChart({ data }: { data: RevenuePoint[] }) {
         <LegendChip color={INVOICED} label="Invoiced" />
         <LegendChip color={COLLECTED} label="Collected" />
       </div>
-      <div className="h-56">
+      <div className="h-64">
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+          <AreaChart data={data} margin={{ top: 8, right: 12, bottom: 0, left: 0 }}>
+            <defs>
+              <linearGradient id="fillInvoiced" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={INVOICED} stopOpacity={0.18} />
+                <stop offset="100%" stopColor={INVOICED} stopOpacity={0} />
+              </linearGradient>
+              <linearGradient id="fillCollected" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={COLLECTED} stopOpacity={0.22} />
+                <stop offset="100%" stopColor={COLLECTED} stopOpacity={0} />
+              </linearGradient>
+            </defs>
             <CartesianGrid vertical={false} stroke="#f3f4f6" />
             <XAxis
               dataKey="label"
               tickLine={false} axisLine={false}
               tick={{ fontSize: 11, fill: "#9ca3af" }}
-              interval="preserveStartEnd"
+              tickMargin={8}
             />
             <YAxis
               tickFormatter={fmtCompact}
               tickLine={false} axisLine={false} width={48}
               tick={{ fontSize: 11, fill: "#9ca3af" }}
             />
-            <Tooltip content={<RevenueTooltip />} cursor={{ stroke: "#e5e7eb", strokeWidth: 1 }} />
-            <Line type="monotone" dataKey="invoiced" stroke={INVOICED} strokeWidth={2} dot={false} activeDot={{ r: 4, strokeWidth: 2, stroke: "#fff" }} />
-            <Line type="monotone" dataKey="collected" stroke={COLLECTED} strokeWidth={2} dot={false} activeDot={{ r: 4, strokeWidth: 2, stroke: "#fff" }} />
-          </LineChart>
+            <Tooltip content={<RevenueTooltip />} cursor={{ stroke: "#d1d5db", strokeDasharray: "4 4" }} />
+            <Area
+              type="monotone" dataKey="invoiced" stroke={INVOICED} strokeWidth={2.5} fill="url(#fillInvoiced)"
+              dot={false} activeDot={{ r: 4.5, strokeWidth: 2, stroke: "#fff" }}
+            />
+            <Area
+              type="monotone" dataKey="collected" stroke={COLLECTED} strokeWidth={2.5} fill="url(#fillCollected)"
+              dot={false} activeDot={{ r: 4.5, strokeWidth: 2, stroke: "#fff" }}
+            />
+          </AreaChart>
         </ResponsiveContainer>
       </div>
     </div>

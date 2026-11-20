@@ -6,6 +6,7 @@ import { Transporter } from "nodemailer";
 import * as crypto from 'crypto';
 import { resolveEncryptionKey } from '../../utils/encryption-key.util';
 import { EmailAttachment } from "../dto/send-notification.dto";
+import { brandedHtmlFromText } from "../../email/email-template.util";
 
 const ENCRYPTION_KEY = resolveEncryptionKey();
 
@@ -188,13 +189,23 @@ export class EmailAdapter {
       );
     }
 
+    // Messages sent as plain text still go out in the branded template; sending
+    // the raw text as HTML collapsed its line breaks and dropped the branding.
+    if (!html) {
+      try {
+        html = await brandedHtmlFromText(text, orgId);
+      } catch (e: any) {
+        this.logger.warn(`Branded wrap failed, sending plain text: ${e?.message ?? e}`);
+      }
+    }
+
     try {
       const info = await config.transporter.sendMail({
         from: `${config.fromName} <${config.from}>`,
         to,
         subject,
         text,
-        html: html || text,
+        ...(html ? { html } : {}),
         ...(attachments?.length ? { attachments } : {}),
       });
 

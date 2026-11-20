@@ -279,9 +279,13 @@ export class DashboardService {
         },
       },
       select: {
+        id: true,
+        invoiceNumber: true,
+        status: true,
         totalCents: true,
         paidCents: true,
         dueDate: true,
+        client: { select: { id: true, name: true } },
       },
     });
 
@@ -354,8 +358,133 @@ export class DashboardService {
       },
     });
 
+    // Water health: each pool's latest pH + free-chlorine reading in the last
+    // 30 days, scored against the ideal ranges (pH 7.2–7.8, Cl 1–3 ppm).
+    const recentReadings = await prisma.reading.findMany({
+      where: {
+        orgId,
+        measuredAt: { gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) },
+        OR: [{ ph: { not: null } }, { chlorineFree: { not: null } }],
+      },
+      orderBy: { measuredAt: "desc" },
+      select: {
+        ph: true,
+        chlorineFree: true,
+        measuredAt: true,
+        visit: {
+          select: {
+            id: true,
+            job: { select: { poolId: true, pool: { select: { name: true, client: { select: { name: true } } } } } },
+          },
+        },
+      },
+      take: 2000,
+    });
+    type LatestReading = {
+      ph: number | null;
+      cl: number | null;
+      measuredAt: Date;
+      visitId?: string;
+      poolName?: string | null;
+      clientName?: string | null;
+    };
+    const latestByPool = new Map<string, LatestReading>();
+    for (const r of recentReadings) {
+      const poolId = r.visit?.job?.poolId;
+      if (poolId && !latestByPool.has(poolId))
+        latestByPool.set(poolId, {
+          ph: r.ph,
+          cl: r.chlorineFree,
+          measuredAt: r.measuredAt,
+          visitId: r.visit?.id,
+          poolName: r.visit?.job?.pool?.name,
+          clientName: r.visit?.job?.pool?.client?.name,
+        });
+    }
+    let poolsInRange = 0;
+    let phHigh = 0, phLow = 0, clLow = 0, clHigh = 0;
+    const outOfRange: Array<{ poolId: string; poolName: string | null; clientName: string | null; ph: number | null; cl: number | null; measuredAt: Date; visitId?: string }> = [];
+    for (const [poolId, entry] of latestByPool.entries()) {
+      const { ph, cl } = entry;
+      const phOk = ph === null || (ph >= 7.2 && ph <= 7.8);
+      const clOk = cl === null || (cl >= 1 && cl <= 3);
+      if (!(phOk && clOk))
+        outOfRange.push({ poolId, poolName: entry.poolName ?? null, clientName: entry.clientName ?? null, ph, cl, measuredAt: entry.measuredAt, visitId: entry.visitId });
+      if (phOk && clOk) poolsInRange++;
+      if (ph !== null && ph > 7.8) phHigh++;
+      if (ph !== null && ph < 7.2) phLow++;
+      if (cl !== null && cl < 1) clLow++;
+      if (cl !== null && cl > 3) clHigh++;
+    }
+
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const days30Ago = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+    const [poolsAwaitingApproval, clientsAwaitingApproval, newClientsThisMonth, newClientsLastMonth, activeCarers, teamVisits] =
+      await Promise.all([
+        prisma.pool.count({ where: { orgId, approvalStatus: "pending" } }),
+        prisma.client.count({ where: { orgId, approvalStatus: "pending", pools: { none: { approvalStatus: "pending" } } } }),
+        prisma.client.count({ where: { orgId, approvalStatus: "approved", createdAt: { gte: monthStart } } }),
+        prisma.client.count({ where: { orgId, approvalStatus: "approved", createdAt: { gte: lastMonthStart, lt: monthStart } } }),
+        prisma.carer.findMany({ where: { orgId, active: true }, select: { id: true, name: true, imageUrl: true } }),
+        // Completed visits in the last 30 days, for per-carer performance.
+        prisma.visitEntry.findMany({
+          where: { orgId, completedAt: { gte: days30Ago } },
+          select: { arrivedAt: true, rating: true, job: { select: { assignedCarerId: true, windowEnd: true } } },
+          take: 5000,
+        }),
+      ]);
+
+    // Per-carer: visits completed, on-time arrivals (arrived before the window closed), average client rating.
+    const team = activeCarers
+      .map((c) => {
+        const mine = teamVisits.filter((v) => v.job?.assignedCarerId === c.id);
+        const arrived = mine.filter((v) => v.arrivedAt);
+        const onTime = arrived.filter((v) => v.job && v.arrivedAt! <= v.job.windowEnd).length;
+        const ratings = mine.map((v) => v.rating).filter((r): r is number => r != null);
+        return {
+          id: c.id,
+          name: c.name,
+          imageUrl: c.imageUrl,
+          visits30d: mine.length,
+          onTimePct: arrived.length ? Math.round((onTime / arrived.length) * 100) : null,
+          rating: ratings.length ? Math.round((ratings.reduce((a, b) => a + b, 0) / ratings.length) * 10) / 10 : null,
+          ratingCount: ratings.length,
+        };
+      })
+      .sort((a, b) => b.visits30d - a.visits30d);
+
+    // Largest balances first, overdue before not-yet-due.
+    const unpaidInvoices = arInvoices
+      .map((inv) => ({
+        id: inv.id,
+        invoiceNumber: inv.invoiceNumber,
+        status: inv.status,
+        balanceCents: inv.totalCents - (inv.paidCents || 0),
+        dueDate: inv.dueDate,
+        client: inv.client,
+      }))
+      .filter((inv) => inv.balanceCents > 0)
+      .sort((a, b) => (a.status === b.status ? b.balanceCents - a.balanceCents : a.status === "overdue" ? -1 : 1))
+      .slice(0, 5);
+
     return {
       metrics: {
+        approvals: { pools: poolsAwaitingApproval, clients: clientsAwaitingApproval },
+        growth: { newClientsThisMonth, newClientsLastMonth },
+        team,
+        unpaidInvoices,
+        water: {
+          poolsTested: latestByPool.size,
+          poolsInRange,
+          outOfRange: outOfRange.sort((a, b) => b.measuredAt.getTime() - a.measuredAt.getTime()).slice(0, 6),
+          phHigh,
+          phLow,
+          clLow,
+          clHigh,
+        },
         // Operations overview, per scheduling period
         today: {
           total: todayStats.total,
@@ -410,6 +539,111 @@ export class DashboardService {
   }
 
   /** Chart data for the dashboard: 12-month revenue series + active plan mix. */
+  async getMap(orgId: string) {
+    const dayStart = new Date();
+    dayStart.setHours(0, 0, 0, 0);
+    const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
+
+    const [pools, todayJobs, carers, readings] = await Promise.all([
+      prisma.pool.findMany({
+        where: { orgId, approvalStatus: { not: "rejected" }, lat: { not: null }, lng: { not: null } },
+        select: {
+          id: true,
+          name: true,
+          address: true,
+          lat: true,
+          lng: true,
+          approvalStatus: true,
+          imageUrls: true,
+          client: { select: { id: true, name: true } },
+          servicePlans: { where: { status: "active" }, select: { id: true }, take: 1 },
+        },
+      }),
+      prisma.job.findMany({
+        where: { orgId, windowStart: { gte: dayStart, lt: dayEnd }, status: { not: "cancelled" } },
+        select: {
+          id: true,
+          poolId: true,
+          status: true,
+          windowStart: true,
+          windowEnd: true,
+          assignedCarerId: true,
+          assignedCarer: { select: { id: true, name: true } },
+        },
+        orderBy: { windowStart: "asc" },
+      }),
+      prisma.carer.findMany({
+        where: { orgId, active: true },
+        select: { id: true, name: true, imageUrl: true, currentLat: true, currentLng: true, lastLocationUpdate: true },
+      }),
+      // Latest reading per pool (last 60 days)
+      prisma.reading.findMany({
+        where: { orgId, measuredAt: { gte: new Date(Date.now() - 60 * 24 * 60 * 60 * 1000) } },
+        orderBy: { measuredAt: "desc" },
+        select: { ph: true, chlorineFree: true, measuredAt: true, visit: { select: { job: { select: { poolId: true } } } } },
+        take: 3000,
+      }),
+    ]);
+
+    const latest = new Map<string, { ph: number | null; cl: number | null; measuredAt: Date }>();
+    for (const r of readings) {
+      const pid = r.visit?.job?.poolId;
+      if (pid && !latest.has(pid)) latest.set(pid, { ph: r.ph, cl: r.chlorineFree, measuredAt: r.measuredAt });
+    }
+    const jobsByPool = new Map<string, typeof todayJobs>();
+    for (const j of todayJobs) {
+      const list = jobsByPool.get(j.poolId) || [];
+      list.push(j);
+      jobsByPool.set(j.poolId, list);
+    }
+
+    const waterStatus = (r?: { ph: number | null; cl: number | null }) => {
+      if (!r || (r.ph == null && r.cl == null)) return "untested";
+      const phOk = r.ph == null || (r.ph >= 7.2 && r.ph <= 7.8);
+      const clOk = r.cl == null || (r.cl >= 1 && r.cl <= 3);
+      return phOk && clOk ? "ok" : "attention";
+    };
+
+    // A position older than 2 hours isn't "live".
+    const liveCutoff = Date.now() - 2 * 60 * 60 * 1000;
+
+    return {
+      pools: pools.map((p) => {
+        const reading = latest.get(p.id);
+        return {
+          id: p.id,
+          name: p.name,
+          address: p.address,
+          lat: p.lat,
+          lng: p.lng,
+          imageUrl: p.imageUrls?.[0] || null,
+          approvalStatus: p.approvalStatus,
+          onPlan: p.servicePlans.length > 0,
+          client: p.client,
+          reading: reading || null,
+          water: waterStatus(reading),
+          today: (jobsByPool.get(p.id) || []).map((j) => ({
+            id: j.id,
+            status: j.status,
+            windowStart: j.windowStart,
+            windowEnd: j.windowEnd,
+            carer: j.assignedCarer,
+          })),
+        };
+      }),
+      carers: carers.map((c) => ({
+        id: c.id,
+        name: c.name,
+        imageUrl: c.imageUrl,
+        lat: c.currentLat,
+        lng: c.currentLng,
+        lastSeen: c.lastLocationUpdate,
+        live: !!(c.currentLat != null && c.lastLocationUpdate && c.lastLocationUpdate.getTime() > liveCutoff),
+        todayJobs: todayJobs.filter((j) => j.assignedCarerId === c.id).map((j) => ({ id: j.id, poolId: j.poolId, status: j.status })),
+      })),
+    };
+  }
+
   async getTrends(orgId: string) {
     const now = new Date();
     const start = new Date(now.getFullYear(), now.getMonth() - 11, 1);

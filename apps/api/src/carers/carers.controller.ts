@@ -107,6 +107,12 @@ export class CarersController {
     return this.carersService.registerMyDeviceToken(user.org_id, user.sub, dto);
   }
 
+  // Diagnostics: send a test push to this carer's own phones and report what Expo said.
+  @Post("me/test-push")
+  async testMyPush(@CurrentUser() user: { org_id: string; sub: string }) {
+    return this.carersService.testMyPush(user.org_id, user.sub);
+  }
+
   @Get("me/carer")
   async getMyCarer(@CurrentUser() user: { org_id: string; sub: string }) {
     return this.carersService.getMyCarer(user.org_id, user.sub);

@@ -2,6 +2,8 @@ import { Controller, Get, UseGuards } from "@nestjs/common";
 import { DashboardService } from "./dashboard.service";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
+import { RolesGuard } from "../auth/guards/roles.guard";
+import { Roles } from "../auth/decorators/roles.decorator";
 
 @Controller("dashboard")
 @UseGuards(JwtAuthGuard)
@@ -20,5 +22,14 @@ export class DashboardController {
   async getTrends(@CurrentUser() user: { org_id: string }) {
     return this.dashboardService.getTrends(user.org_id);
   }
-}
 
+  // Live map: every pool with its water status and today's visit, plus
+  // carers' last reported positions. Office roles only (client addresses,
+  // carer locations).
+  @Get("map")
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "MANAGER")
+  async getMap(@CurrentUser() user: { org_id: string }) {
+    return this.dashboardService.getMap(user.org_id);
+  }
+}

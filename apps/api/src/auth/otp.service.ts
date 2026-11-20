@@ -1,4 +1,5 @@
 import { Injectable, Logger, BadRequestException } from "@nestjs/common";
+import { createEmailTemplate, getOrgEmailSettings } from "../email/email-template.util";
 import { SmsAdapter } from "../notifications/adapters/sms.adapter";
 import { EmailAdapter } from "../notifications/adapters/email.adapter";
 
@@ -18,19 +19,22 @@ export class OtpService {
     } else if (channel === "email") {
       const subject = "Your PoolCare Verification Code";
       const text = `Your PoolCare verification code is: ${code}\n\nThis code is valid for 5 minutes. Please do not share this code with anyone.\n\nIf you didn't request this code, please ignore this email.`;
-      const html = `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-          <h2 style="color: #ea580c;">PoolCare Verification Code</h2>
-          <p>Your verification code is:</p>
-          <div style="background-color: #f3f4f6; padding: 20px; text-align: center; margin: 20px 0;">
-            <h1 style="color: #ea580c; font-size: 32px; margin: 0; letter-spacing: 4px;">${code}</h1>
-          </div>
-          <p>This code is valid for <strong>5 minutes</strong>. Please do not share this code with anyone.</p>
-          <p style="color: #6b7280; font-size: 12px; margin-top: 30px;">
-            If you didn't request this code, please ignore this email.
-          </p>
+      const brand = orgId
+        ? await getOrgEmailSettings(orgId)
+        : { organizationName: "PoolCare", primaryColor: "#0d9488" };
+      const color = brand.primaryColor || "#0d9488";
+      const html = createEmailTemplate(
+        `
+        <h2 style="color: #333333; margin-top: 0; margin-bottom: 16px;">Your verification code</h2>
+        <p style="margin: 0 0 16px 0;">Use this code to sign in:</p>
+        <div style="background-color: #f3f4f6; padding: 20px; text-align: center; margin: 0 0 16px 0; border-radius: 8px;">
+          <span style="color: ${color}; font-size: 32px; font-weight: bold; letter-spacing: 6px;">${code}</span>
         </div>
-      `;
+        <p style="margin: 0 0 16px 0;">It's valid for <strong>5 minutes</strong>. Don't share it with anyone.</p>
+        <p style="margin: 0; color: #6b7280; font-size: 14px;">If you didn't ask for this code, you can ignore this email.</p>
+      `,
+        brand
+      );
       return await this.emailAdapter.send(target, subject, text, html, orgId);
     }
 

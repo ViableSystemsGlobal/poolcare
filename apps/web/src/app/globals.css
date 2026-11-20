@@ -74,3 +74,21 @@
 ::-webkit-scrollbar-track {
   background: transparent;
 }
+
+/*
+ * Even columns: on detail pages (main column + side column), stretch both
+ * columns to the same height and let the last card in each grow, so the
+ * columns end on the same line. Below lg the columns stack and this is off.
+ */
+@media (min-width: 1024px) {
+  .even-cols {
+    align-items: stretch;
+  }
+  .even-cols > * {
+    display: flex;
+    flex-direction: column;
+  }
+  .even-cols > * > :last-child {
+    flex-grow: 1;
+  }
+}

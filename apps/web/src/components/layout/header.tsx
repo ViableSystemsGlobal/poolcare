@@ -3,10 +3,10 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { GlobalSearch } from "./global-search";
 import { useTheme } from "@/contexts/theme-context";
 import { useAuth } from "@/contexts/auth-context";
-import { Search, Bell, HelpCircle, User, LogOut, PanelLeft } from "lucide-react";
+import { Bell, HelpCircle, User, LogOut, PanelLeft } from "lucide-react";
 import { useHelpDialog } from "@/contexts/help-dialog-context";
 
 export function Header({ collapsed = false, onToggleSidebar }: { collapsed?: boolean; onToggleSidebar?: () => void }) {
@@ -42,13 +42,7 @@ export function Header({ collapsed = false, onToggleSidebar }: { collapsed?: boo
         >
           <PanelLeft className="h-4 w-4" />
         </Button>
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-          <Input
-            placeholder="Search jobs, clients, pools..."
-            className="w-80 pl-10 h-9 border-gray-200"
-          />
-        </div>
+        <GlobalSearch />
       </div>
 
       <div className="flex items-center space-x-3">

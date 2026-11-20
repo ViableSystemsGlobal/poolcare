@@ -75,7 +75,8 @@ export async function getOrgEmailSettings(orgId: string): Promise<EmailTemplateO
     return {
       logoUrl,
       organizationName: org.name || "PoolCare",
-      primaryColor: profile.themeColor ? getThemeColorHex(profile.themeColor) : "#0d9488",
+      // Same rule as the admin console and invoice PDFs: custom hex wins, then the named theme.
+      primaryColor: resolveOrgPrimaryColor(profile),
       footerText: `© ${org.name || "PoolCare"}. All rights reserved.`,
     };
   } catch (error) {
@@ -154,7 +155,7 @@ export function createEmailTemplate(
   <table role="presentation" style="width: 100%; border-collapse: collapse; background-color: #f5f5f5;">
     <tr>
       <td style="padding: 40px 20px;">
-        <table role="presentation" style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); border-collapse: collapse;">
+        <table role="presentation" width="600" style="width: 100%; max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); border-collapse: collapse;">
           <!-- Header with Logo -->
           <tr>
             <td style="padding: 40px 40px 24px 40px; text-align: center; border-bottom: 1px solid #e5e5e5;">
@@ -224,4 +225,47 @@ export function createWelcomeEmailTemplate(
     ...options,
     organizationName,
   });
+}
+
+
+const escapeHtml = (s: string) =>
+  s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+/**
+ * Turn a plain-text message into email-safe HTML content: paragraphs on blank
+ * lines, line breaks kept, "- " lines as a bullet list, and URLs made clickable.
+ * Used when an email is sent without its own HTML so it still goes out branded.
+ */
+export function plainTextToEmailHtml(text: string, primaryColor = "#0d9488"): string {
+  const linkify = (line: string) =>
+    escapeHtml(line).replace(
+      /(https?:\/\/[^\s<]+)/g,
+      (url) => `<a href="${url}" style="color: ${primaryColor}; text-decoration: underline;">${url}</a>`
+    );
+  const blocks = text.replace(/\r\n/g, "\n").trim().split(/\n{2,}/);
+  return blocks
+    .map((block) => {
+      const lines = block.split("\n").filter((l) => l.trim() !== "");
+      if (lines.length > 0 && lines.every((l) => /^\s*[-•*]\s+/.test(l))) {
+        const items = lines.map((l) => `<li style="margin: 0 0 4px 0;">${linkify(l.replace(/^\s*[-•*]\s+/, ""))}</li>`).join("");
+        return `<ul style="margin: 0 0 16px 0; padding-left: 20px;">${items}</ul>`;
+      }
+      // A heading line followed by bullets, e.g. "Items:\n- a\n- b"
+      const firstBullet = lines.findIndex((l) => /^\s*[-•*]\s+/.test(l));
+      if (firstBullet > 0 && lines.slice(firstBullet).every((l) => /^\s*[-•*]\s+/.test(l))) {
+        const head = lines.slice(0, firstBullet).map(linkify).join("<br>");
+        const items = lines.slice(firstBullet).map((l) => `<li style="margin: 0 0 4px 0;">${linkify(l.replace(/^\s*[-•*]\s+/, ""))}</li>`).join("");
+        return `<p style="margin: 0 0 8px 0;">${head}</p><ul style="margin: 0 0 16px 0; padding-left: 20px;">${items}</ul>`;
+      }
+      return `<p style="margin: 0 0 16px 0;">${lines.map(linkify).join("<br>")}</p>`;
+    })
+    .join("\n");
+}
+
+/** Wrap a plain-text message in the org's branded email template. */
+export async function brandedHtmlFromText(text: string, orgId?: string): Promise<string> {
+  const options: EmailTemplateOptions = orgId
+    ? await getOrgEmailSettings(orgId)
+    : { organizationName: "PoolCare", primaryColor: "#0d9488" };
+  return createEmailTemplate(plainTextToEmailHtml(text, options.primaryColor), options);
 }

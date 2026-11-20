@@ -529,7 +529,7 @@ export default function CarerDetailPage() {
         </Card>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 even-cols">
         {/* Left Column - Carer Info */}
         <div className="lg:col-span-1 space-y-6">
           {/* Carer Information */}
@@ -592,7 +592,7 @@ export default function CarerDetailPage() {
         </div>
 
         {/* Right Column - Jobs & Pending Visits */}
-        <div className="lg:col-span-2 space-y-6 max-h-[calc(100vh-200px)] overflow-y-auto pr-2">
+        <div className="lg:col-span-2 space-y-6">
           {/* Pending Visits for Approval */}
           {earnings && earnings.pendingVisits.length > 0 && (
             <Card>
