@@ -122,6 +122,9 @@ export default function PoolDetailPage() {
     surfaceType: "",
     notes: "",
   });
+  const [editImageUrls, setEditImageUrls] = useState<string[]>([]);
+  const [newImageFiles, setNewImageFiles] = useState<{ file: File; preview: string }[]>([]);
+  const [isSaving, setIsSaving] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [touchStart, setTouchStart] = useState<number | null>(null);
   const [touchEnd, setTouchEnd] = useState<number | null>(null);
@@ -226,13 +229,66 @@ export default function PoolDetailPage() {
     }
   };
 
+  const openEditDialog = () => {
+    setEditImageUrls(pool?.imageUrls || []);
+    newImageFiles.forEach((f) => URL.revokeObjectURL(f.preview));
+    setNewImageFiles([]);
+    setIsEditDialogOpen(true);
+  };
+
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    e.target.value = "";
+    const valid: { file: File; preview: string }[] = [];
+    for (const file of files) {
+      if (!file.type.startsWith("image/")) {
+        alert(`${file.name} is not an image file`);
+        continue;
+      }
+      if (file.size > 5 * 1024 * 1024) {
+        alert(`${file.name} is larger than 5MB`);
+        continue;
+      }
+      valid.push({ file, preview: URL.createObjectURL(file) });
+    }
+    setNewImageFiles((prev) => [...prev, ...valid]);
+  };
+
+  const uploadNewImages = async (API_URL: string): Promise<string[]> => {
+    const urls: string[] = [];
+    for (const { file } of newImageFiles) {
+      const body = new FormData();
+      body.append("image", file);
+      const res = await fetch(`${API_URL}/pools/upload-image`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${localStorage.getItem("auth_token")}` },
+        body,
+      });
+      if (!res.ok) {
+        let message = `HTTP ${res.status}`;
+        try {
+          const err = await res.json();
+          message = err.message || err.error || message;
+        } catch {}
+        throw new Error(`Couldn't upload ${file.name}: ${message}`);
+      }
+      const data = await res.json();
+      urls.push(data.imageUrl);
+    }
+    return urls;
+  };
+
   const handleUpdate = async () => {
+    setIsSaving(true);
     try {
       const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+      const uploadedUrls = await uploadNewImages(API_URL);
       const payload: any = {
         name: formData.name || null,
         address: formData.address || null,
         notes: formData.notes || null,
+        // Always send the full list so removing every image also persists.
+        imageUrls: [...editImageUrls, ...uploadedUrls],
       };
 
       if (formData.volumeL) {
@@ -253,15 +309,19 @@ export default function PoolDetailPage() {
       });
 
       if (response.ok) {
+        newImageFiles.forEach((f) => URL.revokeObjectURL(f.preview));
+        setNewImageFiles([]);
         setIsEditDialogOpen(false);
         await fetchPoolData();
       } else {
         const error = await response.json();
         alert(`Failed to update pool: ${error.message || error.error || "Unknown error"}`);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Failed to update pool:", error);
-      alert("Failed to update pool");
+      alert(error?.message || "Failed to update pool");
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -375,7 +435,7 @@ export default function PoolDetailPage() {
             <Receipt className="h-4 w-4 mr-2" />
             View Invoices
           </Button>
-          <Button onClick={() => setIsEditDialogOpen(true)}>
+          <Button onClick={openEditDialog}>
             <Edit className="h-4 w-4 mr-2" />
             Edit Pool
           </Button>
@@ -914,11 +974,59 @@ export default function PoolDetailPage() {
               />
             </div>
 
+            <div className="grid gap-2">
+              <Label htmlFor="edit-images">Pool Images</Label>
+              {(editImageUrls.length > 0 || newImageFiles.length > 0) && (
+                <div className="grid grid-cols-4 gap-2">
+                  {editImageUrls.map((url, index) => (
+                    <div key={url} className="relative">
+                      <img src={url} alt={`Pool image ${index + 1}`} className="w-full h-24 object-cover rounded-lg" />
+                      <button
+                        type="button"
+                        aria-label="Remove image"
+                        onClick={() => setEditImageUrls((prev) => prev.filter((_, i) => i !== index))}
+                        className="absolute top-1 right-1 bg-black/60 hover:bg-red-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                  {newImageFiles.map((item, index) => (
+                    <div key={item.preview} className="relative">
+                      <img src={item.preview} alt={`New image ${index + 1}`} className="w-full h-24 object-cover rounded-lg ring-2 ring-emerald-500" />
+                      <button
+                        type="button"
+                        aria-label="Remove image"
+                        onClick={() => {
+                          URL.revokeObjectURL(item.preview);
+                          setNewImageFiles((prev) => prev.filter((_, i) => i !== index));
+                        }}
+                        className="absolute top-1 right-1 bg-black/60 hover:bg-red-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <Input
+                id="edit-images"
+                type="file"
+                accept="image/jpeg,image/png,image/webp,image/gif"
+                multiple
+                onChange={handleImageSelect}
+                className="cursor-pointer"
+              />
+              <p className="text-xs text-gray-500">JPG, PNG, WebP or GIF, max 5MB each. New images are outlined in green.</p>
+            </div>
+
             <div className="flex justify-end gap-2 mt-4">
-              <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
+              <Button variant="outline" onClick={() => setIsEditDialogOpen(false)} disabled={isSaving}>
                 Cancel
               </Button>
-              <Button onClick={handleUpdate}>Save Changes</Button>
+              <Button onClick={handleUpdate} disabled={isSaving}>
+                {isSaving ? (newImageFiles.length > 0 ? "Uploading…" : "Saving…") : "Save Changes"}
+              </Button>
             </div>
           </div>
         </DialogContent>

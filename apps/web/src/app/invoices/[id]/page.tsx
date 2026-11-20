@@ -154,7 +154,8 @@ export default function InvoiceDetailPage() {
 
         // Deep link from the invoices list: /invoices/:id?edit=1 opens the editor
         if (
-          data.status === "draft" &&
+          ["draft", "sent", "overdue"].includes(data.status) &&
+          !(data.paidCents > 0) &&
           typeof window !== "undefined" &&
           new URLSearchParams(window.location.search).get("edit") === "1"
         ) {
@@ -464,6 +465,8 @@ export default function InvoiceDetailPage() {
 
   const balanceCents = invoice.totalCents - invoice.paidCents;
   const isFullyPaid = balanceCents <= 0;
+  // Mirrors the API rule: editable until anything is paid against it.
+  const canEdit = ["draft", "sent", "overdue"].includes(invoice.status) && invoice.paidCents === 0;
 
   return (
     <div className="space-y-6">
@@ -488,7 +491,7 @@ export default function InvoiceDetailPage() {
           </div>
         </div>
         <div className="flex gap-2">
-          {invoice.status === "draft" ? (
+          {canEdit ? (
             <>
               <Button variant="outline" onClick={openEditDialog}>
                 <Edit className="h-4 w-4 mr-2" />
@@ -496,12 +499,12 @@ export default function InvoiceDetailPage() {
               </Button>
               <Button variant="outline" onClick={() => setIsSendDialogOpen(true)}>
                 <Send className="h-4 w-4 mr-2" />
-                Send Invoice
+                {invoice.status === "draft" ? "Send Invoice" : "Resend"}
               </Button>
             </>
           ) : (
             <span
-              title="Only draft invoices can be edited. Issue a credit note or a replacement invoice instead."
+              title="Invoices with a payment recorded can't be edited. Issue a credit note or a replacement invoice instead."
               className="inline-flex"
             >
               <Button variant="outline" disabled>
@@ -1053,7 +1056,9 @@ export default function InvoiceDetailPage() {
         <DialogContent className="sm:max-w-md [&>button]:hidden">
           <div className="p-6">
             <p className="text-gray-900 text-center mb-6 text-lg">
-              Send this invoice to the client?
+              {invoice.status === "draft"
+                ? "Send this invoice to the client?"
+                : "Resend the updated invoice to the client?"}
             </p>
             <div className="flex justify-end gap-3">
               <Button

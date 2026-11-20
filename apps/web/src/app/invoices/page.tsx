@@ -993,6 +993,16 @@ export default function InvoicesPage() {
                             >
                               <Eye className="h-4 w-4" />
                             </Button>
+                            {["sent", "overdue"].includes(invoice.status) && invoice.paidCents === 0 && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => router.push(`/invoices/${invoice.id}?edit=1`)}
+                                title="Edit invoice"
+                              >
+                                <Edit className="h-4 w-4" />
+                              </Button>
+                            )}
                             {invoice.status === "draft" && (
                               <>
                                 <Button

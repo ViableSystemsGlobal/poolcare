@@ -381,9 +381,8 @@ export default function PoolsPage() {
       }
 
       // Combine existing images (that weren't removed) with new ones
-      if (existingImageUrls.length > 0 || newImageUrls.length > 0) {
-        payload.imageUrls = [...existingImageUrls, ...newImageUrls];
-      }
+      // Always send the full list so removing every image also persists.
+      payload.imageUrls = [...existingImageUrls, ...newImageUrls];
 
       const response = await fetch(`${API_URL}/pools/${editingPool.id}`, {
         method: "PATCH",
@@ -1209,7 +1208,7 @@ export default function PoolsPage() {
                       <button
                         type="button"
                         onClick={() => removeImage(index)}
-                        className="absolute top-1 right-1 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                        className="absolute top-1 right-1 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center"
                       >
                         ×
                       </button>
@@ -1478,7 +1477,7 @@ export default function PoolsPage() {
                       <button
                         type="button"
                         onClick={() => removeImage(index)}
-                        className="absolute top-1 right-1 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                        className="absolute top-1 right-1 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center"
                       >
                         ×
                       </button>

@@ -20,6 +20,12 @@ import {
   resolveOrgPrimaryColor,
 } from "../email/email-template.util";
 
+function startOfToday(): Date {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
 @Injectable()
 export class InvoicesService {
   constructor(
@@ -704,9 +710,7 @@ export class InvoicesService {
       throw new NotFoundException("Invoice not found");
     }
 
-    if (invoice.status !== "draft") {
-      throw new BadRequestException("Can only edit draft invoices");
-    }
+    await this.assertEditable(invoice);
 
     const items = dto.items || invoice.items;
     const totals = this.calculateTotals(items as any[]);
@@ -720,6 +724,10 @@ export class InvoicesService {
         totalCents: totals.totalCents,
         dueDate: dto.dueDate ? new Date(dto.dueDate) : invoice.dueDate,
         notes: dto.notes,
+        // A new future due date takes an overdue invoice back to "sent".
+        ...(invoice.status === "overdue" && dto.dueDate && new Date(dto.dueDate) >= startOfToday()
+          ? { status: "sent" }
+          : {}),
       },
       include: {
         client: true,
@@ -728,6 +736,30 @@ export class InvoicesService {
     });
 
     return updated;
+  }
+
+  /**
+   * Drafts, and sent/overdue invoices with nothing paid against them, can be
+   * edited. Once any payment or credit lands (paidCents > 0) or a payment is
+   * in flight, the invoice is locked — use a credit note instead.
+   */
+  private async assertEditable(invoice: { id: string; status: string; paidCents: number }) {
+    if (!["draft", "sent", "overdue"].includes(invoice.status)) {
+      throw new BadRequestException(`A ${invoice.status} invoice can't be edited`);
+    }
+    if (invoice.paidCents > 0) {
+      throw new BadRequestException(
+        "This invoice already has a payment recorded, so it can't be edited. Issue a credit note instead."
+      );
+    }
+    const settled = await prisma.payment.count({
+      where: { invoiceId: invoice.id, status: { in: ["completed", "processing"] } },
+    });
+    if (settled > 0) {
+      throw new BadRequestException(
+        "This invoice has a payment in progress or completed, so it can't be edited."
+      );
+    }
   }
 
   async send(orgId: string, invoiceId: string, dto: SendInvoiceDto) {
@@ -743,17 +775,19 @@ export class InvoicesService {
       throw new NotFoundException("Invoice not found");
     }
 
-    if (invoice.status !== "draft") {
-      throw new BadRequestException("Can only send draft invoices");
+    // Drafts are issued; sent/overdue invoices (e.g. after an edit) are re-sent.
+    if (!["draft", "sent", "overdue"].includes(invoice.status)) {
+      throw new BadRequestException(`A ${invoice.status} invoice can't be sent`);
     }
 
     const dueDate = dto.dueDate ? new Date(dto.dueDate) : invoice.dueDate || this.calculateDefaultDueDate();
+    const isResend = invoice.status !== "draft";
 
     const updated = await prisma.invoice.update({
       where: { id: invoiceId },
       data: {
-        status: "sent",
-        issuedAt: new Date(),
+        status: isResend && dueDate < startOfToday() ? "overdue" : "sent",
+        issuedAt: isResend ? invoice.issuedAt || new Date() : new Date(),
         dueDate,
       },
       include: {
