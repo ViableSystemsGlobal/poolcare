@@ -926,6 +926,12 @@ export default function InvoiceDetailPage() {
             <div className="grid gap-2">
               <Label>Invoice Items *</Label>
               <div className="space-y-2">
+                <div className="grid grid-cols-12 gap-2 text-xs font-medium uppercase tracking-wide text-gray-500">
+                  <div className="col-span-5">Description</div>
+                  <div className="col-span-2">Quantity</div>
+                  <div className="col-span-2">Unit price</div>
+                  <div className="col-span-2">Tax %</div>
+                </div>
                 {editItems.map((item, index) => (
                   <div key={index} className="grid grid-cols-12 gap-2 items-end">
                     <div className="col-span-5">
@@ -942,7 +948,7 @@ export default function InvoiceDetailPage() {
                     <div className="col-span-2">
                       <Input
                         type="number"
-                        placeholder="Qty"
+                        placeholder="Qty" aria-label="Quantity"
                         value={item.qty}
                         min={1}
                         step={1}
@@ -957,7 +963,7 @@ export default function InvoiceDetailPage() {
                     <div className="col-span-2">
                       <Input
                         type="number"
-                        placeholder="Price"
+                        placeholder="0.00" aria-label="Unit price"
                         value={item.unitPriceCents / 100}
                         onChange={(e) => {
                           const newItems = [...editItems];
@@ -972,7 +978,7 @@ export default function InvoiceDetailPage() {
                     <div className="col-span-2">
                       <Input
                         type="number"
-                        placeholder="Tax %"
+                        placeholder="0" aria-label="Tax %"
                         value={item.taxPct ?? 0}
                         onChange={(e) => {
                           const newItems = [...editItems];
@@ -1009,6 +1015,18 @@ export default function InvoiceDetailPage() {
                   <Plus className="h-4 w-4 mr-2" />
                   Add Item
                 </Button>
+                <div className="flex justify-end text-sm text-gray-600">
+                  Total{" "}
+                  <span className="ml-2 font-semibold text-gray-900">
+                    {invoice.currency || "GHS"}{" "}
+                    {(
+                      editItems.reduce(
+                        (sum, it) => sum + (it.qty || 0) * (it.unitPriceCents || 0) * (1 + (it.taxPct || 0) / 100),
+                        0
+                      ) / 100
+                    ).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
+                </div>
               </div>
             </div>
 
