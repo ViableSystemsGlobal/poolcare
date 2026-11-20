@@ -33,10 +33,12 @@ try {
 // and the Google provider isn't linked on iOS. iOS uses Apple Maps (no key);
 // Android uses Google only when this build was configured with a key, and
 // otherwise drops to the WebView / "open in Maps" fallbacks below.
-// Android never uses the native Google map: the EAS-stored key is rejected by
-// Google ("API authentication failed"), so Android always renders the keyless
-// Leaflet/OSM WebView map instead.
-const NATIVE_MAP_AVAILABLE = !!MapView && Platform.OS === "ios";
+// Android: the Google Maps SDK reads its key from the APK's AndroidManifest
+// (baked in at build time from EXPO_PUBLIC_GOOGLE_MAPS_API_KEY in the EAS env),
+// not from JS. Don't gate on Constants.expoConfig — an OTA manifest may not
+// carry the key even though the installed APK does. Never pass the org-settings
+// key here: the API returns it masked ("***").
+const NATIVE_MAP_AVAILABLE = !!MapView;
 const NATIVE_MAP_PROVIDER = Platform.OS === "android" ? PROVIDER_GOOGLE : undefined;
 import { api, getApiUrl } from "../../src/lib/api-client";
 import { fixUrlForMobile } from "../../src/lib/network-utils";
