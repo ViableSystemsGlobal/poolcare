@@ -7,7 +7,11 @@ import {
   Query,
   UseGuards,
   Res,
+  Patch,
 } from "@nestjs/common";
+import { RolesGuard } from "../auth/guards/roles.guard";
+import { Roles } from "../auth/decorators/roles.decorator";
+import { VisitAiReportService } from "./visit-ai-report.service";
 import { Response } from "express";
 import { VisitsService } from "./visits.service";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
@@ -23,7 +27,43 @@ import {
 @Controller("visits")
 @UseGuards(JwtAuthGuard)
 export class VisitsController {
-  constructor(private readonly visitsService: VisitsService) {}
+  constructor(
+    private readonly visitsService: VisitsService,
+    private readonly aiReportService: VisitAiReportService
+  ) {}
+
+  // AI-written report: generate/regenerate (resets to draft), edit, publish to client
+  @Post(":id/ai-report")
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "MANAGER")
+  async generateAiReport(@CurrentUser() user: { org_id: string }, @Param("id") visitId: string) {
+    return this.aiReportService.generate(user.org_id, visitId);
+  }
+
+  @Patch(":id/ai-report")
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "MANAGER")
+  async updateAiReport(
+    @CurrentUser() user: { org_id: string; role: string },
+    @Param("id") visitId: string,
+    @Body() body: { summary?: string; sections?: Array<{ title: string; body: string }>; recommendations?: string[] }
+  ) {
+    return this.aiReportService.update(user.org_id, user.role, visitId, body || {});
+  }
+
+  @Post(":id/ai-report/publish")
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "MANAGER")
+  async publishAiReport(@CurrentUser() user: { org_id: string; role: string }, @Param("id") visitId: string) {
+    return this.aiReportService.setPublished(user.org_id, user.role, visitId, true);
+  }
+
+  @Post(":id/ai-report/unpublish")
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "MANAGER")
+  async unpublishAiReport(@CurrentUser() user: { org_id: string; role: string }, @Param("id") visitId: string) {
+    return this.aiReportService.setPublished(user.org_id, user.role, visitId, false);
+  }
 
   @Get()
   async list(

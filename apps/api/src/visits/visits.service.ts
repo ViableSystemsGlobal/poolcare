@@ -5,6 +5,7 @@ import { drawDownForVisit } from "../pools/client-chemical-stock";
 import { FilesService } from "../files/files.service";
 import { InvoicesService } from "../invoices/invoices.service";
 import { NotificationsService } from "../notifications/notifications.service";
+import { VisitAiReportService } from "./visit-ai-report.service";
 import { createEmailTemplate, getOrgEmailSettings } from "../email/email-template.util";
 import PDFDocument from "pdfkit";
 import { v4 as uuidv4 } from "uuid";
@@ -24,7 +25,8 @@ export class VisitsService {
   constructor(
     private readonly filesService: FilesService,
     private readonly invoicesService: InvoicesService,
-    private readonly notificationsService: NotificationsService
+    private readonly notificationsService: NotificationsService,
+    private readonly aiReport: VisitAiReportService
   ) {}
 
   async list(
@@ -193,7 +195,13 @@ export class VisitsService {
       );
     }
 
-    return { ...visit, ...this.reportStatus(visit) };
+    return { ...this.scopeAiReport(visit, role), ...this.reportStatus(visit) };
+  }
+
+  /** Draft AI reports are office-only; clients and carers see a report once it's published. */
+  private scopeAiReport<T extends Record<string, any>>(visit: T, role: string): T {
+    if (role === "ADMIN" || role === "MANAGER" || visit.aiReportStatus === "published") return visit;
+    return { ...visit, aiReport: null, aiReportStatus: null, aiReportModel: null, aiReportGeneratedAt: null, aiReportEditedAt: null };
   }
 
   /**
@@ -607,7 +615,8 @@ export class VisitsService {
       // Don't fail the completion if report generation fails
     });
 
-    // AI visit summary + quality audit available on-demand via GET /ai/visits/:id/summary
+    // AI-written report (draft for the office) when an AI provider is configured
+    this.aiReport.generateInBackground(orgId, visitId);
 
     return updated;
   }
@@ -1196,6 +1205,8 @@ export class VisitsService {
     return {
       visitId: visitData.id,
       visitDate: visitData.completedAt || visitData.startedAt,
+      // Published AI-written report (null until the office publishes it)
+      aiReport: visitData.aiReportStatus === "published" ? visitData.aiReport : null,
       pool: {
         name: visitData.job.pool.name,
         address: visitData.job.pool.address,
