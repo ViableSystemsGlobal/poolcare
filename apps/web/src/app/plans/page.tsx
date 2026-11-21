@@ -6,7 +6,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Plus, Search, Calendar, Edit, Trash2, Pause, PlayCircle, FastForward, DollarSign, Clock, FileText, Droplet, Download, ChevronLeft, ChevronRight } from "lucide-react";
+import { Plus, Search, Calendar, Edit, Trash2, Pause, PlayCircle, FastForward, DollarSign, Clock, FileText, Droplet, Download, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Table,
@@ -417,7 +417,10 @@ export default function PlansPage() {
     });
   };
 
+  const [creating, setCreating] = useState(false);
   const handleCreate = async () => {
+    if (creating) return;
+    setCreating(true);
     try {
       const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
 
@@ -503,6 +506,8 @@ export default function PlansPage() {
         description: "Failed to create plan",
         variant: "destructive",
       });
+    } finally {
+      setCreating(false);
     }
   };
 
@@ -787,8 +792,9 @@ export default function PlansPage() {
                 <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
                   Cancel
                 </Button>
-                <Button onClick={handleCreate} disabled={!formData.poolId || !formData.templateId}>
-                  Create Plan
+                <Button onClick={handleCreate} disabled={creating || !formData.poolId || !formData.templateId}>
+                  {creating && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                  {creating ? "Creating…" : "Create Plan"}
                 </Button>
               </div>
             </div>

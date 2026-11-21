@@ -40,10 +40,33 @@ export interface ButtonProps
 }
 
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant = "default", size, asChild = false, style, ...props }, ref) => {
+  ({ className, variant = "default", size, asChild = false, style, onClick, disabled, ...props }, ref) => {
     const { getThemeColor } = useTheme()
     const Comp = asChild ? Slot : "button"
     const themeHex = getThemeColor()
+
+    // When onClick starts async work (returns a promise), the button disables
+    // itself until that work finishes, so it can't be fired twice: one click,
+    // one "Create" / "Send" / "Save". Works for every button in the admin.
+    const [pending, setPending] = React.useState(false)
+    const mounted = React.useRef(true)
+    React.useEffect(() => () => { mounted.current = false }, [])
+    const handleClick = onClick
+      ? (e: React.MouseEvent<HTMLButtonElement>) => {
+          if (pending) {
+            e.preventDefault()
+            return
+          }
+          const result = (onClick as (e: React.MouseEvent<HTMLButtonElement>) => unknown)(e)
+          if (result && typeof (result as Promise<unknown>).then === "function") {
+            setPending(true)
+            ;(result as Promise<unknown>).then(
+              () => mounted.current && setPending(false),
+              () => mounted.current && setPending(false)
+            )
+          }
+        }
+      : undefined
 
     // For default variant, use the exact theme color via inline styles
     const themeStyle = variant === "default" && !(className && /bg-\w+-\d+/.test(className))
@@ -55,6 +78,9 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         className={cn(buttonVariants({ variant, size }), className)}
         style={themeStyle}
         ref={ref}
+        onClick={handleClick}
+        disabled={disabled || pending}
+        aria-busy={pending || undefined}
         {...props}
       />
     )

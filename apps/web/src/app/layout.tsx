@@ -5,6 +5,7 @@ import { AuthProvider } from "@/contexts/auth-context";
 import { AppLayout } from "@/components/layout/app-layout";
 import { Toaster } from "@/components/ui/toaster";
 import { ConfirmProvider } from "@/components/ui/confirm-provider";
+import { RequestGuard } from "@/components/providers/request-guard";
 
 export const metadata: Metadata = {
   title: "PoolCare Management System",
@@ -22,6 +23,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="antialiased" suppressHydrationWarning={true}>
+        <RequestGuard />
         <AuthProvider>
           <ThemeProviderWrapper>
             <ConfirmProvider>

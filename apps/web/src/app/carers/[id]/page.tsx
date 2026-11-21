@@ -26,7 +26,11 @@ import {
   XCircle,
   Banknote,
   DollarSign,
+  Send,
+  Loader2,
 } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+import { useConfirm } from "@/components/ui/confirm-provider";
 import {
   Dialog,
   DialogContent,
@@ -90,6 +94,36 @@ export default function CarerDetailPage() {
   const { getThemeClasses } = useTheme();
   const theme = getThemeClasses();
   const carerId = params.id as string;
+  const { toast } = useToast();
+  const confirm = useConfirm();
+  const [sendingPlan, setSendingPlan] = useState(false);
+
+  // Send this carer today's day plan now (push + SMS + email), e.g. after late changes.
+  const sendDayPlan = async () => {
+    const ok = await confirm({
+      title: "Send today's plan?",
+      description: `${carer?.name || "This carer"} gets today's visits by push, SMS and email, even if they already had this morning's plan.`,
+      confirmLabel: "Send plan",
+    });
+    if (!ok) return;
+    setSendingPlan(true);
+    try {
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+      const res = await fetch(`${API_URL}/notifications/carer-day-plan`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("auth_token") || ""}` },
+        body: JSON.stringify({ carerId, force: true }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.message || "Couldn't send the plan");
+      if (data.sent > 0) toast({ title: "Plan sent", description: "Sent by push, SMS and email where available." });
+      else toast({ title: "Nothing to send", description: "This carer has no open visits today." });
+    } catch (e: any) {
+      toast({ title: "Couldn't send the plan", description: e.message, variant: "destructive" });
+    } finally {
+      setSendingPlan(false);
+    }
+  };
 
   const [loading, setLoading] = useState(true);
   const [carer, setCarer] = useState<Carer | null>(null);
@@ -418,10 +452,16 @@ export default function CarerDetailPage() {
             </div>
           </div>
         </div>
-        <Button onClick={() => setIsEditDialogOpen(true)}>
-          <Edit className="h-4 w-4 mr-2" />
-          Edit Carer
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={sendDayPlan} disabled={sendingPlan || !carer.active}>
+            {sendingPlan ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Send className="h-4 w-4 mr-2" />}
+            Send today&apos;s plan
+          </Button>
+          <Button onClick={() => setIsEditDialogOpen(true)}>
+            <Edit className="h-4 w-4 mr-2" />
+            Edit Carer
+          </Button>
+        </div>
       </div>
 
       {/* Metrics Cards */}
