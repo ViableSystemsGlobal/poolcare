@@ -18,7 +18,7 @@ const ToastViewport = React.forwardRef<
     ref={ref}
     className={cn(
       // Centre of the screen; the viewport itself lets clicks through around the toast.
-      "pointer-events-none fixed left-1/2 top-1/2 z-[100] flex w-full max-w-[420px] -translate-x-1/2 -translate-y-1/2 flex-col gap-2 px-4 outline-none",
+      "pointer-events-none fixed left-1/2 bottom-6 z-[100] flex w-full max-w-[420px] -translate-x-1/2 flex-col gap-2 px-4 outline-none",
       className
     )}
     {...props}
@@ -28,7 +28,7 @@ ToastViewport.displayName = ToastPrimitives.Viewport.displayName
 
 const toastVariants = cva(
   // Solid white card (no translucency), coloured icon carries the tone.
-  "group pointer-events-auto relative flex w-full items-start gap-3 overflow-hidden rounded-xl bg-white p-4 pr-10 text-gray-900 shadow-[0_12px_40px_rgba(0,0,0,0.18)] ring-1 ring-black/5 transition-all data-[swipe=cancel]:translate-x-0 data-[swipe=end]:translate-x-[var(--radix-toast-swipe-end-x)] data-[swipe=move]:translate-x-[var(--radix-toast-swipe-move-x)] data-[swipe=move]:transition-none data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[swipe=end]:animate-out",
+  "group pointer-events-auto relative flex w-full items-start gap-3 overflow-hidden rounded-xl bg-white p-4 pr-10 text-gray-900 shadow-[0_12px_40px_rgba(0,0,0,0.18)] ring-1 ring-black/5 transition-all data-[swipe=cancel]:translate-x-0 data-[swipe=end]:translate-x-[var(--radix-toast-swipe-end-x)] data-[swipe=move]:translate-x-[var(--radix-toast-swipe-move-x)] data-[swipe=move]:transition-none data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:slide-in-from-bottom-4 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:slide-out-to-bottom-4 data-[swipe=end]:animate-out",
   {
     variants: {
       variant: {
