@@ -4,11 +4,15 @@ import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { RolesGuard } from "../auth/guards/roles.guard";
 import { Roles } from "../auth/decorators/roles.decorator";
+import { SettingsService } from "../settings/settings.service";
 
 @Controller("dashboard")
 @UseGuards(JwtAuthGuard)
 export class DashboardController {
-  constructor(private readonly dashboardService: DashboardService) {}
+  constructor(
+    private readonly dashboardService: DashboardService,
+    private readonly settingsService: SettingsService,
+  ) {}
 
   @Get()
   async getDashboard(
@@ -30,6 +34,11 @@ export class DashboardController {
   @UseGuards(RolesGuard)
   @Roles("ADMIN", "MANAGER")
   async getMap(@CurrentUser() user: { org_id: string }) {
-    return this.dashboardService.getMap(user.org_id);
+    const [data, googleMapsKey] = await Promise.all([
+      this.dashboardService.getMap(user.org_id),
+      // The browser draws the map with Google Maps JS when a key is set.
+      this.settingsService.getGoogleMapsApiKey(user.org_id).catch(() => null),
+    ]);
+    return { ...data, googleMapsKey: googleMapsKey || null };
   }
 }

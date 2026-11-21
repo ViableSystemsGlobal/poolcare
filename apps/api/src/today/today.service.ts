@@ -108,7 +108,7 @@ export class TodayService {
     return `${t.body || "Task"}${about ? ` (${about})` : ""}`;
   }
 
-  buildDigestText(name: string, data: TodayData, appUrl: string): { subject: string; body: string } {
+  buildDigestText(name: string, data: TodayData, appUrl: string, office = false): { subject: string; body: string } {
     const d = new Date(data.date);
     const dateStr = d.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" });
     const lines: string[] = [];
@@ -144,7 +144,7 @@ export class TodayService {
       }
     }
     lines.push("");
-    lines.push(`Open your Today page: ${appUrl}/today`);
+    lines.push(office ? `Open the dashboard: ${appUrl}/dashboard` : `Open your Today page: ${appUrl}/today`);
     lines.push("");
     lines.push("— PoolCare");
 
@@ -153,7 +153,7 @@ export class TodayService {
   }
 
   /** Branded HTML body for the digest — rendered inside the shared org email template. */
-  buildDigestHtml(name: string, data: TodayData, appUrl: string, primaryColor = "#0d9488"): string {
+  buildDigestHtml(name: string, data: TodayData, appUrl: string, primaryColor = "#0d9488", office = false): string {
     const esc = (s: unknown) =>
       String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     const d = new Date(data.date);
@@ -223,7 +223,7 @@ export class TodayService {
       ${sectionHeading(`Tasks due (${data.tasks.length}${data.stats.overdue ? `, ${data.stats.overdue} overdue` : ""})`)}
       ${tasksHtml}
       <p style="margin: 28px 0 0 0;">
-        <a href="${appUrl}/today" style="display: inline-block; background-color: ${primaryColor}; color: #ffffff; text-decoration: none; font-size: 14px; font-weight: 600; padding: 10px 20px; border-radius: 6px;">Open your Today page</a>
+        <a href="${appUrl}${office ? "/dashboard" : "/today"}" style="display: inline-block; background-color: ${primaryColor}; color: #ffffff; text-decoration: none; font-size: 14px; font-weight: 600; padding: 10px 20px; border-radius: 6px;">${office ? "Open the dashboard" : "Open your Today page"}</a>
       </p>
     `;
   }
@@ -262,9 +262,11 @@ export class TodayService {
             continue;
           }
           const first = m.user.name?.split(" ")[0] || "there";
-          const { subject, body } = this.buildDigestText(first, data, appUrl);
+          // Office roles work from the dashboard; everyone else from Today.
+          const office = m.roles.some((r) => r === "ADMIN" || r === "MANAGER");
+          const { subject, body } = this.buildDigestText(first, data, appUrl, office);
           const html = createEmailTemplate(
-            this.buildDigestHtml(first, data, appUrl, emailSettings.primaryColor),
+            this.buildDigestHtml(first, data, appUrl, emailSettings.primaryColor, office),
             emailSettings,
           );
           await this.email.send(m.user.email, subject, body, html, org.id);

@@ -3,11 +3,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Minus, Crosshair, X, Droplet } from "lucide-react";
+import { GoogleBase, type GoogleMapType } from "./google-base";
 
 /*
- * Live operations map, without a map library: Esri light-grey raster tiles
- * (base + labels) laid out in Web Mercator, with pools and carers as
- * absolutely-positioned markers. Drag to pan, buttons or double-click to zoom.
+ * Live operations map. The base map is Google Maps (road or satellite) when
+ * the org has a Maps key, driven from our own view state; without a key, or if
+ * Google fails, it falls back to Esri light-grey tiles. Pools and carers are
+ * our own markers laid out in Web Mercator on top. Both bases use the same
+ * 256px Web Mercator grid, so markers line up either way.
  */
 
 export interface MapPool {
@@ -32,6 +35,8 @@ export interface MapCarer {
   lat: number | null;
   lng: number | null;
   lastSeen: string | null;
+  lastPlace?: string | null; // pool name when the position is their last check-in
+  lastSource?: "checkin" | "phone" | null;
   live: boolean;
   todayJobs: Array<{ id: string; poolId: string; status: string }>;
 }
@@ -42,6 +47,15 @@ const MAX_Z = 18;
 const ESRI = "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas";
 const TILE_URL = (z: number, x: number, y: number) => `${ESRI}/World_Light_Gray_Base/MapServer/tile/${z}/${y}/${x}`;
 const LABEL_URL = (z: number, x: number, y: number) => `${ESRI}/World_Light_Gray_Reference/MapServer/tile/${z}/${y}/${x}`;
+
+// Web Mercator: world pixels at zoom z -> lat/lng (inverse of project).
+function unproject(x: number, y: number, z: number) {
+  const scale = TILE * Math.pow(2, z);
+  const lng = (x / scale) * 360 - 180;
+  const n = Math.PI - (2 * Math.PI * y) / scale;
+  const lat = (180 / Math.PI) * Math.atan(0.5 * (Math.exp(n) - Math.exp(-n)));
+  return { lat, lng };
+}
 
 // Web Mercator: lat/lng -> world pixels at zoom z.
 function project(lat: number, lng: number, z: number) {
@@ -71,6 +85,16 @@ function ago(iso: string | null) {
   return h < 24 ? `${h}h ago` : `${Math.floor(h / 24)}d ago`;
 }
 
+function agoShort(iso: string | null) {
+  if (!iso) return "?";
+  const m = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
+  if (m < 60) return `${Math.max(1, m)}m`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h`;
+  const d = Math.floor(h / 24);
+  return d < 60 ? `${d}d` : `${Math.floor(d / 30)}mo`;
+}
+
 /** Points within ~2° of the median: the main service area; the rest are "elsewhere". */
 function mainCluster<T extends { lat: number; lng: number }>(pts: T[]) {
   if (pts.length === 0) return { inside: pts, outside: [] as T[] };
@@ -89,11 +113,13 @@ export function LiveMap({
   carers,
   themeHex,
   overlay,
+  googleMapsKey,
 }: {
   pools: MapPool[];
   carers: MapCarer[];
   themeHex: string;
   overlay?: React.ReactNode;
+  googleMapsKey?: string | null;
 }) {
   const router = useRouter();
   const ref = useRef<HTMLDivElement>(null);
@@ -101,14 +127,35 @@ export function LiveMap({
   const [view, setView] = useState<{ z: number; cx: number; cy: number } | null>(null); // center in world px at z
   const [selected, setSelected] = useState<string | null>(null);
   const drag = useRef<{ x: number; y: number; cx: number; cy: number; moved: boolean } | null>(null);
+  // Which base map to draw. While Google loads we show a plain background (no
+  // flash of a different map); Esri is only the fallback when there's no key or
+  // Google fails. googleMapsKey === undefined means the map data hasn't arrived yet.
+  const [googleState, setGoogleState] = useState<"loading" | "ready" | "failed">("loading");
+  const base: "google" | "esri" | "none" =
+    googleMapsKey === null || googleState === "failed" ? "esri" : googleState === "ready" ? "google" : "none";
+  const [mapType, setMapType] = useState<GoogleMapType>(() => {
+    try {
+      return (localStorage.getItem("dashboard_map_type") as GoogleMapType) || "roadmap";
+    } catch {
+      return "roadmap";
+    }
+  });
+  const chooseType = (t: GoogleMapType) => {
+    setMapType(t);
+    try {
+      localStorage.setItem("dashboard_map_type", t);
+    } catch {}
+  };
 
-  // Carers shown: positions reported in the last 12 hours.
+  // Every carer with a known last position (last check-in or last phone report).
   const shownCarers = useMemo(
-    () =>
-      carers.filter(
-        (c) => c.lat != null && c.lng != null && c.lastSeen && Date.now() - new Date(c.lastSeen).getTime() < 12 * 3600e3
-      ) as Array<MapCarer & { lat: number; lng: number }>,
+    () => carers.filter((c) => c.lat != null && c.lng != null) as Array<MapCarer & { lat: number; lng: number }>,
     [carers]
+  );
+  // Carers seen in the last 24h frame the map; older positions don't pull it wide.
+  const recentCarers = useMemo(
+    () => shownCarers.filter((c) => c.lastSeen && Date.now() - new Date(c.lastSeen).getTime() < 24 * 3600e3),
+    [shownCarers]
   );
   const { inside, outside } = useMemo(() => mainCluster(pools), [pools]);
 
@@ -124,7 +171,7 @@ export function LiveMap({
   // Fit the service area (pools + live carers) whenever data or size first arrives.
   const fit = () => {
     if (!size.w || !size.h) return;
-    const pts = [...inside.map((p) => ({ lat: p.lat, lng: p.lng })), ...shownCarers.map((c) => ({ lat: c.lat, lng: c.lng }))];
+    const pts = [...inside.map((p) => ({ lat: p.lat, lng: p.lng })), ...recentCarers.map((c) => ({ lat: c.lat, lng: c.lng }))];
     if (pts.length === 0) {
       // Accra
       const c = project(5.6037, -0.187, 12);
@@ -132,28 +179,35 @@ export function LiveMap({
       return;
     }
     const pad = 80;
+    // Leave room on the left for the summary panel when there's space for it.
+    const padL = overlay && size.w > 640 ? 280 : pad;
+    // Carer photos and labels sit above their point, so leave extra room at the top.
+    const padT = 130;
     let z = 15;
     for (; z > MIN_Z; z--) {
       const ps = pts.map((p) => project(p.lat, p.lng, z));
       const w = Math.max(...ps.map((p) => p.x)) - Math.min(...ps.map((p) => p.x));
       const h = Math.max(...ps.map((p) => p.y)) - Math.min(...ps.map((p) => p.y));
-      if (w <= size.w - pad * 2 && h <= size.h - pad * 2) break;
+      if (w <= size.w - pad - padL && h <= size.h - pad - padT) break;
     }
     const ps = pts.map((p) => project(p.lat, p.lng, z));
     setView({
       z,
-      cx: (Math.max(...ps.map((p) => p.x)) + Math.min(...ps.map((p) => p.x))) / 2,
-      cy: (Math.max(...ps.map((p) => p.y)) + Math.min(...ps.map((p) => p.y))) / 2,
+      cx: (Math.max(...ps.map((p) => p.x)) + Math.min(...ps.map((p) => p.x))) / 2 - (padL - pad) / 2,
+      cy: (Math.max(...ps.map((p) => p.y)) + Math.min(...ps.map((p) => p.y))) / 2 - (padT - pad) / 2,
     });
   };
 
+  // Re-fit as data arrives, until the user has moved the map themselves.
+  const userMoved = useRef(false);
   useEffect(() => {
-    if (!view && size.w) fit();
+    if (size.w && !userMoved.current) fit();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [size.w, size.h, inside.length, shownCarers.length]);
+  }, [size.w, size.h, inside.length, recentCarers.length]);
 
   const zoomTo = (nz: number, anchor?: { x: number; y: number }) => {
     if (!view) return;
+    userMoved.current = true;
     nz = Math.max(MIN_Z, Math.min(MAX_Z, nz));
     const k = Math.pow(2, nz - view.z);
     const ax = anchor ? anchor.x - size.w / 2 : 0;
@@ -194,7 +248,9 @@ export function LiveMap({
   const selPos = sel ? toScreen(sel.lat, sel.lng) : null;
 
   // Lines from each carer to the pool of their next unfinished visit today.
+  // Only for carers seen recently: a days-old position shouldn't draw a route.
   const routes = shownCarers
+    .filter((c) => c.live)
     .map((c) => {
       const next = c.todayJobs.find((j) => j.status === "en_route" || j.status === "on_site" || j.status === "scheduled");
       const pool = next && pools.find((p) => p.id === next.poolId);
@@ -217,7 +273,7 @@ export function LiveMap({
         if (!d || !view) return;
         const dx = e.clientX - d.x;
         const dy = e.clientY - d.y;
-        if (Math.abs(dx) + Math.abs(dy) > 3) d.moved = true;
+        if (Math.abs(dx) + Math.abs(dy) > 3) d.moved = userMoved.current = true;
         setView({ ...view, cx: d.cx - dx, cy: d.cy - dy });
       }}
       onPointerUp={() => {
@@ -230,8 +286,20 @@ export function LiveMap({
         zoomTo((view?.z || 12) + 1, { x: e.clientX - r.left, y: e.clientY - r.top });
       }}
     >
-      {/* Tiles: base, then labels */}
-      {tiles.map((t) => (
+      {/* Google base map (follows our view; takes no input itself) */}
+      {googleMapsKey && view && (
+        <GoogleBase
+          apiKey={googleMapsKey}
+          center={unproject(view.cx, view.cy, view.z)}
+          zoom={view.z}
+          mapType={mapType}
+          onReady={() => setGoogleState("ready")}
+          onFail={() => setGoogleState("failed")}
+        />
+      )}
+
+      {/* Esri tiles: base, then labels (fallback only) */}
+      {base === "esri" && tiles.map((t) => (
         <img
           key={t.key}
           src={t.src}
@@ -241,7 +309,7 @@ export function LiveMap({
           style={{ left: t.left, top: t.top, width: TILE, height: TILE }}
         />
       ))}
-      {tiles.map((t) => (
+      {base === "esri" && tiles.map((t) => (
         <img
           key={`l${t.key}`}
           src={t.label}
@@ -308,40 +376,84 @@ export function LiveMap({
         );
       })}
 
-      {/* Carers */}
-      {shownCarers.map((c) => {
-        const s = toScreen(c.lat, c.lng);
-        return (
-          <div
-            key={c.id}
-            data-map-ui
-            className="absolute -translate-x-1/2 -translate-y-full"
-            style={{ left: s.x, top: s.y, zIndex: 25, opacity: c.live ? 1 : 0.55 }}
-            title={`${c.name || "Carer"} · ${c.live ? "live" : `last seen ${ago(c.lastSeen)}`}`}
-          >
-            <div className="flex flex-col items-center">
-              <div className="relative">
-                {c.imageUrl ? (
-                  <img src={c.imageUrl} alt="" className="h-9 w-9 rounded-full object-cover ring-[3px] shadow-lg" style={{ ["--tw-ring-color" as any]: themeHex }} />
-                ) : (
-                  <span
-                    className="h-9 w-9 rounded-full flex items-center justify-center text-sm font-semibold text-white ring-[3px] ring-white shadow-lg"
-                    style={{ backgroundColor: themeHex }}
-                  >
-                    {(c.name || "?").charAt(0)}
-                  </span>
-                )}
-                {c.live && <span className="absolute -right-0.5 -bottom-0.5 h-3 w-3 rounded-full bg-green-500 ring-2 ring-white" />}
+      {/* Carers: round photo at their last check-in. Carers at the same spot
+          become one overlapping stack with a shared label. */}
+      {(() => {
+        const groups = new Map<string, { x: number; y: number; carers: typeof shownCarers }>();
+        for (const c of shownCarers) {
+          const s0 = toScreen(c.lat, c.lng);
+          const key = `${Math.round(s0.x / 32)}:${Math.round(s0.y / 32)}`;
+          const g = groups.get(key);
+          if (g) g.carers.push(c);
+          else groups.set(key, { x: s0.x, y: s0.y, carers: [c] });
+        }
+        const newest = (cs: typeof shownCarers) =>
+          [...cs].sort((a, b) => (b.lastSeen ? +new Date(b.lastSeen) : 0) - (a.lastSeen ? +new Date(a.lastSeen) : 0));
+        return [...groups.entries()].map(([key, g]) => {
+          const cs = newest(g.carers);
+          const lead = cs[0];
+          const anyLive = cs.some((c) => c.live);
+          const ageH = lead.lastSeen ? (Date.now() - new Date(lead.lastSeen).getTime()) / 3600e3 : Infinity;
+          const opacity = anyLive ? 1 : ageH < 24 ? 0.95 : ageH < 24 * 7 ? 0.85 : 0.7;
+          const firstOf = (c: MapCarer) => (c.name || "Carer").split(" ")[0];
+          const whenShort = lead.live ? "now" : agoShort(lead.lastSeen);
+          const label =
+            cs.length === 1
+              ? `${firstOf(lead).length > 9 ? firstOf(lead).slice(0, 8) + "…" : firstOf(lead)} · ${whenShort}`
+              : `${cs.length} carers · ${whenShort}`;
+          const title = cs
+            .map(
+              (c) =>
+                `${c.name || "Carer"} · ${
+                  c.lastSource === "checkin" ? `last check-in${c.lastPlace ? ` at ${c.lastPlace}` : ""}` : "last reported position"
+                } · ${c.live ? "now" : ago(c.lastSeen)}`
+            )
+            .join("\n");
+          const shown = cs.slice(0, 4);
+          return (
+            <div
+              key={key}
+              data-map-ui
+              className="absolute -translate-x-1/2 -translate-y-full"
+              style={{ left: g.x, top: g.y - 14, zIndex: 25, opacity }}
+              title={title}
+            >
+              <div className="flex flex-col items-center">
+                <div className="flex items-center">
+                  {shown.map((c, i) => (
+                    <div key={c.id} className="relative" style={{ marginLeft: i === 0 ? 0 : -16, zIndex: shown.length - i }}>
+                      {c.imageUrl ? (
+                        <img
+                          src={c.imageUrl}
+                          alt=""
+                          className="h-11 w-11 rounded-full object-cover border-[3px] bg-white shadow-lg"
+                          style={{ borderColor: themeHex }}
+                        />
+                      ) : (
+                        <span
+                          className="h-11 w-11 rounded-full flex items-center justify-center text-base font-semibold text-white border-[3px] border-white shadow-lg"
+                          style={{ backgroundColor: themeHex }}
+                        >
+                          {firstOf(c).charAt(0).toUpperCase()}
+                        </span>
+                      )}
+                      {c.live && <span className="absolute right-0 bottom-0 h-3 w-3 rounded-full bg-green-500 ring-2 ring-white" />}
+                    </div>
+                  ))}
+                  {cs.length > shown.length && (
+                    <span className="-ml-4 h-11 w-11 rounded-full flex items-center justify-center text-xs font-semibold text-gray-700 bg-white border-[3px] border-white shadow-lg">
+                      +{cs.length - shown.length}
+                    </span>
+                  )}
+                </div>
+                <span className="mt-1 rounded-full bg-gray-900/85 px-2 py-0.5 text-[10px] font-medium text-white whitespace-nowrap shadow">
+                  {label}
+                </span>
               </div>
-              <span className="mt-0.5 rounded bg-gray-900/80 px-1.5 py-px text-[10px] text-white whitespace-nowrap">
-                {(c.name || "Carer").split(" ")[0]}
-                {!c.live && ` · ${ago(c.lastSeen)}`}
-              </span>
-              <span className="h-1.5 w-1.5 rounded-full mt-0.5" style={{ backgroundColor: themeHex }} />
             </div>
-          </div>
-        );
-      })}
+          );
+        });
+      })()}
 
       {/* Selected pool card */}
       {sel && selPos && (
@@ -429,8 +541,24 @@ export function LiveMap({
         </button>
       </div>
 
+      {/* Map / Satellite */}
+      {base === "google" && (
+        <div data-map-ui className="absolute right-14 top-3 z-30 flex rounded-lg bg-white shadow-md overflow-hidden text-xs font-medium">
+          {(["roadmap", "hybrid"] as const).map((t) => (
+            <button
+              key={t}
+              onClick={() => chooseType(t)}
+              className={`px-3 py-2 transition-colors ${mapType === t ? "text-white" : "text-gray-700 hover:bg-gray-50"}`}
+              style={mapType === t ? { backgroundColor: themeHex } : undefined}
+            >
+              {t === "roadmap" ? "Map" : "Satellite"}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Legend */}
-      <div data-map-ui className="absolute left-3 bottom-3 z-30 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg bg-white/95 px-3 py-1.5 text-[11px] text-gray-600 shadow-md cursor-default">
+      <div data-map-ui className={`absolute left-3 ${base === "esri" ? "bottom-3" : "bottom-9"} z-30 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg bg-white/95 px-3 py-1.5 text-[11px] text-gray-600 shadow-md cursor-default`}>
         <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: WATER_COLOR.ok }} />Water OK</span>
         <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: WATER_COLOR.attention }} />Needs attention</span>
         <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: WATER_COLOR.untested }} />Not tested</span>
@@ -438,13 +566,13 @@ export function LiveMap({
         {outside.length > 0 && <span className="text-gray-400">· {plural(outside.length)} outside this area</span>}
       </div>
 
-      <div className="absolute right-1.5 bottom-1 z-20 text-[9px] text-gray-500 pointer-events-auto">
+      {base === "esri" && <div className="absolute right-1.5 bottom-1 z-20 text-[9px] text-gray-500 pointer-events-auto">
         Tiles ©{" "}
         <a href="https://www.esri.com" target="_blank" rel="noreferrer" className="hover:underline">
           Esri
         </a>{" "}
         — Esri, HERE, Garmin, © OpenStreetMap contributors
-      </div>
+      </div>}
     </div>
   );
 }

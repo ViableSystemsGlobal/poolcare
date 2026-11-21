@@ -17,6 +17,8 @@ const COLLECTED = CHART_COLORS[0]; // green — money in
 const fmtCedi = (cents: number) => `GH₵${(cents / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const fmtCompact = (cents: number) => {
   const v = cents / 100;
+  if (v >= 1e9) return `₵${(v / 1e9).toLocaleString("en-US", { maximumFractionDigits: 1 })}B`;
+  if (v >= 1e6) return `₵${(v / 1e6).toLocaleString("en-US", { maximumFractionDigits: 1 })}M`;
   if (v >= 1000) return `₵${(v / 1000).toLocaleString("en-US", { maximumFractionDigits: 1 })}k`;
   return `₵${v.toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
 };

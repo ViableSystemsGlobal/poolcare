@@ -604,6 +604,28 @@ export class DashboardService {
       return phOk && clOk ? "ok" : "attention";
     };
 
+    // Each carer's most recent check-in (visit arrival) at a pool with coordinates.
+    const checkins = await prisma.visitEntry.findMany({
+      where: {
+        orgId,
+        arrivedAt: { not: null },
+        job: { assignedCarerId: { in: carers.map((c) => c.id) }, pool: { lat: { not: null }, lng: { not: null } } },
+      },
+      orderBy: { arrivedAt: "desc" },
+      take: 1000,
+      select: {
+        arrivedAt: true,
+        job: { select: { assignedCarerId: true, pool: { select: { name: true, lat: true, lng: true } } } },
+      },
+    });
+    const lastCheckin = new Map<string, { lat: number; lng: number; at: Date; poolName: string | null }>();
+    for (const v of checkins) {
+      const cid = v.job?.assignedCarerId;
+      const pool = v.job?.pool;
+      if (!cid || lastCheckin.has(cid) || !pool || pool.lat == null || pool.lng == null || !v.arrivedAt) continue;
+      lastCheckin.set(cid, { lat: pool.lat, lng: pool.lng, at: v.arrivedAt, poolName: pool.name });
+    }
+
     // A position older than 2 hours isn't "live".
     const liveCutoff = Date.now() - 2 * 60 * 60 * 1000;
 
@@ -631,16 +653,28 @@ export class DashboardService {
           })),
         };
       }),
-      carers: carers.map((c) => ({
-        id: c.id,
-        name: c.name,
-        imageUrl: c.imageUrl,
-        lat: c.currentLat,
-        lng: c.currentLng,
-        lastSeen: c.lastLocationUpdate,
-        live: !!(c.currentLat != null && c.lastLocationUpdate && c.lastLocationUpdate.getTime() > liveCutoff),
-        todayJobs: todayJobs.filter((j) => j.assignedCarerId === c.id).map((j) => ({ id: j.id, poolId: j.poolId, status: j.status })),
-      })),
+      carers: carers.map((c) => {
+        // Last seen = the most recent of: the pool where they last checked in
+        // (arrived), or the last position their phone reported.
+        const checkin = lastCheckin.get(c.id);
+        const phoneAt = c.currentLat != null && c.currentLng != null ? c.lastLocationUpdate : null;
+        const useCheckin = !!checkin && (!phoneAt || checkin.at > phoneAt);
+        const lat = useCheckin ? checkin!.lat : phoneAt ? c.currentLat : null;
+        const lng = useCheckin ? checkin!.lng : phoneAt ? c.currentLng : null;
+        const lastSeen = useCheckin ? checkin!.at : phoneAt;
+        return {
+          id: c.id,
+          name: c.name,
+          imageUrl: c.imageUrl,
+          lat,
+          lng,
+          lastSeen,
+          lastPlace: useCheckin ? checkin!.poolName : null,
+          lastSource: lat == null ? null : useCheckin ? "checkin" : "phone",
+          live: !!(lastSeen && lastSeen.getTime() > liveCutoff),
+          todayJobs: todayJobs.filter((j) => j.assignedCarerId === c.id).map((j) => ({ id: j.id, poolId: j.poolId, status: j.status })),
+        };
+      }),
     };
   }
 

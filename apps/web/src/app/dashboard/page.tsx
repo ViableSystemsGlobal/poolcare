@@ -126,6 +126,21 @@ function getGreeting(): string {
 
 const money = (cents: number, decimals = 2) =>
   `GH₵${(cents / 100).toLocaleString("en-US", { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}`;
+/**
+ * Headline money: exact up to GH₵99,999, then shortened so big figures fit a
+ * tile — GH₵125.4K, GH₵10.4M, GH₵1.2B. The exact amount goes in a tooltip.
+ */
+const moneyShort = (cents: number) => {
+  const v = cents / 100;
+  const a = Math.abs(v);
+  const short = (n: number, unit: string) =>
+    `GH₵${n.toLocaleString("en-US", { maximumFractionDigits: n < 100 ? 1 : 0 })}${unit}`;
+  // Thresholds sit just below each unit so 999,999 reads GH₵1M, not GH₵1,000K.
+  if (a >= 999.5e6) return short(v / 1e9, "B");
+  if (a >= 999.5e3) return short(v / 1e6, "M");
+  if (a >= 1e5) return short(v / 1e3, "K");
+  return money(cents, 0);
+};
 const fmtShortDate = (iso: string) =>
   new Date(iso).toLocaleDateString([], { day: "numeric", month: "short" });
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
@@ -199,7 +214,9 @@ function Delta({ now, prev, money: isMoney }: { now: number; prev: number; money
         <Icon className="h-3.5 w-3.5" />
         {Math.abs(pct)}%
       </span>
-      <span className="text-gray-500">vs {isMoney ? money(prev, 0) : prev} last month</span>
+      <span className="text-gray-500" title={isMoney ? money(prev) : undefined}>
+        vs {isMoney ? moneyShort(prev) : prev} last month
+      </span>
     </span>
   );
 }
@@ -246,7 +263,7 @@ export default function Dashboard() {
   const [pendingPools, setPendingPools] = useState<ReviewablePool[]>([]);
   const [pendingClients, setPendingClients] = useState<ReviewableClient[]>([]);
   const [sending, setSending] = useState<string | null>(null);
-  const [mapData, setMapData] = useState<{ pools: MapPool[]; carers: MapCarer[] }>({
+  const [mapData, setMapData] = useState<{ pools: MapPool[]; carers: MapCarer[]; googleMapsKey?: string | null }>({
     pools: [],
     carers: [],
   });
@@ -394,7 +411,7 @@ export default function Dashboard() {
             ? `All ${plural(activeToday.length, "visit")} done today`
             : `${doneToday} of ${plural(activeToday.length, "visit")} done${inProgress ? `, ${inProgress} in progress` : ""}`,
         unassignedToday > 0 ? `${unassignedToday} without a carer` : null,
-        overdue.length > 0 ? `${money(overdueTotal, 0)} overdue` : null,
+        overdue.length > 0 ? `${moneyShort(overdueTotal)} overdue` : null,
       ]
         .filter(Boolean)
         .join(" · ");
@@ -504,24 +521,27 @@ export default function Dashboard() {
         {[
           {
             label: "Collected",
-            value: money(finance.monthlyCollected, 0),
+            value: moneyShort(finance.monthlyCollected),
+            exact: money(finance.monthlyCollected),
             foot: <Delta now={finance.monthlyCollected} prev={lastMonth.collected} money />,
             spark: last6.map((r) => r.collected),
             href: "/invoices",
           },
           {
             label: "Invoiced",
-            value: money(finance.monthlyInvoiced, 0),
+            value: moneyShort(finance.monthlyInvoiced),
+            exact: money(finance.monthlyInvoiced),
             foot: <Delta now={finance.monthlyInvoiced} prev={lastMonth.invoiced} money />,
             spark: last6.map((r) => r.invoiced),
             href: "/invoices",
           },
           {
             label: "Owed to you",
-            value: money(finance.accountsReceivable, 0),
+            value: moneyShort(finance.accountsReceivable),
+            exact: money(finance.accountsReceivable),
             foot:
               overdueTotal > 0 ? (
-                <span className="text-red-600">{money(overdueTotal, 0)} overdue</span>
+                <span className="text-red-600" title={money(overdueTotal)}>{moneyShort(overdueTotal)} overdue</span>
               ) : (
                 <span className="text-gray-500">Nothing overdue</span>
               ),
@@ -577,7 +597,12 @@ export default function Dashboard() {
             {loading ? (
               <Skeleton className="h-9 w-28 mt-2" />
             ) : (
-              <p className="text-2xl xl:text-[26px] font-semibold text-gray-900 tracking-tight mt-2">
+              <p
+                className={`text-2xl xl:text-[26px] font-semibold text-gray-900 tracking-tight mt-2 whitespace-nowrap tabular-nums ${
+                  k.spark ? "pr-12" : ""
+                }`}
+                title={k.exact && k.exact !== k.value ? k.exact : undefined}
+              >
                 {k.value}
               </p>
             )}
@@ -593,6 +618,7 @@ export default function Dashboard() {
           <LiveMap
             pools={mapData.pools}
             carers={mapData.carers}
+            googleMapsKey={mapData.googleMapsKey}
             themeHex={themeHex}
             overlay={
               <div className="rounded-xl bg-white/95 backdrop-blur shadow-md px-4 py-3 w-60">

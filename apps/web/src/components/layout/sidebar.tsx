@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { useState, useEffect } from "react";
 import { useTheme } from "@/contexts/theme-context";
 import { useHelpDialog } from "@/contexts/help-dialog-context";
+import { useAuth } from "@/contexts/auth-context";
 import {
   LayoutDashboard,
   Users,
@@ -53,6 +54,9 @@ const navigationGroups = [
         href: "/today",
         icon: Sun,
         module: "today",
+        // Office roles work from the dashboard (map, to-do, numbers); Today is
+        // the personal jobs-and-tasks page for everyone else.
+        hideForRoles: ["ADMIN", "MANAGER"],
       },
       {
         name: "Dashboard",
@@ -224,6 +228,8 @@ const navigationGroups = [
 
 export default function Sidebar({ collapsed = false }: { collapsed?: boolean }) {
   const pathname = usePathname();
+  const { user } = useAuth();
+  const role = user?.role || "";
   const [expandedSections, setExpandedSections] = useState<string[]>([]);
   const [logoError, setLogoError] = useState(false);
   const [newApplications, setNewApplications] = useState(0);
@@ -334,7 +340,9 @@ export default function Sidebar({ collapsed = false }: { collapsed?: boolean }) 
               </div>
             )}
             <div className="space-y-1">
-              {group.items.map((item) => {
+              {group.items
+                .filter((item: any) => !(item.hideForRoles && role && item.hideForRoles.includes(role)))
+                .map((item) => {
                 const hasChildren = item.children && item.children.length > 0;
                 const isExpanded = expandedSections.includes(item.name);
                 const isActiveItem =
