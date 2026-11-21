@@ -1375,66 +1375,67 @@ export class VisitsService {
 
     // Send notification via multiple channels
     // Client has email/phone directly, and userId for recipientId
-    try {
-      // SMS if phone available
-      if (client.phone) {
-        await this.notificationsService.send(orgId, {
-          channel: "sms",
-          to: client.phone,
-          recipientId: client.userId || client.id, // Use userId if available, fallback to client.id
-          recipientType: "client",
-          subject: "Service Completed",
-          body: message,
-          metadata: {
-            visitId: visit.id,
-            jobId: visit.jobId,
-            poolId: pool.id,
-            type: "visit_completed",
-          },
-        });
-      }
+    // Each channel goes on its own, so a failed SMS never stops the push or email.
+    const sends: Promise<unknown>[] = [];
+    const attempt = (channel: string, p: Promise<unknown>) =>
+      sends.push(p.catch((e: any) => console.error(`Visit ${visit.id}: client ${channel} failed:`, e?.message ?? e)));
 
-      // Email if available
-      if (client.email) {
-        await this.notificationsService.send(orgId, {
-          channel: "email",
-          to: client.email,
-          recipientId: client.userId || client.id, // Use userId if available, fallback to client.id
-          recipientType: "client",
-          subject: `Service Completed - ${poolName}`,
-          body: message,
-          metadata: {
-            visitId: visit.id,
-            jobId: visit.jobId,
-            poolId: pool.id,
-            type: "visit_completed",
-            html: await this.buildVisitCompletionEmail(visit, pool, carer, summaryItems, duration, orgId),
-          },
-        });
-      }
-
-      // Push notification (only if client has userId) — with review call-to-action
-      if (client.userId) {
-        await this.notificationsService.send(orgId, {
-          channel: "push",
-          to: "", // Will use recipientId
-          recipientId: client.userId,
-          recipientType: "client",
-          subject: `Service completed — how did ${carerName} do?`,
-          body: `${poolName} has been serviced. Tap to see the report and leave a rating.`,
-          metadata: {
-            visitId: visit.id,
-            jobId: visit.jobId,
-            poolId: pool.id,
-            type: "visit_completed",
-            url: `/visits/${visit.id}`,
-          },
-        });
-      }
-    } catch (error) {
-      console.error("Error sending visit completion notification:", error);
-      // Don't throw - notification failure shouldn't break visit completion
+    // SMS if phone available
+    if (client.phone) {
+      attempt("sms", this.notificationsService.send(orgId, {
+        channel: "sms",
+        to: client.phone,
+        recipientId: client.userId || client.id, // Use userId if available, fallback to client.id
+        recipientType: "client",
+        subject: "Service Completed",
+        body: message,
+        metadata: {
+          visitId: visit.id,
+          jobId: visit.jobId,
+          poolId: pool.id,
+          type: "visit_completed",
+        },
+      }));
     }
+
+    // Email if available
+    if (client.email) {
+      attempt("email", this.buildVisitCompletionEmail(visit, pool, carer, summaryItems, duration, orgId).then((html) => this.notificationsService.send(orgId, {
+        channel: "email",
+        to: client.email,
+        recipientId: client.userId || client.id, // Use userId if available, fallback to client.id
+        recipientType: "client",
+        subject: `Service Completed - ${poolName}`,
+        body: message,
+        metadata: {
+          visitId: visit.id,
+          jobId: visit.jobId,
+          poolId: pool.id,
+          type: "visit_completed",
+          html,
+        },
+      })));
+    }
+
+    // Push notification (only if client has userId) — with review call-to-action
+    if (client.userId) {
+      attempt("push", this.notificationsService.send(orgId, {
+        channel: "push",
+        to: "", // Will use recipientId
+        recipientId: client.userId,
+        recipientType: "client",
+        subject: `Service completed — how did ${carerName} do?`,
+        body: `${poolName} has been serviced. Tap to see the report and leave a rating.`,
+        metadata: {
+          visitId: visit.id,
+          jobId: visit.jobId,
+          poolId: pool.id,
+          type: "visit_completed",
+          url: `/visits/${visit.id}`,
+        },
+      }));
+    }
+    await Promise.all(sends);
   }
 
   private async sendVisitApprovalNotification(orgId: string, visit: any) {

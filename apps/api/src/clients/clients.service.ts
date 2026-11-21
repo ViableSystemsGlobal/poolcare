@@ -279,21 +279,70 @@ export class ClientsService {
     });
   }
 
+  /** Diagnostics: send a test push to this client's own phones and report what Expo said. */
+  async testMyPush(orgId: string, userId: string) {
+    const client = await prisma.client.findFirst({ where: { orgId, userId }, select: { id: true, name: true } });
+    if (!client) throw new NotFoundException("Client profile not found");
+    const tokens = await prisma.deviceToken.findMany({
+      where: { orgId, userId, app: "client", platform: { in: ["ios", "android"] } },
+      select: { token: true, platform: true, createdAt: true },
+    });
+    if (tokens.length === 0) {
+      return { ok: false, devices: 0, message: "This phone isn't registered for notifications yet. Allow notifications for PoolCare in Settings, then reopen the app." };
+    }
+    const res = await fetch("https://exp.host/--/api/v2/push/send", {
+      method: "POST",
+      headers: { Accept: "application/json", "Content-Type": "application/json" },
+      body: JSON.stringify(
+        tokens.map((t) => ({
+          to: t.token,
+          sound: "default",
+          title: "Test notification",
+          body: `Hi ${client.name?.split(" ")[0] || "there"}, notifications are working.`,
+          data: { type: "test" },
+          priority: "high",
+          channelId: "default",
+        }))
+      ),
+    });
+    const body = (await res.json().catch(() => ({}))) as any;
+    const results = (body.data || []).map((r: any, i: number) => ({
+      platform: tokens[i]?.platform,
+      registeredAt: tokens[i]?.createdAt,
+      status: r.status,
+      error: r.details?.error || (r.status === "error" ? r.message : undefined),
+    }));
+    const ok = results.length > 0 && results.some((r: any) => r.status === "ok");
+    const credsProblem = results.find((r: any) => r.error === "InvalidCredentials");
+    return {
+      ok,
+      devices: tokens.length,
+      results,
+      message: ok
+        ? "Sent. It should arrive within a few seconds."
+        : credsProblem
+        ? "Push keys for this app aren't set up on expo.dev (APNs for iPhone, FCM V1 for Android)."
+        : body.errors?.[0]?.message || results[0]?.error || "Expo didn't accept the notification.",
+    };
+  }
+
   async registerMyDeviceToken(orgId: string, userId: string, dto: { token: string; platform: string }) {
     const client = await prisma.client.findFirst({ where: { orgId, userId } });
     if (!client) throw new NotFoundException("Client profile not found");
 
-    const existing = await prisma.deviceToken.findFirst({ where: { userId, platform: dto.platform } });
+    // One token per user, per platform, per app: the carer app on the same
+    // phone keeps its own row, so registering here never wipes it.
+    const existing =
+      (await prisma.deviceToken.findUnique({ where: { token: dto.token } })) ||
+      (await prisma.deviceToken.findFirst({ where: { userId, platform: dto.platform, app: "client" } }));
     if (existing) {
       return prisma.deviceToken.update({
         where: { id: existing.id },
-        // This device is now the client app for this user; a token belongs to
-        // exactly one app so push routing can't cross the two apps.
-        data: { token: dto.token, clientId: client.id, carerId: null },
+        data: { orgId, userId, token: dto.token, platform: dto.platform, app: "client", clientId: client.id, carerId: null },
       });
     }
     return prisma.deviceToken.create({
-      data: { orgId, userId, clientId: client.id, token: dto.token, platform: dto.platform },
+      data: { orgId, userId, clientId: client.id, token: dto.token, platform: dto.platform, app: "client" },
     });
   }
 

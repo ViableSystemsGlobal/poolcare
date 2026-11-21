@@ -475,33 +475,19 @@ export class CarersService {
       throw new NotFoundException("Carer not found or access denied");
     }
 
-    // Upsert device token (dedupe by userId + platform)
-    const existing = await prisma.deviceToken.findFirst({
-      where: {
-        userId,
-        platform: dto.platform,
-      },
-    });
+    // One token per user, per platform, per app: the client app on the same
+    // phone keeps its own row, so registering here never wipes it.
+    const existing =
+      (await prisma.deviceToken.findUnique({ where: { token: dto.token } })) ||
+      (await prisma.deviceToken.findFirst({ where: { userId, platform: dto.platform, app: "carer" } }));
 
     const deviceToken = existing
       ? await prisma.deviceToken.update({
           where: { id: existing.id },
-          data: {
-            token: dto.token,
-            carerId,
-            // This device is now the carer app for this user; a token belongs
-            // to exactly one app so push routing can't cross the two apps.
-            clientId: null,
-          },
+          data: { orgId, userId, token: dto.token, platform: dto.platform, app: "carer", carerId, clientId: null },
         })
       : await prisma.deviceToken.create({
-          data: {
-            orgId,
-            userId,
-            carerId,
-            token: dto.token,
-            platform: dto.platform,
-          },
+          data: { orgId, userId, carerId, token: dto.token, platform: dto.platform, app: "carer" },
         });
 
     return deviceToken;

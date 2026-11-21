@@ -337,6 +337,10 @@ class ApiClient {
     });
   }
 
+  async testPush() {
+    return this.request<{ ok: boolean; devices: number; message: string }>("/clients/me/test-push", { method: "POST" });
+  }
+
   async getMyNotifications(page = 1, limit = 30) {
     return this.request<any>(`/clients/me/notifications?page=${page}&limit=${limit}`);
   }

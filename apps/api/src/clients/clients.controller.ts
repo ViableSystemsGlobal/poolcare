@@ -101,6 +101,12 @@ export class ClientsController {
     return this.clientsService.registerMyDeviceToken(user.org_id, user.sub, dto);
   }
 
+  // Diagnostics: send a test push to this client's own phones and report what Expo said.
+  @Post("me/test-push")
+  async testMyPush(@CurrentUser() user: { org_id: string; sub: string }) {
+    return this.clientsService.testMyPush(user.org_id, user.sub);
+  }
+
   @Get("me/notifications")
   async getMyNotifications(
     @CurrentUser() user: { org_id: string; sub: string },

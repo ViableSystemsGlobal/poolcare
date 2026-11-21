@@ -22,6 +22,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as ImagePicker from "expo-image-picker";
+import * as Notifications from "expo-notifications";
 import { useTheme } from "../src/contexts/ThemeContext";
 import { api } from "../src/lib/api-client";
 
@@ -56,6 +57,7 @@ export default function SettingsScreen() {
   const [editName, setEditName] = useState("");
   const [editEmail, setEditEmail] = useState("");
   const [savingProfile, setSavingProfile] = useState(false);
+  const [testingPush, setTestingPush] = useState(false);
 
   const [notifications, setNotifications] = useState<NotificationPreferences>({
     serviceReminders: true,
@@ -296,6 +298,37 @@ export default function SettingsScreen() {
     ? profile.name.trim().split(/\s+/).map((w) => w[0]).join("").toUpperCase().slice(0, 2)
     : "?";
 
+  // Re-registers this phone, then asks the server to push to it and shows what came back.
+  const handleTestPush = async () => {
+    if (testingPush) return;
+    setTestingPush(true);
+    try {
+      let { status } = await Notifications.getPermissionsAsync();
+      if (status !== "granted") status = (await Notifications.requestPermissionsAsync()).status;
+      if (status !== "granted") {
+        Alert.alert("Notifications are off", "Turn on notifications for PoolCare in your phone's Settings, then try again.", [
+          { text: "Open Settings", onPress: () => Linking.openSettings() },
+          { text: "Cancel", style: "cancel" },
+        ]);
+        return;
+      }
+      let token: string;
+      try {
+        token = (await Notifications.getExpoPushTokenAsync({ projectId: "3c0ac2ba-013a-49b3-94b2-5747615f9c7f" })).data;
+      } catch (e: any) {
+        Alert.alert("This phone couldn't get a push token", String(e?.message || e));
+        return;
+      }
+      await api.registerDeviceToken(token, Platform.OS === "ios" ? "ios" : "android");
+      const r = await api.testPush();
+      Alert.alert(r.ok ? "Test sent" : "Test failed", r.message);
+    } catch (e: any) {
+      Alert.alert("Test failed", String(e?.message || e));
+    } finally {
+      setTestingPush(false);
+    }
+  };
+
   // ── Reusable row ──────────────────────────────────────────────────────────
   const MenuRow = ({
     icon, label, subtitle, onPress, right, danger = false, last = false,
@@ -432,7 +465,6 @@ export default function SettingsScreen() {
                 key={key}
                 icon={icon}
                 label={label}
-                last={i === arr.length - 1}
                 right={
                   <Switch
                     value={notifications[key]}
@@ -445,6 +477,14 @@ export default function SettingsScreen() {
               />
             );
           })}
+          <MenuRow
+            icon="paper-plane-outline"
+            label="Send test notification"
+            subtitle="Check this phone gets PoolCare notifications"
+            onPress={handleTestPush}
+            right={testingPush ? <ActivityIndicator size="small" color={themeColor} /> : undefined}
+            last
+          />
         </View>
 
         {/* ── Preferences ── */}

@@ -170,8 +170,7 @@ export class PushAdapter {
       orgId,
       platform: { in: ["ios", "android"] }, // Only mobile platforms
     };
-    if (appRole === "carer") where.carerId = { not: null };
-    else if (appRole === "client") where.clientId = { not: null };
+    if (appRole) where.app = appRole;
 
     const deviceTokens = await prisma.deviceToken.findMany({ where });
 

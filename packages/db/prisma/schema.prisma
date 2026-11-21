@@ -521,9 +521,12 @@ model DeviceToken {
   clientId  String?  @db.Uuid
   token     String   @unique
   platform  String // ios, android, web
+  /// Which app registered it: "carer" or "client". One person can run both
+  /// apps on the same phone, so each app keeps its own token.
+  app       String   @default("carer")
   createdAt DateTime @default(now()) @db.Timestamptz(6)
 
-  @@unique([userId, platform])
+  @@unique([userId, platform, app])
   @@index([userId])
   @@index([orgId])
 }
