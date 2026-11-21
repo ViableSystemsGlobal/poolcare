@@ -7,6 +7,7 @@ import { InvoicesService } from "../invoices/invoices.service";
 import { NotificationsService } from "../notifications/notifications.service";
 import { VisitAiReportService } from "./visit-ai-report.service";
 import { createEmailTemplate, getOrgEmailSettings } from "../email/email-template.util";
+import { CarerNotifyService, ghTime } from "../notifications/carer-notify.service";
 import PDFDocument from "pdfkit";
 import { v4 as uuidv4 } from "uuid";
 import {
@@ -26,7 +27,8 @@ export class VisitsService {
     private readonly filesService: FilesService,
     private readonly invoicesService: InvoicesService,
     private readonly notificationsService: NotificationsService,
-    private readonly aiReport: VisitAiReportService
+    private readonly aiReport: VisitAiReportService,
+    private readonly carerNotify: CarerNotifyService
   ) {}
 
   async list(
@@ -608,6 +610,11 @@ export class VisitsService {
       // Don't fail the completion if notification fails
     }
 
+    // Tell the carer it's logged, and what's next today (push + SMS + email; async)
+    this.notifyCarerVisitDone(orgId, updated).catch((err) =>
+      console.error(`Failed to notify carer of completion for visit ${visitId}:`, err)
+    );
+
     // REQUIREMENT: Auto-generate and send PDF report to client
     // Generate report asynchronously (don't block completion)
     this.generateAndSendReport(orgId, visitId, updated).catch((err) => {
@@ -619,6 +626,59 @@ export class VisitsService {
     this.aiReport.generateInBackground(orgId, visitId);
 
     return updated;
+  }
+
+  /** Carer: "Visit complete — X. 2 of 4 done today. Next: Y at 10:00." */
+  private async notifyCarerVisitDone(orgId: string, visit: any) {
+    const carerId: string | undefined = visit.job?.assignedCarerId || visit.job?.assignedCarer?.id;
+    if (!carerId) return;
+    const poolName = visit.job?.pool?.name || "the pool";
+    const clientName = visit.job?.pool?.client?.name || null;
+
+    const dayStart = new Date();
+    dayStart.setUTCHours(0, 0, 0, 0); // Ghana = UTC+0
+    const dayEnd = new Date(dayStart.getTime() + 86400000);
+    const today = await prisma.job.findMany({
+      where: { orgId, assignedCarerId: carerId, windowStart: { gte: dayStart, lt: dayEnd }, status: { not: "cancelled" } },
+      orderBy: { windowStart: "asc" },
+      select: { id: true, status: true, windowStart: true, pool: { select: { name: true, address: true } } },
+    });
+    const done = today.filter((j) => j.status === "completed" || j.id === visit.jobId).length;
+    const total = Math.max(today.length, done);
+    const next = today.find((j) => j.id !== visit.jobId && !["completed", "failed", "cancelled"].includes(j.status));
+
+    const mins =
+      visit.completedAt && (visit.arrivedAt || visit.startedAt)
+        ? Math.round((+new Date(visit.completedAt) - +new Date(visit.arrivedAt || visit.startedAt)) / 60000)
+        : null;
+    const took = mins && mins > 0 && mins < 600 ? (mins >= 60 ? `${Math.floor(mins / 60)}h ${mins % 60}m` : `${mins} min`) : null;
+    const progress = total > 1 ? `${done} of ${total} visits done today.` : null;
+    const nextLine = next
+      ? `Next: ${next.pool?.name || "your next pool"} at ${ghTime(next.windowStart)}.`
+      : total > 0
+        ? "That's all your visits for today."
+        : null;
+
+    const H = CarerNotifyService;
+    await this.carerNotify.notifyCarerId(orgId, carerId, {
+      type: "visit_completed",
+      title: `Visit complete — ${poolName}`,
+      push: ["Nice work.", progress, nextLine].filter(Boolean).join(" "),
+      sms: [`Visit complete: ${poolName}. Thank you!`, progress, nextLine].filter(Boolean).join(" "),
+      emailSubject: `Visit complete — ${poolName}`,
+      emailHtml:
+        H.heading(`Visit complete — ${poolName}`) +
+        H.para("Thank you. Your visit has been recorded and the office has been notified.") +
+        H.details([
+          ["Pool", poolName],
+          ["Client", clientName],
+          ["Finished", visit.completedAt ? ghTime(visit.completedAt) : null],
+          ["Time on site", took],
+          ["Today", progress],
+          ["Next", next ? `${next.pool?.name || "Pool"} at ${ghTime(next.windowStart)}` : total > 0 ? "No more visits today" : null],
+        ]),
+      metadata: next ? { jobId: next.id, url: `/jobs/${next.id}` } : { visitId: visit.id, jobId: visit.jobId, url: "/" },
+    });
   }
 
   private async createInvoiceFromVisit(orgId: string, visit: any) {
@@ -1455,7 +1515,7 @@ export class VisitsService {
             jobId: visit.jobId,
             poolId: pool?.id,
             type: "visit_approved",
-            url: "/earnings",
+            url: "/performance",
           },
         });
       } catch (error) {
@@ -1744,38 +1804,30 @@ export class VisitsService {
       },
     });
 
-    // Tell the carer they've been paid (best effort)
+    // Tell the carer they've been paid: push + SMS + email (best effort)
     try {
       const carer = updated.job?.assignedCarer;
-      const carerUserId = carer?.userId || carer?.user?.id;
       const poolName = updated.job?.pool?.name || "the pool";
       const amount = updated.paymentAmountCents
         ? `GH₵${(updated.paymentAmountCents / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
         : "your payment";
-
-      if (carerUserId) {
-        await this.notificationsService.send(orgId, {
-          channel: "push",
-          to: "",
-          recipientId: carerUserId,
-          recipientType: "carer",
-          subject: `Payment sent — ${amount}`,
-          body: `Your payment for the visit to ${poolName} has been made.`,
-          metadata: { visitId: updated.id, jobId: updated.jobId, type: "visit_paid", url: "/earnings" },
-        });
-      }
-      const carerPhone = carer?.user?.phone || carer?.phone;
-      if (carerPhone) {
-        await this.notificationsService.send(orgId, {
-          channel: "sms",
-          to: carerPhone,
-          recipientId: carerUserId || undefined,
-          recipientType: "carer",
-          subject: "Payment Sent",
-          body: `Payment sent: ${amount} for your visit to ${poolName}. Thank you!`,
-          metadata: { visitId: updated.id, type: "visit_paid" },
-        });
-      }
+      const H = CarerNotifyService;
+      await this.carerNotify.notifyCarerId(orgId, carer?.id || updated.job?.assignedCarerId, {
+        type: "visit_paid",
+        title: `Payment sent — ${amount}`,
+        push: `Your payment for the visit to ${poolName} has been made.`,
+        sms: `Payment sent: ${amount} for your visit to ${poolName}. Thank you!`,
+        emailSubject: `Payment sent — ${amount}`,
+        emailHtml:
+          H.heading(`Payment sent — ${amount}`) +
+          H.para(`We've paid you for your visit to ${poolName}. Thank you for your work.`) +
+          H.details([
+            ["Amount", amount],
+            ["Pool", poolName],
+            ["Client", updated.job?.pool?.client?.name],
+          ]),
+        metadata: { visitId: updated.id, jobId: updated.jobId, url: "/performance" },
+      });
     } catch (error) {
       console.error(`Failed to send payment notification for visit ${visitId}:`, error);
     }

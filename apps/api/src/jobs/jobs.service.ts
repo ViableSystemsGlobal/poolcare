@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException, ForbiddenException, BadRequestException, Logger } from "@nestjs/common";
+import { CarerNotifyService, esc } from "../notifications/carer-notify.service";
 import { assertApproved } from "../utils/approval";
 import { prisma } from "@poolcare/db";
 import { LATE_CANCEL_CODE, LATE_CANCEL_HOURS, ACCESS_FAILURE_CODES } from "../plans/visit-entitlement";
@@ -24,7 +25,8 @@ export class JobsService {
   constructor(
     private readonly mapsService: MapsService,
     private readonly notificationsService: NotificationsService,
-    private readonly settingsService: SettingsService
+    private readonly settingsService: SettingsService,
+    private readonly carerNotify: CarerNotifyService
   ) {}
   async create(orgId: string, dto: CreateJobDto) {
     // Verify pool belongs to org
@@ -163,66 +165,9 @@ export class JobsService {
       },
     });
 
-    // Send SMS notification to carer if job was assigned during creation
+    // Tell the carer (push + SMS + email) if the job was assigned on creation
     if (carerForNotification && job.assignedCarerId) {
-      try {
-        const carerPhone = carerForNotification.phone || carerForNotification.user?.phone;
-        if (carerPhone) {
-          // Format job date and time
-          const jobDate = new Date(job.windowStart);
-          const dateStr = jobDate.toLocaleDateString("en-US", {
-            weekday: "short",
-            month: "short",
-            day: "numeric",
-          });
-          const timeStr = jobDate.toLocaleTimeString("en-US", {
-            hour: "numeric",
-            minute: "2-digit",
-            hour12: true,
-          });
-
-          // Format pool location
-          const poolName = job.pool.name || "Pool";
-          const poolAddress = job.pool.address || "";
-          const locationStr = poolAddress ? `${poolName}, ${poolAddress}` : poolName;
-
-          // Build SMS message (using plain text for SMS compatibility)
-          let message = `You've been assigned a new job!\n\n`;
-          message += `Location: ${locationStr}\n`;
-          message += `Date & Time: ${dateStr} at ${timeStr}\n`;
-          message += `\nPlease check your app for details.`;
-
-          // Send SMS notification
-          await this.notificationsService.send(orgId, {
-            recipientId: carerForNotification.id,
-            recipientType: "carer",
-            channel: "sms",
-            to: carerPhone,
-            template: "job_assigned",
-            body: message,
-            metadata: {
-              jobId: job.id,
-              carerId: carerForNotification.id,
-            },
-          });
-
-          this.logger.log(`SMS notification sent to carer ${carerForNotification.id} for job ${job.id}`);
-        } else {
-          this.logger.warn(`Cannot send SMS to carer ${carerForNotification.id}: no phone number found`);
-        }
-      } catch (error) {
-        // Don't fail the creation if SMS fails
-        this.logger.error(`Failed to send SMS notification for job creation ${job.id}:`, error);
-      }
-
-      // Also push the carer app (assign() does this; create() previously only SMS'd).
-      await this.pushCarer(
-        orgId,
-        carerForNotification.userId,
-        "New Job Assigned",
-        `You've been assigned a job at ${job.pool.name || "a pool"} on ${this.formatJobWhen(job.windowStart)}.`,
-        { jobId: job.id, carerId: carerForNotification.id, poolId: job.poolId, type: "job_assigned" }
-      );
+      await this.notifyJobAssigned(orgId, carerForNotification.id, job, null);
     }
 
     return job;
@@ -561,100 +506,8 @@ export class JobsService {
       },
     });
 
-    // Send SMS notification to carer
-    try {
-      const carerPhone = carer.phone || carer.user?.phone;
-      if (carerPhone) {
-        // Format job date and time
-        const jobDate = new Date(job.windowStart);
-        const dateStr = jobDate.toLocaleDateString("en-US", {
-          weekday: "short",
-          month: "short",
-          day: "numeric",
-        });
-        const timeStr = jobDate.toLocaleTimeString("en-US", {
-          hour: "numeric",
-          minute: "2-digit",
-          hour12: true,
-        });
-
-        // Format pool location
-        const poolName = job.pool.name || "Pool";
-        const poolAddress = job.pool.address || "";
-        const locationStr = poolAddress ? `${poolName}, ${poolAddress}` : poolName;
-
-        // Build SMS message (using plain text for SMS compatibility)
-        let message = `You've been assigned a new job!\n\n`;
-        message += `Location: ${locationStr}\n`;
-        message += `Date & Time: ${dateStr} at ${timeStr}\n`;
-        
-        if (etaMinutes) {
-          message += `ETA: ${etaMinutes} min\n`;
-        }
-        
-        message += `\nPlease check your app for details.`;
-
-        // Send SMS notification
-        await this.notificationsService.send(orgId, {
-          recipientId: carer.id,
-          recipientType: "carer",
-          channel: "sms",
-          to: carerPhone,
-          template: "job_assigned",
-          body: message,
-          metadata: {
-            jobId: jobId,
-            carerId: carer.id,
-          },
-        });
-
-        this.logger.log(`SMS notification sent to carer ${carer.id} for job ${jobId}`);
-      } else {
-        this.logger.warn(`Cannot send SMS to carer ${carer.id}: no phone number found`);
-      }
-
-      // Also send push notification if carer has userId (for mobile app)
-      if (carer.userId) {
-        try {
-          const poolName = job.pool.name || "Pool";
-          const jobDate = new Date(job.windowStart);
-          const dateStr = jobDate.toLocaleDateString("en-US", {
-            weekday: "short",
-            month: "short",
-            day: "numeric",
-          });
-          const timeStr = jobDate.toLocaleTimeString("en-US", {
-            hour: "numeric",
-            minute: "2-digit",
-            hour12: true,
-          });
-
-          await this.notificationsService.send(orgId, {
-            channel: "push",
-            to: "", // Push notifications use recipientId instead
-            recipientId: carer.userId,
-            recipientType: "carer",
-            subject: "New Job Assigned",
-            body: `You've been assigned a job at ${poolName} on ${dateStr} at ${timeStr}${etaMinutes ? ` (ETA: ${etaMinutes} min)` : ""}`,
-            template: "job_assigned",
-            metadata: {
-              jobId: jobId,
-              carerId: carer.id,
-              poolId: job.poolId,
-              type: "job_assigned",
-            },
-          });
-
-          this.logger.log(`Push notification sent to carer ${carer.id} for job ${jobId}`);
-        } catch (pushError) {
-          // Push notification failure shouldn't block assignment
-          this.logger.error(`Failed to send push notification for job assignment ${jobId}:`, pushError);
-        }
-      }
-    } catch (error) {
-      // Don't fail the assignment if notifications fail
-      this.logger.error(`Failed to send notifications for job assignment ${jobId}:`, error);
-    }
+    // Tell the carer (push + SMS + email)
+    await this.notifyJobAssigned(orgId, carer.id, job, etaMinutes ?? null);
 
     return updated;
   }
@@ -964,7 +817,10 @@ export class JobsService {
     return `${dateStr} at ${timeStr}`;
   }
 
-  /** Fire-and-forget push to a carer's CARER app. Never blocks or throws. */
+  /**
+   * Tell a carer about a change to one of their jobs (rescheduled, cancelled…):
+   * push + SMS + email. Never blocks or throws.
+   */
   private async pushCarer(
     orgId: string,
     carerUserId: string | null | undefined,
@@ -973,19 +829,58 @@ export class JobsService {
     metadata: Record<string, any>
   ): Promise<void> {
     if (!carerUserId) return;
+    const H = CarerNotifyService;
     try {
-      await this.notificationsService.send(orgId, {
-        channel: "push",
-        to: "",
-        recipientId: carerUserId,
-        recipientType: "carer",
-        subject,
-        body,
-        template: (metadata?.type as string) || "job_update",
-        metadata,
-      } as any);
+      await this.carerNotify.notifyCarerUser(orgId, carerUserId, {
+        type: (metadata?.type as string) || "job_update",
+        title: subject,
+        push: body,
+        sms: `${subject}: ${body}`,
+        emailHtml: H.heading(subject) + H.para(esc(body)) + H.para("Open the PoolCare app to see your updated schedule."),
+        metadata: { ...metadata, url: metadata?.jobId ? `/jobs/${metadata.jobId}` : "/schedule" },
+      });
     } catch (err) {
-      this.logger.error(`Failed to push carer (${metadata?.type}):`, err as any);
+      this.logger.error(`Failed to notify carer (${metadata?.type}):`, err as any);
+    }
+  }
+
+  /** New job for a carer: push + SMS + email with when, where and client. */
+  private async notifyJobAssigned(
+    orgId: string,
+    carerId: string,
+    job: { id: string; poolId: string; windowStart: Date | string; pool: { name: string | null; address: string | null; lat?: number | null; lng?: number | null; client?: { name: string | null } | null } },
+    etaMinutes: number | null
+  ) {
+    const poolName = job.pool?.name || "a pool";
+    const when = this.formatJobWhen(job.windowStart);
+    const where = job.pool?.address ? `${poolName}, ${job.pool.address}` : poolName;
+    const maps =
+      job.pool?.lat != null && job.pool?.lng != null
+        ? `https://www.google.com/maps/dir/?api=1&destination=${job.pool.lat},${job.pool.lng}`
+        : null;
+    const H = CarerNotifyService;
+    try {
+      await this.carerNotify.notifyCarerId(orgId, carerId, {
+        type: "job_assigned",
+        title: "New job assigned",
+        push: `${poolName} on ${when}${etaMinutes ? ` (about ${etaMinutes} min away)` : ""}. Tap for details.`,
+        sms: `New job: ${where} on ${when}.${etaMinutes ? ` About ${etaMinutes} min away.` : ""} Details in the PoolCare app.`,
+        emailSubject: `New job: ${poolName}, ${when}`,
+        emailHtml:
+          H.heading("You have a new job") +
+          H.details([
+            ["When", when],
+            ["Pool", poolName],
+            ["Client", job.pool?.client?.name],
+            ["Address", job.pool?.address],
+            ["Distance", etaMinutes ? `About ${etaMinutes} min away` : null],
+          ]) +
+          (maps ? H.para(`<a href="${maps}" style="color:#2563eb;text-decoration:none;">Get directions</a>`) : "") +
+          H.para("Open the PoolCare app to see the full details."),
+        metadata: { jobId: job.id, poolId: job.poolId, url: `/jobs/${job.id}` },
+      });
+    } catch (err) {
+      this.logger.error(`Failed to notify carer of job ${job.id}:`, err as any);
     }
   }
 

@@ -11,6 +11,7 @@ import {
 } from "@nestjs/common";
 import { createWelcomeEmailTemplate } from "../email/email-template.util";
 import { NotificationsService } from "./notifications.service";
+import { CarerDayPlanService } from "./carer-day-plan.service";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { RolesGuard } from "../auth/guards/roles.guard";
 import { Roles } from "../auth/decorators/roles.decorator";
@@ -21,7 +22,21 @@ import { prisma } from "@poolcare/db";
 @Controller("notifications")
 @UseGuards(JwtAuthGuard)
 export class NotificationsController {
-  constructor(private readonly notificationsService: NotificationsService) {}
+  constructor(
+    private readonly notificationsService: NotificationsService,
+    private readonly carerDayPlan: CarerDayPlanService
+  ) {}
+
+  /** Send today's day plan to carers now (all, or one), e.g. after late changes. */
+  @Post("carer-day-plan")
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "MANAGER")
+  async sendCarerDayPlan(
+    @CurrentUser() user: { org_id: string },
+    @Body() body: { carerId?: string; force?: boolean }
+  ) {
+    return this.carerDayPlan.sendAll({ orgId: user.org_id, carerId: body?.carerId, force: !!body?.force });
+  }
 
   @Get()
   @UseGuards(RolesGuard)
