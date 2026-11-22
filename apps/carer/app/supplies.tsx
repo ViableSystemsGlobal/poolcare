@@ -444,8 +444,8 @@ const styles = StyleSheet.create({
   cartBar: { position: "absolute", left: 14, right: 14, backgroundColor: C.card, borderRadius: 20, padding: 10, paddingLeft: 18, flexDirection: "row", alignItems: "center", gap: 12 },
   cartTitle: { fontSize: 15, fontWeight: "700", color: C.ink },
   cartSub: { fontSize: 13, color: C.muted },
-  overlay: { flex: 1, backgroundColor: "rgba(16,35,26,0.35)" },
+  overlay: { flex: 1, backgroundColor: "rgba(17,24,39,0.35)" },
   sheet: { backgroundColor: C.card, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: 20, paddingTop: 10 },
   grabber: { alignSelf: "center", width: 40, height: 4, borderRadius: 2, backgroundColor: C.border, marginBottom: 12 },
-  sheetTitle: { fontSize: 20, fontWeight: "700", color: C.ink },
+  sheetTitle: { fontSize: 20, fontWeight: "800", color: C.ink },
 });

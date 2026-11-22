@@ -47,17 +47,17 @@ const ICON_COLORS: Record<ToastType, string> = {
 
 // Dark ink toasts read on any background (map, photo, white card)
 const BG_COLORS: Record<ToastType, string> = {
-  success: "#10231a",
-  error: "#10231a",
-  warning: "#10231a",
-  info: "#10231a",
+  success: "#111827",
+  error: "#111827",
+  warning: "#111827",
+  info: "#111827",
 };
 
 const BORDER_COLORS: Record<ToastType, string> = {
-  success: "#10231a",
-  error: "#10231a",
-  warning: "#10231a",
-  info: "#10231a",
+  success: "#111827",
+  error: "#111827",
+  warning: "#111827",
+  info: "#111827",
 };
 
 export const Toast: React.FC<ToastProps> = ({
@@ -243,7 +243,7 @@ const styles = StyleSheet.create({
     borderRadius: BORDER_RADIUS.md,
   },
   actionText: {
-    color: "#10231a",
+    color: "#111827",
     fontSize: FONT_SIZES.sm,
     fontWeight: "600",
   },

@@ -61,9 +61,9 @@ export default function SwipeButton({
       default:
         // Primary: ink, so "on my way" reads differently from "I'm here"
         return {
-          bg: backgroundColor || "#10231a",
+          bg: backgroundColor || "#111827",
           thumb: "#000000",
-          track: "#eceee9",
+          track: "#f3f4f6",
         };
     }
   };

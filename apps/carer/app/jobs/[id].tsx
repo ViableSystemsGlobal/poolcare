@@ -165,6 +165,8 @@ function buildMapHtml(
 </html>`;
 }
 
+const DONE_ART = require("../../assets/home-card.png");
+
 export default function JobDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const insets = useSafeAreaInsets();
@@ -1589,15 +1591,20 @@ export default function JobDetailScreen() {
   if (job?.status === "completed") {
     return (
       <View style={styles.container}>
-        <View style={[styles.doneHero, { paddingTop: insets.top + 56 }]}>
-          <View style={[styles.doneBadge, { backgroundColor: themeColor + "1F" }]}>
-            <Ionicons name="checkmark" size={44} color={themeColor} />
+        <View style={[styles.doneHero, { paddingTop: insets.top + 40, backgroundColor: themeColor }]}>
+          <View style={styles.doneDecor1} />
+          <View style={styles.doneDecor2} />
+          <Image source={DONE_ART} style={styles.doneArt} resizeMode="contain" />
+          <View style={styles.doneBadge}>
+            <Ionicons name="checkmark" size={30} color={themeColor} />
           </View>
           <Text style={styles.doneTitle}>Visit complete</Text>
           <Text style={styles.doneSub}>{job?.poolName}</Text>
-          <Text style={styles.doneBody}>The client gets the report and can rate the visit. Ratings show on your Performance tab.</Text>
         </View>
-        <View style={{ paddingHorizontal: 20, gap: 10 }}>
+        <View style={{ paddingHorizontal: 20, gap: 10, marginTop: -28 }}>
+          <Card padded style={{ marginBottom: 6 }}>
+            <Text style={styles.doneBody}>The client gets the report and can rate the visit. Ratings show on your Performance tab.</Text>
+          </Card>
           {visitId ? (
             <Button title="View report" variant="secondary" icon="document-text-outline" onPress={openReport} loading={loadingReport} />
           ) : null}
@@ -1919,10 +1926,10 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: C.bg },
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
   centerText: { marginTop: 12, color: C.muted, fontSize: 14 },
-  transitionTitle: { color: "#ffffff", fontSize: 22, fontWeight: "700", marginTop: 18 },
+  transitionTitle: { color: "#ffffff", fontSize: 24, fontWeight: "800", marginTop: 18, letterSpacing: -0.5 },
   transitionSub: { color: "rgba(255,255,255,0.8)", fontSize: 15, marginTop: 4 },
   hero: { backgroundColor: "#3f9ac4", overflow: "hidden" },
-  heroShade: { backgroundColor: "rgba(16,35,26,0.12)" },
+  heroShade: { backgroundColor: "rgba(17,24,39,0.12)" },
   heroBar: { position: "absolute", left: 16, right: 16, flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   heroPill: {
     height: 40,
@@ -1939,11 +1946,11 @@ const styles = StyleSheet.create({
   },
   heroPillText: { fontSize: 13, fontWeight: "600", color: C.ink },
   sheet: { marginTop: -24, backgroundColor: C.bg, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: 16, paddingTop: 20 },
-  title: { fontSize: 22, fontWeight: "700", color: C.ink, letterSpacing: -0.2 },
+  title: { fontSize: 24, fontWeight: "800", color: C.ink, letterSpacing: -0.5 },
   sub: { fontSize: 14, color: C.muted, marginTop: 2 },
   steps: { flexDirection: "row", gap: 6, marginTop: 18 },
-  stepBar: { height: 4, borderRadius: 2 },
-  stepLabel: { fontSize: 11, color: C.muted, marginTop: 6, fontWeight: "500" },
+  stepBar: { height: 5, borderRadius: 3 },
+  stepLabel: { fontSize: 11, color: C.muted, marginTop: 6, fontWeight: "600" },
   rowTitle: { fontSize: 15, fontWeight: "600", color: C.ink },
   rowSub: { fontSize: 13, color: C.muted, marginTop: 2 },
   blockLabel: { fontSize: 13, fontWeight: "600", color: C.ink },
@@ -1953,12 +1960,15 @@ const styles = StyleSheet.create({
   locating: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10, minHeight: 56 },
   accessLink: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, marginTop: 12 },
   accessLinkText: { fontSize: 14, color: C.muted, fontWeight: "500" },
-  doneHero: { alignItems: "center", paddingHorizontal: 28, paddingBottom: 32 },
-  doneBadge: { width: 88, height: 88, borderRadius: 44, alignItems: "center", justifyContent: "center" },
-  doneTitle: { fontSize: 26, fontWeight: "700", color: C.ink, marginTop: 20 },
-  doneSub: { fontSize: 16, color: C.body, marginTop: 4, fontWeight: "500" },
-  doneBody: { fontSize: 14, color: C.muted, marginTop: 10, textAlign: "center", lineHeight: 20 },
-  reportStrong: { fontSize: 16, fontWeight: "600", color: C.ink, marginTop: 6 },
+  doneHero: { alignItems: "center", paddingHorizontal: 28, paddingBottom: 60, overflow: "hidden" },
+  doneDecor1: { position: "absolute", width: 240, height: 240, borderRadius: 120, backgroundColor: "rgba(255,255,255,0.08)", top: -80, right: -70 },
+  doneDecor2: { position: "absolute", width: 170, height: 170, borderRadius: 85, backgroundColor: "rgba(255,255,255,0.06)", bottom: -60, left: -50 },
+  doneArt: { width: 200, height: 200 },
+  doneBadge: { width: 56, height: 56, borderRadius: 28, backgroundColor: "#ffffff", alignItems: "center", justifyContent: "center", marginTop: -28, borderWidth: 4, borderColor: "rgba(255,255,255,0.35)" },
+  doneTitle: { fontSize: 28, fontWeight: "800", color: "#ffffff", marginTop: 14, letterSpacing: -0.5 },
+  doneSub: { fontSize: 16, color: "rgba(255,255,255,0.85)", marginTop: 4, fontWeight: "600" },
+  doneBody: { fontSize: 14, color: C.muted, textAlign: "center", lineHeight: 20 },
+  reportStrong: { fontSize: 17, fontWeight: "800", color: C.ink, marginTop: 6 },
   reportMuted: { fontSize: 14, color: C.muted, marginTop: 2 },
   reportText: { fontSize: 14, color: C.body, marginTop: 6 },
 });

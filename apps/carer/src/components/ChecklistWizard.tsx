@@ -1118,16 +1118,17 @@ const ReadingInput: React.FC<ReadingInputProps> = ({
   );
 };
 
-const INK = "#10231a";
-const MUTED = "#5b6b62";
-const LINE = "#eceee9";
-const BORDER = "#dfe3dc";
-const BG = "#f4f5f2";
+const INK = "#111827";
+const MUTED = "#6b7280";
+const LINE = "#f3f4f6";
+const BORDER = "#e5e7eb";
+const BG = "#f9fafb";
 const ACCENT = COLORS.primary[600];
-const TINT = "#e6f0ea";
+const TINT = ACCENT + "1F";
 const cardShadow = Platform.select({
-  ios: { shadowColor: INK, shadowOpacity: 0.06, shadowRadius: 4, shadowOffset: { width: 0, height: 1 } },
-  default: { elevation: 1 },
+  ios: { shadowColor: "#000", shadowOpacity: 0.07, shadowRadius: 10, shadowOffset: { width: 0, height: 3 } },
+  web: { boxShadow: "0 3px 10px rgba(0,0,0,0.07)" },
+  default: { elevation: 3 },
 }) as any;
 
 const styles = StyleSheet.create({
@@ -1136,19 +1137,19 @@ const styles = StyleSheet.create({
   // Step header
   progressHeader: { backgroundColor: "#ffffff", paddingHorizontal: 20, paddingTop: 14, paddingBottom: 16, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: LINE },
   progressInfo: { flexDirection: "row", justifyContent: "space-between", alignItems: "baseline", marginBottom: 10 },
-  stepCounter: { fontSize: 12, fontWeight: "600", letterSpacing: 0.7, textTransform: "uppercase", color: MUTED },
+  stepCounter: { fontSize: 12, fontWeight: "800", letterSpacing: 0.8, textTransform: "uppercase", color: ACCENT },
   progressText: { fontSize: 13, color: MUTED },
   progressBarContainer: { height: 6, backgroundColor: LINE, borderRadius: 3, overflow: "hidden" },
   progressBarFill: { height: "100%", backgroundColor: ACCENT, borderRadius: 3 },
 
-  categoryBadge: { flexDirection: "row", alignItems: "center", alignSelf: "flex-start", gap: 6, marginTop: 20, marginHorizontal: 20, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 },
-  categoryText: { fontSize: 12, fontWeight: "600" },
+  categoryBadge: { flexDirection: "row", alignItems: "center", alignSelf: "flex-start", gap: 6, marginTop: 20, marginHorizontal: 20, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999 },
+  categoryText: { fontSize: 12, fontWeight: "700" },
 
   contentCard: { flex: 1, marginHorizontal: 16, marginTop: 12, marginBottom: 12, backgroundColor: "#ffffff", borderRadius: 20, padding: 20, ...cardShadow },
   taskHeader: { gap: 8 },
-  requiredBadge: { alignSelf: "flex-start", backgroundColor: "#fff4e5", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
+  requiredBadge: { alignSelf: "flex-start", backgroundColor: "#fff4e5", paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999 },
   requiredText: { fontSize: 11, fontWeight: "700", color: "#8a4b08", letterSpacing: 0.3 },
-  taskLabel: { fontSize: 24, fontWeight: "700", color: INK, lineHeight: 31, letterSpacing: -0.2 },
+  taskLabel: { fontSize: 24, fontWeight: "800", color: INK, lineHeight: 31, letterSpacing: -0.5 },
 
   numericInputContainer: { marginTop: 20 },
   numericInput: { height: 64, borderWidth: 1, borderColor: BORDER, borderRadius: 14, paddingHorizontal: 16, fontSize: 26, fontWeight: "700", color: INK, textAlign: "center", backgroundColor: "#ffffff" },
@@ -1174,14 +1175,14 @@ const styles = StyleSheet.create({
   navButton: { width: 48, height: 48, borderRadius: 24, backgroundColor: BG, alignItems: "center", justifyContent: "center" },
   naButton: { height: 40, paddingHorizontal: 16, borderRadius: 20, borderWidth: 1, borderColor: BORDER, justifyContent: "center" },
   naButtonText: { fontSize: 14, fontWeight: "600", color: MUTED },
-  completeStepButton: { height: 56, borderRadius: 16, backgroundColor: ACCENT, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 },
-  completeStepButtonDisabled: { backgroundColor: "#c9d3cc" },
+  completeStepButton: { height: 56, borderRadius: 14, backgroundColor: ACCENT, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 },
+  completeStepButtonDisabled: { backgroundColor: "#d1d5db" },
   completeStepButtonDone: { backgroundColor: COLORS.primary[700] },
-  completeStepButtonText: { fontSize: 16, fontWeight: "600", color: "#ffffff" },
+  completeStepButtonText: { fontSize: 16, fontWeight: "700", color: "#ffffff" },
 
-  naModalBackdrop: { flex: 1, backgroundColor: "rgba(16,35,26,0.4)", justifyContent: "center", padding: 24 },
+  naModalBackdrop: { flex: 1, backgroundColor: "rgba(17,24,39,0.4)", justifyContent: "center", padding: 24 },
   naModalCard: { backgroundColor: "#ffffff", borderRadius: 20, padding: 20, gap: 12 },
-  naModalTitle: { fontSize: 18, fontWeight: "700", color: INK },
+  naModalTitle: { fontSize: 18, fontWeight: "800", color: INK },
   naModalSubtitle: { fontSize: 14, color: MUTED, lineHeight: 20 },
   naModalActions: { flexDirection: "row", gap: 10, marginTop: 4 },
 
@@ -1191,14 +1192,14 @@ const styles = StyleSheet.create({
   phaseDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: LINE },
   phaseDotActive: { backgroundColor: ACCENT, width: 24 },
   phaseLine: { width: 20, height: 2, backgroundColor: LINE, marginHorizontal: 4 },
-  phaseLabel: { fontSize: 24, fontWeight: "700", color: INK, letterSpacing: -0.2 },
+  phaseLabel: { fontSize: 24, fontWeight: "800", color: INK, letterSpacing: -0.5 },
   phaseSubtitle: { fontSize: 14, color: MUTED, marginTop: 4 },
 
   readingsScroll: { flex: 1 },
   readingsGrid: { flexDirection: "row", flexWrap: "wrap", padding: 12 },
   readingInputContainer: { width: "50%", padding: 4 },
   readingLabelRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 6, paddingHorizontal: 2 },
-  readingLabel: { fontSize: 13, fontWeight: "600", color: INK },
+  readingLabel: { fontSize: 13, fontWeight: "700", color: INK },
   optionalTag: { fontSize: 11, color: MUTED },
   readingInputWrapper: { flexDirection: "row", alignItems: "center", height: 60, backgroundColor: "#ffffff", borderRadius: 14, borderWidth: 1, borderColor: BORDER, paddingHorizontal: 14 },
   readingInputWarning: { borderColor: "#e0a100", backgroundColor: "#fffaf0" },
@@ -1210,7 +1211,7 @@ const styles = StyleSheet.create({
 
   chemicalsContainer: { padding: 16, gap: 12 },
   emptyChemicals: { alignItems: "center", paddingVertical: 36, backgroundColor: "#ffffff", borderRadius: 20, gap: 6, ...cardShadow },
-  emptyChemicalsText: { fontSize: 15, fontWeight: "600", color: INK, marginTop: 6 },
+  emptyChemicalsText: { fontSize: 16, fontWeight: "700", color: INK, marginTop: 6 },
   emptyChemicalsSubtext: { fontSize: 13, color: MUTED, textAlign: "center", paddingHorizontal: 24 },
   chemicalItem: { backgroundColor: "#ffffff", borderRadius: 20, padding: 16, gap: 12, ...cardShadow },
   chemicalInputRow: { flexDirection: "row", alignItems: "flex-start", gap: 8 },
@@ -1219,20 +1220,20 @@ const styles = StyleSheet.create({
   chemicalQtyRow: { flexDirection: "row", gap: 12 },
   chemicalQtyInput: { width: 110 },
   chemicalUnitInput: { flex: 1 },
-  inputLabel: { fontSize: 13, fontWeight: "600", color: INK, marginBottom: 6 },
+  inputLabel: { fontSize: 13, fontWeight: "700", color: INK, marginBottom: 6 },
   textInput: { minHeight: 48, borderWidth: 1, borderColor: BORDER, borderRadius: 12, paddingHorizontal: 14, fontSize: 15, color: INK, backgroundColor: "#ffffff" },
   unitSelector: { flexDirection: "row", gap: 6 },
   unitOption: { minHeight: 40, paddingHorizontal: 12, borderRadius: 10, borderWidth: 1, borderColor: BORDER, backgroundColor: "#ffffff", justifyContent: "center", alignItems: "center", marginBottom: 6 },
   unitOptionActive: { borderColor: ACCENT, backgroundColor: TINT },
-  unitOptionText: { fontSize: 14, color: "#3c4a42", fontWeight: "500" },
+  unitOptionText: { fontSize: 14, color: "#374151", fontWeight: "500" },
   unitOptionTextActive: { color: ACCENT, fontWeight: "700" },
   addChemicalButton: { height: 52, borderRadius: 16, borderWidth: 1.5, borderStyle: "dashed", borderColor: BORDER, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 },
   addChemicalButtonText: { fontSize: 15, fontWeight: "600", color: ACCENT },
 
   readingsFooter: { flexDirection: "row", gap: 10, backgroundColor: "#ffffff", paddingHorizontal: 16, paddingTop: 12, paddingBottom: 28, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: LINE },
-  secondaryButton: { flex: 1, height: 56, borderRadius: 16, borderWidth: 1, borderColor: BORDER, backgroundColor: "#ffffff", flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingHorizontal: 10 },
-  secondaryButtonText: { fontSize: 15, fontWeight: "600", color: INK },
-  primaryButton: { flex: 1.4, height: 56, borderRadius: 16, backgroundColor: ACCENT, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingHorizontal: 12 },
-  primaryButtonDisabled: { backgroundColor: "#c9d3cc" },
-  primaryButtonText: { fontSize: 16, fontWeight: "600", color: "#ffffff" },
+  secondaryButton: { flex: 1, height: 56, borderRadius: 14, borderWidth: 1, borderColor: BORDER, backgroundColor: "#ffffff", flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingHorizontal: 10 },
+  secondaryButtonText: { fontSize: 15, fontWeight: "700", color: INK },
+  primaryButton: { flex: 1.4, height: 56, borderRadius: 14, backgroundColor: ACCENT, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingHorizontal: 12 },
+  primaryButtonDisabled: { backgroundColor: "#d1d5db" },
+  primaryButtonText: { fontSize: 16, fontWeight: "700", color: "#ffffff" },
 });

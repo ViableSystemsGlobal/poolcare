@@ -110,7 +110,7 @@ export default function AccessFailureSheet({
                 style={[styles.option, on && { borderColor: themeColor, backgroundColor: themeColor + "1F" }]}
                 onPress={() => setReason(r.code)}
               >
-                <Ionicons name={on ? "radio-button-on" : "radio-button-off"} size={20} color={on ? themeColor : "#8a968f"} />
+                <Ionicons name={on ? "radio-button-on" : "radio-button-off"} size={20} color={on ? themeColor : "#9ca3af"} />
                 <View style={{ flex: 1 }}>
                   <Text style={styles.optionTitle}>{r.title}</Text>
                   <Text style={styles.optionHint}>{r.hint}</Text>
@@ -122,7 +122,7 @@ export default function AccessFailureSheet({
           <TextInput
             style={styles.notes}
             placeholder="What happened? (who you called, how long you waited)"
-            placeholderTextColor="#8a968f"
+            placeholderTextColor="#9ca3af"
             value={notes}
             onChangeText={setNotes}
             multiline
@@ -156,20 +156,20 @@ export default function AccessFailureSheet({
 }
 
 const styles = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: "rgba(16,35,26,0.4)", justifyContent: "flex-end" },
+  backdrop: { flex: 1, backgroundColor: "rgba(17,24,39,0.4)", justifyContent: "flex-end" },
   sheet: { backgroundColor: "#ffffff", borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, paddingBottom: 36, gap: 12 },
   header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  title: { fontSize: 20, fontWeight: "700", color: "#10231a" },
-  subtitle: { fontSize: 14, color: "#5b6b62", lineHeight: 20 },
-  option: { flexDirection: "row", gap: 12, alignItems: "flex-start", borderWidth: 1, borderColor: "#dfe3dc", borderRadius: 14, padding: 14 },
-  optionTitle: { fontSize: 15, fontWeight: "600", color: "#10231a" },
-  optionHint: { fontSize: 13, color: "#5b6b62", marginTop: 2 },
-  notes: { borderWidth: 1, borderColor: "#dfe3dc", borderRadius: 12, padding: 12, minHeight: 80, fontSize: 15, color: "#10231a", textAlignVertical: "top" },
+  title: { fontSize: 20, fontWeight: "800", color: "#111827" },
+  subtitle: { fontSize: 14, color: "#6b7280", lineHeight: 20 },
+  option: { flexDirection: "row", gap: 12, alignItems: "flex-start", borderWidth: 1, borderColor: "#e5e7eb", borderRadius: 14, padding: 14 },
+  optionTitle: { fontSize: 15, fontWeight: "600", color: "#111827" },
+  optionHint: { fontSize: 13, color: "#6b7280", marginTop: 2 },
+  notes: { borderWidth: 1, borderColor: "#e5e7eb", borderRadius: 12, padding: 12, minHeight: 80, fontSize: 15, color: "#111827", textAlignVertical: "top" },
   photoButton: { flexDirection: "row", alignItems: "center", gap: 8, height: 44 },
   photoButtonText: { fontSize: 14, fontWeight: "600" },
   photoRow: { flexDirection: "row", alignItems: "center", gap: 12 },
   photo: { width: 64, height: 64, borderRadius: 12 },
   removePhoto: { fontSize: 14, color: "#9b1c1c", fontWeight: "600" },
   submit: { height: 56, borderRadius: 16, alignItems: "center", justifyContent: "center", marginTop: 4 },
-  submitText: { color: "#ffffff", fontSize: 16, fontWeight: "600" },
+  submitText: { color: "#ffffff", fontSize: 16, fontWeight: "700" },
 });

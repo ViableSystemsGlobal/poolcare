@@ -57,37 +57,37 @@ export const COLORS = {
   // Neutral - Gray
   neutral: {
     50: "#f8f9f6",
-    100: "#f4f5f2",
-    200: "#eceee9",
-    300: "#dfe3dc",
-    400: "#8a968f",
-    500: "#5b6b62",
+    100: "#f9fafb",
+    200: "#f3f4f6",
+    300: "#e5e7eb",
+    400: "#9ca3af",
+    500: "#6b7280",
     600: "#4a5a51",
-    700: "#3c4a42",
+    700: "#374151",
     800: "#1f3329",
-    900: "#10231a",
+    900: "#111827",
   },
 
   // Background
   background: {
     primary: "#ffffff",
-    secondary: "#f4f5f2",
-    tertiary: "#eceee9",
+    secondary: "#f9fafb",
+    tertiary: "#f3f4f6",
   },
 
   // Text
   text: {
-    primary: "#10231a",
-    secondary: "#5b6b62",
-    tertiary: "#8a968f",
+    primary: "#111827",
+    secondary: "#6b7280",
+    tertiary: "#9ca3af",
     inverse: "#ffffff",
   },
 
   // Borders
   border: {
-    light: "#eceee9",
-    medium: "#dfe3dc",
-    dark: "#8a968f",
+    light: "#f3f4f6",
+    medium: "#e5e7eb",
+    dark: "#9ca3af",
   },
 };
 

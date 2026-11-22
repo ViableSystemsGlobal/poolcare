@@ -27,8 +27,8 @@ import {
   Avatar,
   Button,
   Field,
-  TabHeader,
   SectionHeader,
+  RowIcon,
   StatStrip,
   TAB_BAR_CLEARANCE,
   useAccent,
@@ -224,7 +224,7 @@ export default function ProfileScreen() {
 
   const linkRow = (icon: keyof typeof Ionicons.glyphMap, label: string, onPress: () => void, opts?: { sub?: string; first?: boolean; external?: boolean }) => (
     <Row first={opts?.first} onPress={onPress} chevron={!opts?.external}>
-      <Ionicons name={icon} size={20} color={C.muted} />
+      <RowIcon icon={icon} />
       <View style={{ flex: 1, minWidth: 0 }}>
         <Text style={styles.rowLabel}>{label}</Text>
         {opts?.sub ? <Text style={styles.rowSub}>{opts.sub}</Text> : null}
@@ -237,53 +237,78 @@ export default function ProfileScreen() {
 
   return (
     <View style={styles.container}>
-      <TabHeader eyebrow="Account" title="Profile" />
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: TAB_BAR_CLEARANCE + insets.bottom }} showsVerticalScrollIndicator={false}>
-        {/* Identity */}
-        <Card style={styles.identity}>
-          <TouchableOpacity onPress={changePhoto} accessibilityLabel="Change profile photo" activeOpacity={0.8}>
+      <ScrollView contentContainerStyle={{ paddingBottom: TAB_BAR_CLEARANCE + insets.bottom }} showsVerticalScrollIndicator={false}>
+        {/* Brand header, like the client app's Account screen */}
+        <View style={[styles.hero, { backgroundColor: accent, paddingTop: insets.top + 14 }]}>
+          <View style={styles.decor1} />
+          <View style={styles.decor2} />
+          <View style={styles.heroBar}>
+            <Text style={styles.heroTitle}>Profile</Text>
+            <TouchableOpacity
+              onPress={() => {
+                setEditName(profile.name);
+                setEditOpen(true);
+              }}
+              style={styles.heroBtn}
+              accessibilityLabel="Edit name"
+            >
+              <Ionicons name="pencil" size={17} color="#ffffff" />
+            </TouchableOpacity>
+          </View>
+          <TouchableOpacity onPress={changePhoto} accessibilityLabel="Change profile photo" activeOpacity={0.85} style={styles.avatarRing}>
             {uploading ? (
               <View style={[styles.avatarBusy, { backgroundColor: tint }]}>
                 <ActivityIndicator color={accent} />
               </View>
             ) : (
-              <Avatar name={profile.name} uri={profile.imageUrl} size={72} />
+              <Avatar name={profile.name} uri={profile.imageUrl} size={92} />
             )}
             <View style={[styles.camera, { backgroundColor: accent }]}>
-              <Ionicons name="camera" size={12} color="#ffffff" />
+              <Ionicons name="camera" size={13} color="#ffffff" />
             </View>
           </TouchableOpacity>
-          <View style={{ flex: 1, minWidth: 0 }}>
-            {loading ? (
-              <ActivityIndicator color={accent} style={{ alignSelf: "flex-start" }} />
-            ) : (
-              <>
-                <Text style={styles.name} numberOfLines={1}>
-                  {profile.name || "Carer"}
+          {loading ? (
+            <ActivityIndicator color="#ffffff" style={{ marginTop: 12 }} />
+          ) : (
+            <>
+              <Text style={styles.name} numberOfLines={1}>
+                {profile.name || "Carer"}
+              </Text>
+              {profile.phone ? <Text style={styles.meta}>{profile.phone}</Text> : null}
+              <View style={styles.orgChip}>
+                <Ionicons name="business-outline" size={12} color="#ffffff" />
+                <Text style={styles.orgText} numberOfLines={1}>
+                  {profile.orgName ? `Carer · ${profile.orgName}` : "Carer"}
                 </Text>
-                <Text style={styles.meta} numberOfLines={1}>
-                  {[profile.orgName ? `Carer · ${profile.orgName}` : "Carer"].join("")}
-                </Text>
-                {profile.phone ? <Text style={styles.meta}>{profile.phone}</Text> : null}
-              </>
-            )}
-          </View>
-          <TouchableOpacity
-            onPress={() => {
-              setEditName(profile.name);
-              setEditOpen(true);
-            }}
-            style={styles.editBtn}
-            accessibilityLabel="Edit name"
-          >
-            <Ionicons name="pencil" size={16} color={C.ink} />
-          </TouchableOpacity>
+              </View>
+            </>
+          )}
+        </View>
+
+        {/* Quick links card overlapping the header */}
+        <Card style={styles.quick}>
+          {(
+            [
+              ["calendar-outline", "Schedule", () => router.replace("/schedule")],
+              ["cube-outline", "Supplies", () => router.replace("/supplies")],
+              ["star-outline", "Ratings", () => router.replace("/performance")],
+              ["water-outline", "Onboard", () => router.push("/onboard-pool")],
+            ] as const
+          ).map(([icon, label, go]) => (
+            <TouchableOpacity key={label} style={styles.quickItem} onPress={go} activeOpacity={0.7} accessibilityRole="button">
+              <View style={[styles.quickIcon, { backgroundColor: tint }]}>
+                <Ionicons name={icon} size={22} color={accent} />
+              </View>
+              <Text style={styles.quickLabel}>{label}</Text>
+            </TouchableOpacity>
+          ))}
         </Card>
 
+        <View style={{ paddingHorizontal: 16 }}>
         {perf ? (
           <TouchableOpacity activeOpacity={0.8} onPress={() => router.replace("/performance")}>
             <StatStrip
-              style={{ marginTop: 12 }}
+              style={{ marginTop: 16 }}
               items={[
                 { label: "This month", value: String(perf.jobsDone), sub: "jobs done" },
                 { label: "Rating", value: perf.allTimeRating != null ? perf.allTimeRating.toFixed(1) : "–", star: perf.allTimeRating != null, sub: `${perf.allTimeRatingCount} review${perf.allTimeRatingCount === 1 ? "" : "s"}` },
@@ -326,7 +351,7 @@ export default function ProfileScreen() {
 
         <Card style={{ marginTop: 24 }}>
           <Row first onPress={logout} chevron={false}>
-            <Ionicons name="log-out-outline" size={20} color={C.danger} />
+            <RowIcon icon="log-out-outline" tone="danger" />
             <Text style={[styles.rowLabel, { color: C.danger }]}>Log out</Text>
           </Row>
         </Card>
@@ -334,6 +359,7 @@ export default function ProfileScreen() {
         <Text style={styles.version}>
           PoolCare Carer {version} · {Updates.updateId ? `update ${Updates.updateId.slice(0, 8)}` : "built-in"}
         </Text>
+        </View>
       </ScrollView>
 
       <Modal visible={editOpen} animationType="slide" transparent onRequestClose={() => setEditOpen(false)}>
@@ -365,17 +391,28 @@ export default function ProfileScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: C.bg },
-  identity: { flexDirection: "row", alignItems: "center", gap: 14, padding: 16 },
-  avatarBusy: { width: 72, height: 72, borderRadius: 36, alignItems: "center", justifyContent: "center" },
-  camera: { position: "absolute", right: -2, bottom: -2, width: 24, height: 24, borderRadius: 12, alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: "#ffffff" },
-  name: { fontSize: 20, fontWeight: "700", color: C.ink },
-  meta: { fontSize: 13, color: C.muted, marginTop: 2 },
-  editBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: C.bg, alignItems: "center", justifyContent: "center" },
-  rowLabel: { fontSize: 15, fontWeight: "500", color: C.ink },
+  hero: { alignItems: "center", paddingBottom: 56, paddingHorizontal: 20, overflow: "hidden" },
+  decor1: { position: "absolute", width: 220, height: 220, borderRadius: 110, backgroundColor: "rgba(255,255,255,0.08)", top: -70, right: -60 },
+  decor2: { position: "absolute", width: 160, height: 160, borderRadius: 80, backgroundColor: "rgba(255,255,255,0.06)", bottom: -40, left: -50 },
+  heroBar: { alignSelf: "stretch", flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 10 },
+  heroTitle: { fontSize: 20, fontWeight: "800", color: "#ffffff" },
+  heroBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: "rgba(255,255,255,0.2)", alignItems: "center", justifyContent: "center" },
+  avatarRing: { padding: 4, borderRadius: 54, backgroundColor: "rgba(255,255,255,0.9)" },
+  avatarBusy: { width: 92, height: 92, borderRadius: 46, alignItems: "center", justifyContent: "center" },
+  camera: { position: "absolute", right: 2, bottom: 2, width: 28, height: 28, borderRadius: 14, alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: "#ffffff" },
+  name: { fontSize: 22, fontWeight: "800", color: "#ffffff", marginTop: 12, letterSpacing: -0.3 },
+  meta: { fontSize: 14, color: "rgba(255,255,255,0.8)", marginTop: 2 },
+  orgChip: { flexDirection: "row", alignItems: "center", gap: 5, marginTop: 10, paddingHorizontal: 12, paddingVertical: 5, borderRadius: 999, backgroundColor: "rgba(255,255,255,0.18)" },
+  orgText: { color: "#ffffff", fontSize: 12, fontWeight: "700" },
+  quick: { flexDirection: "row", marginHorizontal: 16, marginTop: -36, paddingVertical: 16 },
+  quickItem: { flex: 1, alignItems: "center", gap: 8 },
+  quickIcon: { width: 50, height: 50, borderRadius: 16, alignItems: "center", justifyContent: "center" },
+  quickLabel: { fontSize: 12, fontWeight: "700", color: C.ink },
+  rowLabel: { fontSize: 15, fontWeight: "600", color: C.ink },
   rowSub: { fontSize: 13, color: C.muted, marginTop: 2 },
   version: { textAlign: "center", fontSize: 12, color: C.faint, marginTop: 20 },
-  overlay: { flex: 1, backgroundColor: "rgba(16,35,26,0.35)" },
+  overlay: { flex: 1, backgroundColor: "rgba(17,24,39,0.35)" },
   sheet: { backgroundColor: C.card, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: 20, paddingTop: 10 },
   grabber: { alignSelf: "center", width: 40, height: 4, borderRadius: 2, backgroundColor: C.border, marginBottom: 12 },
-  sheetTitle: { fontSize: 20, fontWeight: "700", color: C.ink },
+  sheetTitle: { fontSize: 20, fontWeight: "800", color: C.ink },
 });

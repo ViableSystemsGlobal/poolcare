@@ -7,16 +7,19 @@ import {
   C,
   Card,
   Row,
-  Eyebrow,
   TabHeader,
   SectionHeader,
   EmptyState,
   Stars,
   StatStrip,
+  HeroCard,
+  shadow,
   TAB_BAR_CLEARANCE,
   useAccent,
   dayLabel,
 } from "../src/ui";
+
+const HERO_ART = require("../assets/home-card.png");
 
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
@@ -94,28 +97,29 @@ export default function PerformanceScreen() {
           <EmptyState icon="cloud-offline-outline" title="Couldn't load" body={error} action="Try again" onAction={load} />
         ) : data ? (
           <>
-            {/* Hero: jobs done + rating */}
-            <Card style={styles.hero}>
-              <View style={{ flexDirection: "row" }}>
-                <View style={{ flex: 1 }}>
-                  <Eyebrow>Jobs done</Eyebrow>
-                  <Text style={styles.big}>{data.jobsDone}</Text>
-                  <Text style={[styles.delta, { color: delta > 0 ? accent : delta < 0 ? C.warnInk : C.muted }]}>
-                    {delta === 0 ? "Same as" : delta > 0 ? `▲ ${delta} more than` : `▼ ${-delta} fewer than`} last month
-                  </Text>
+            {/* Hero: jobs done */}
+            <HeroCard
+              label={`Jobs done · ${MONTHS[month - 1]}`}
+              icon="checkmark-done-outline"
+              value={`${data.jobsDone} job${data.jobsDone === 1 ? "" : "s"}`}
+              sub={`${delta === 0 ? "Same as" : delta > 0 ? `${delta} more than` : `${-delta} fewer than`} last month`}
+              art={HERO_ART}
+            />
+
+            {/* Client rating */}
+            <Card style={styles.rating}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 14 }}>
+                <View style={styles.ratingBadge}>
+                  <Text style={styles.big}>{ratingShown != null ? ratingShown.toFixed(1) : "–"}</Text>
+                  <Stars value={ratingShown ?? 0} size={13} />
                 </View>
-                <View style={styles.heroDivider} />
-                <View style={{ flex: 1, paddingLeft: 16 }}>
-                  <Eyebrow>Client rating</Eyebrow>
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                    <Text style={styles.big}>{ratingShown != null ? ratingShown.toFixed(1) : "–"}</Text>
-                    {ratingShown != null ? <Ionicons name="star" size={22} color={C.star} /> : null}
-                  </View>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={styles.ratingTitle}>Client rating</Text>
                   <Text style={styles.delta}>
                     {data.ratingCount
                       ? `${data.ratingCount} review${data.ratingCount === 1 ? "" : "s"} this month`
                       : data.allTimeRating != null
-                      ? `No reviews yet · ${data.allTimeRating.toFixed(1)} overall`
+                      ? `No reviews this month · ${data.allTimeRating.toFixed(1)} overall`
                       : "No reviews yet"}
                   </Text>
                 </View>
@@ -180,16 +184,17 @@ export default function PerformanceScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: C.bg },
   monthBar: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 12 },
-  monthBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: C.card, alignItems: "center", justifyContent: "center" },
-  monthText: { fontSize: 16, fontWeight: "600", color: C.ink },
-  hero: { padding: 18 },
-  heroDivider: { width: StyleSheet.hairlineWidth, backgroundColor: C.line },
-  big: { fontSize: 36, fontWeight: "700", color: C.ink, letterSpacing: -0.5, marginTop: 4 },
-  delta: { fontSize: 12, color: C.muted, marginTop: 2 },
+  monthBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: C.card, alignItems: "center", justifyContent: "center", ...shadow },
+  monthText: { fontSize: 18, fontWeight: "800", color: C.ink },
+  rating: { padding: 18, marginTop: 14 },
+  ratingBadge: { width: 96, paddingVertical: 12, borderRadius: 16, backgroundColor: "#fef9e7", alignItems: "center", gap: 4 },
+  ratingTitle: { fontSize: 16, fontWeight: "800", color: C.ink },
+  big: { fontSize: 30, fontWeight: "800", color: C.ink, letterSpacing: -0.8 },
+  delta: { fontSize: 13, color: C.muted, marginTop: 2 },
   dist: { marginTop: 18, gap: 6, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: C.line, paddingTop: 14 },
   distRow: { flexDirection: "row", alignItems: "center", gap: 6 },
   distStar: { width: 10, fontSize: 12, color: C.muted, fontWeight: "600", textAlign: "right" },
-  distTrack: { flex: 1, height: 8, borderRadius: 4, backgroundColor: C.bg, overflow: "hidden" },
+  distTrack: { flex: 1, height: 8, borderRadius: 4, backgroundColor: C.soft, overflow: "hidden" },
   distFill: { height: 8, borderRadius: 4 },
   distCount: { width: 24, fontSize: 12, color: C.muted, textAlign: "right" },
   reviewText: { fontSize: 14, color: C.body, lineHeight: 20 },

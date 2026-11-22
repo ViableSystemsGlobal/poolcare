@@ -69,11 +69,11 @@ export default function BottomNav() {
                     <Ionicons
                       name={(active ? tab.icon : tab.iconOutline) as any}
                       size={21}
-                      color={active ? themeColor : "#5b6b62"}
+                      color={active ? themeColor : "#6b7280"}
                     />
                   </View>
                   <Text
-                    style={[styles.label, { color: active ? themeColor : "#5b6b62", fontWeight: active ? "700" : "500" }]}
+                    style={[styles.label, { color: active ? themeColor : "#6b7280", fontWeight: active ? "700" : "500" }]}
                     numberOfLines={1}
                   >
                     {tab.label}
@@ -97,7 +97,7 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: "rgba(255,255,255,0.9)",
     ...Platform.select({
-      ios: { shadowColor: "#10231a", shadowOpacity: 0.14, shadowRadius: 16, shadowOffset: { width: 0, height: 6 } },
+      ios: { shadowColor: "#111827", shadowOpacity: 0.14, shadowRadius: 16, shadowOffset: { width: 0, height: 6 } },
       default: { elevation: 8 },
     }),
     backgroundColor: Platform.OS === "android" ? "rgba(255,255,255,0.55)" : "transparent",

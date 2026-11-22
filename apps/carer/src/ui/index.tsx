@@ -1,7 +1,8 @@
 /**
- * PoolCare carer design kit — the one visual system every screen is built from
- * (see the approved "Carer App Redesign" canvas). Field-ready: calm warm-grey
- * ground, white borderless cards, one accent (the org theme colour), big type
+ * PoolCare carer design kit — the one visual system every screen is built from.
+ * It follows the client app's look (2026-11-22): cool-grey ground, white cards
+ * with a soft lift, bold 800 headings, pill chips, the org theme colour as the
+ * one accent, photos and illustration where they help. Field-ready: big type
  * and 44px+ touch targets.
  */
 import React, { ReactNode } from "react";
@@ -27,15 +28,16 @@ import { getApiUrl } from "../lib/api-client";
 import { fixUrlForMobile } from "../lib/network-utils";
 
 export const C = {
-  bg: "#f4f5f2",
+  bg: "#f9fafb",
   card: "#ffffff",
-  ink: "#10231a",
-  body: "#3c4a42",
-  muted: "#5b6b62",
-  faint: "#8a968f",
-  line: "#eceee9",
-  border: "#dfe3dc",
-  disabled: "#c9d3cc",
+  ink: "#111827",
+  body: "#374151",
+  muted: "#6b7280",
+  faint: "#9ca3af",
+  line: "#f3f4f6",
+  border: "#e5e7eb",
+  soft: "#f3f4f6",
+  disabled: "#d1d5db",
   warnBg: "#fff4e5",
   warnInk: "#8a4b08",
   warnBorder: "#e0a100",
@@ -46,7 +48,7 @@ export const C = {
   info: "#1d4ed8",
 };
 
-export const R = { card: 18, hero: 20, button: 16, input: 12, chip: 10, pill: 999 };
+export const R = { card: 20, hero: 20, button: 14, input: 12, chip: 999, pill: 999 };
 
 /** Bottom padding so content clears the floating glass tab bar. */
 export const TAB_BAR_CLEARANCE = 112;
@@ -66,10 +68,157 @@ export function mediaUrl(raw?: string | null): string | null {
   return fixUrlForMobile(full);
 }
 
+/** Soft lift used on every card (same as the client app). */
 export const shadow: ViewStyle = Platform.select({
-  ios: { shadowColor: "#10231a", shadowOpacity: 0.06, shadowRadius: 4, shadowOffset: { width: 0, height: 1 } },
-  default: { elevation: 1 },
+  ios: { shadowColor: "#000", shadowOpacity: 0.07, shadowRadius: 10, shadowOffset: { width: 0, height: 3 } },
+  web: { boxShadow: "0 3px 10px rgba(0,0,0,0.07)" } as any,
+  default: { elevation: 3 },
 }) as ViewStyle;
+
+/** Stronger lift for hero cards. */
+export const heroShadow: ViewStyle = Platform.select({
+  ios: { shadowColor: "#000", shadowOpacity: 0.18, shadowRadius: 16, shadowOffset: { width: 0, height: 8 } },
+  web: { boxShadow: "0 8px 16px rgba(0,0,0,0.18)" } as any,
+  default: { elevation: 8 },
+}) as ViewStyle;
+
+/**
+ * Bottom-up dark fade for text over photos, built from strips so it needs no
+ * gradient module (keeps everything shippable over the air).
+ */
+export function Fade({ height, max = 0.6 }: { height: number | `${number}%`; max?: number }) {
+  const steps = 12;
+  return (
+    <View pointerEvents="none" style={{ position: "absolute", left: 0, right: 0, bottom: 0, height }}>
+      {Array.from({ length: steps }, (_, i) => (
+        <View key={i} style={{ flex: 1, backgroundColor: `rgba(0,0,0,${((max * (i + 1) ** 1.6) / steps ** 1.6).toFixed(3)})` }} />
+      ))}
+    </View>
+  );
+}
+
+/**
+ * Brand hero: theme-colour card with soft decor circles and an optional
+ * illustration on the right — the client app's balance-card look.
+ */
+export function HeroCard({
+  label,
+  icon,
+  value,
+  sub,
+  art,
+  onPress,
+  style,
+  children,
+}: {
+  label: string;
+  icon?: keyof typeof Ionicons.glyphMap;
+  value: string;
+  sub?: string;
+  art?: any;
+  onPress?: () => void;
+  style?: StyleProp<ViewStyle>;
+  children?: ReactNode;
+}) {
+  const { accent } = useAccent();
+  const body = (
+    <View style={[s.hero, { backgroundColor: accent }]}>
+      <View style={s.heroDecor1} />
+      <View style={s.heroDecor2} />
+      <View style={[s.heroBody, art ? { paddingRight: 132 } : null]}>
+        <View style={s.heroLabelRow}>
+          {icon ? <Ionicons name={icon} size={14} color="rgba(255,255,255,0.8)" /> : null}
+          <Text style={s.heroLabel}>{label}</Text>
+          {onPress ? <Ionicons name="chevron-forward" size={14} color="rgba(255,255,255,0.55)" /> : null}
+        </View>
+        <Text style={s.heroValue} numberOfLines={1} adjustsFontSizeToFit>
+          {value}
+        </Text>
+        {sub ? (
+          <Text style={s.heroSub} numberOfLines={2}>
+            {sub}
+          </Text>
+        ) : null}
+        {children}
+      </View>
+      {art ? <Image source={art} style={s.heroArt} resizeMode="cover" /> : null}
+    </View>
+  );
+  if (!onPress) return <View style={[s.heroWrap, style]}>{body}</View>;
+  return (
+    <TouchableOpacity activeOpacity={0.88} onPress={onPress} style={[s.heroWrap, style]}>
+      {body}
+    </TouchableOpacity>
+  );
+}
+
+/** Illustrated tile with a white label over a fade (client app's action cards). */
+export function ArtTile({
+  art,
+  icon,
+  title,
+  onPress,
+  style,
+}: {
+  art: any;
+  icon: keyof typeof Ionicons.glyphMap;
+  title: string;
+  onPress: () => void;
+  style?: StyleProp<ViewStyle>;
+}) {
+  return (
+    <TouchableOpacity activeOpacity={0.8} onPress={onPress} style={[s.artTile, shadow, style]} accessibilityRole="button" accessibilityLabel={title.replace("\n", " ")}>
+      <Image source={art} style={s.fill} resizeMode="cover" />
+      <Fade height="70%" max={0.62} />
+      <View style={s.artIcon}>
+        <Ionicons name={icon} size={24} color="#ffffff" />
+      </View>
+      <Text style={s.artTitle}>{title}</Text>
+    </TouchableOpacity>
+  );
+}
+
+/** Small white KPI tile: big value, grey label under it. */
+export function StatTile({
+  label,
+  value,
+  sub,
+  star,
+  onPress,
+  style,
+}: {
+  label: string;
+  value: string;
+  sub?: string;
+  star?: boolean;
+  onPress?: () => void;
+  style?: StyleProp<ViewStyle>;
+}) {
+  const inner = (
+    <>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+        <Text style={s.tileValue} numberOfLines={1} adjustsFontSizeToFit>
+          {value}
+        </Text>
+        {star ? <Ionicons name="star" size={16} color={C.star} /> : null}
+      </View>
+      <Text style={s.tileLabel} numberOfLines={1}>
+        {label}
+      </Text>
+      {sub ? (
+        <Text style={s.tileSub} numberOfLines={1}>
+          {sub}
+        </Text>
+      ) : null}
+    </>
+  );
+  if (!onPress) return <View style={[s.tile, shadow, style]}>{inner}</View>;
+  return (
+    <TouchableOpacity activeOpacity={0.8} onPress={onPress} style={[s.tile, shadow, style]}>
+      {inner}
+    </TouchableOpacity>
+  );
+}
 
 // ── Typography ───────────────────────────────────────────────────────────────
 
@@ -81,7 +230,7 @@ export function Title({ children, style }: { children: ReactNode; style?: StyleP
   return <Text style={[s.title, style]}>{children}</Text>;
 }
 
-/** Eyebrow section label with an optional right-hand action link. */
+/** Bold section title with an optional right-hand action link. */
 export function SectionHeader({
   title,
   action,
@@ -96,7 +245,7 @@ export function SectionHeader({
   const { accent } = useAccent();
   return (
     <View style={[s.sectionHeader, style]}>
-      <Eyebrow>{title}</Eyebrow>
+      <Text style={s.sectionTitle}>{title}</Text>
       {action && onAction ? (
         <TouchableOpacity onPress={onAction} hitSlop={12}>
           <Text style={[s.sectionAction, { color: accent }]}>{action}</Text>
@@ -143,6 +292,17 @@ export function Row({
     <TouchableOpacity style={rowStyle} onPress={onPress} activeOpacity={0.6} disabled={disabled}>
       {inner}
     </TouchableOpacity>
+  );
+}
+
+/** Tinted rounded-square icon for list rows (client app menu style). */
+export function RowIcon({ icon, tone = "accent" }: { icon: keyof typeof Ionicons.glyphMap; tone?: "accent" | "danger" | "neutral" }) {
+  const { accent, tint } = useAccent();
+  const map = { accent: [tint, accent], danger: [C.dangerBg, C.danger], neutral: [C.soft, C.muted] }[tone];
+  return (
+    <View style={[s.rowIcon, { backgroundColor: map[0] }]}>
+      <Ionicons name={icon} size={19} color={map[1]} />
+    </View>
   );
 }
 
@@ -231,7 +391,7 @@ export function IconButton({
       activeOpacity={0.7}
       style={[
         s.iconButton,
-        variant === "soft" && { backgroundColor: C.bg },
+        variant === "soft" && { backgroundColor: C.soft },
         variant === "white" && [{ backgroundColor: C.card }, s.floatShadow],
         variant === "outline" && { backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 12 },
         style,
@@ -256,7 +416,7 @@ export function Chip({
 }) {
   const { accent, tint } = useAccent();
   const map = {
-    neutral: { bg: C.bg, fg: C.body },
+    neutral: { bg: C.soft, fg: C.body },
     accent: { bg: tint, fg: accent },
     solid: { bg: accent, fg: "#ffffff" },
     warn: { bg: C.warnBg, fg: C.warnInk },
@@ -303,6 +463,7 @@ export function Segmented<T extends string>({
   onChange: (v: T) => void;
   style?: StyleProp<ViewStyle>;
 }) {
+  const { accent } = useAccent();
   return (
     <View style={[s.segmented, style]}>
       {options.map((o) => {
@@ -313,9 +474,9 @@ export function Segmented<T extends string>({
             onPress={() => onChange(o.value)}
             accessibilityRole="tab"
             accessibilityState={{ selected: on }}
-            style={[s.segment, on && s.segmentOn]}
+            style={[s.segment, on ? { backgroundColor: accent } : { backgroundColor: C.soft }]}
           >
-            <Text style={[s.segmentText, { color: on ? C.ink : C.muted }]}>{o.label}</Text>
+            <Text style={[s.segmentText, { color: on ? "#ffffff" : C.body }]}>{o.label}</Text>
           </TouchableOpacity>
         );
       })}
@@ -351,7 +512,7 @@ export function Field({
 
 // ── Composites ───────────────────────────────────────────────────────────────
 
-/** Hairline-divided KPI strip (Today: Done / Rating / On time). */
+/** Row of KPI tiles (kept under its old name so every screen picks up the new look). */
 export function StatStrip({
   items,
   style,
@@ -360,18 +521,11 @@ export function StatStrip({
   style?: StyleProp<ViewStyle>;
 }) {
   return (
-    <Card style={[{ flexDirection: "row" }, style]}>
-      {items.map((it, i) => (
-        <View key={it.label} style={[s.statCell, i > 0 && s.statCellDivider]}>
-          <Text style={s.statLabel}>{it.label}</Text>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 4, marginTop: 4 }}>
-            <Text style={s.statValue}>{it.value}</Text>
-            {it.star ? <Ionicons name="star" size={15} color={C.star} /> : null}
-          </View>
-          {it.sub ? <Text style={s.statSub}>{it.sub}</Text> : null}
-        </View>
+    <View style={[{ flexDirection: "row", gap: 10 }, style]}>
+      {items.map((it) => (
+        <StatTile key={it.label} label={it.label} value={it.value} sub={it.sub} star={it.star} style={{ flex: 1 }} />
       ))}
-    </Card>
+    </View>
   );
 }
 
@@ -447,11 +601,11 @@ export function EmptyState({
   onAction?: () => void;
   style?: StyleProp<ViewStyle>;
 }) {
-  const { accent } = useAccent();
+  const { accent, tint } = useAccent();
   return (
     <Card style={[s.empty, style]}>
-      <View style={s.emptyIcon}>
-        <Ionicons name={icon} size={24} color={C.muted} />
+      <View style={[s.emptyIcon, { backgroundColor: tint }]}>
+        <Ionicons name={icon} size={26} color={accent} />
       </View>
       <Text style={s.emptyTitle}>{title}</Text>
       {body ? <Text style={s.emptyBody}>{body}</Text> : null}
@@ -496,7 +650,7 @@ export function ScreenHeader({
   eyebrow,
   onBack,
   right,
-  backIcon = "chevron-back",
+  backIcon = "arrow-back",
   backLabel = "Back",
   style,
 }: {
@@ -517,10 +671,14 @@ export function ScreenHeader({
         onPress={onBack || (() => (router.canGoBack() ? router.back() : router.replace("/")))}
       />
       <View style={{ flex: 1, minWidth: 0 }}>
-        {eyebrow ? <Eyebrow>{eyebrow}</Eyebrow> : null}
         <Text style={s.headerTitle} numberOfLines={1}>
           {title}
         </Text>
+        {eyebrow ? (
+          <Text style={s.headerSub} numberOfLines={1}>
+            {eyebrow}
+          </Text>
+        ) : null}
       </View>
       {right}
     </View>
@@ -533,10 +691,14 @@ export function TabHeader({ eyebrow, title, right }: { eyebrow?: string; title: 
   return (
     <View style={[s.tabHeader, { paddingTop: insets.top + 16 }]}>
       <View style={{ flex: 1, minWidth: 0 }}>
-        {eyebrow ? <Eyebrow>{eyebrow}</Eyebrow> : null}
         <Text style={s.tabTitle} numberOfLines={1}>
           {title}
         </Text>
+        {eyebrow ? (
+          <Text style={s.tabSub} numberOfLines={1}>
+            {eyebrow}
+          </Text>
+        ) : null}
       </View>
       {right}
     </View>
@@ -596,50 +758,66 @@ export const STATUS_LABEL: Record<string, string> = {
 };
 
 const s = StyleSheet.create({
-  eyebrow: { fontSize: 12, fontWeight: "600", letterSpacing: 0.7, textTransform: "uppercase", color: C.muted },
-  title: { fontSize: 24, fontWeight: "700", color: C.ink, letterSpacing: -0.2 },
-  sectionHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 24, marginBottom: 10 },
-  sectionAction: { fontSize: 14, fontWeight: "600" },
+  eyebrow: { fontSize: 12, fontWeight: "700", letterSpacing: 0.8, textTransform: "uppercase", color: C.faint },
+  title: { fontSize: 24, fontWeight: "800", color: C.ink, letterSpacing: -0.5 },
+  sectionHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 24, marginBottom: 12 },
+  sectionTitle: { fontSize: 18, fontWeight: "800", color: C.ink, letterSpacing: -0.3 },
+  sectionAction: { fontSize: 13, fontWeight: "600" },
   card: { backgroundColor: C.card, borderRadius: R.card, ...shadow },
   row: { flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 14, gap: 10, minHeight: 56 },
+  rowIcon: { width: 38, height: 38, borderRadius: 12, alignItems: "center", justifyContent: "center" },
   rowDivider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: C.line },
   button: { borderRadius: R.button, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingHorizontal: 18 },
-  buttonText: { fontWeight: "600" },
+  buttonText: { fontWeight: "700" },
   iconButton: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center" },
   floatShadow: Platform.select({
     ios: { shadowColor: "#000", shadowOpacity: 0.15, shadowRadius: 4, shadowOffset: { width: 0, height: 1 } },
     default: { elevation: 3 },
   }) as ViewStyle,
   badgeDot: { position: "absolute", top: 9, right: 10, width: 10, height: 10, borderRadius: 5, backgroundColor: "#c2410c", borderWidth: 2, borderColor: "#ffffff" },
-  chip: { flexDirection: "row", alignItems: "center", gap: 4, alignSelf: "flex-start", borderRadius: 8, paddingHorizontal: 9, paddingVertical: 5 },
-  chipText: { fontSize: 12, fontWeight: "600" },
+  chip: { flexDirection: "row", alignItems: "center", gap: 4, alignSelf: "flex-start", borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 },
+  chipText: { fontSize: 12, fontWeight: "700" },
   choice: { minHeight: 40, paddingHorizontal: 14, borderRadius: R.chip, borderWidth: 1, justifyContent: "center" },
   choiceText: { fontSize: 14 },
-  segmented: { flexDirection: "row", backgroundColor: C.bg, borderRadius: 12, padding: 4 },
-  segment: { flex: 1, height: 38, borderRadius: 9, alignItems: "center", justifyContent: "center" },
-  segmentOn: { backgroundColor: C.card, ...shadow },
-  segmentText: { fontSize: 14, fontWeight: "600" },
-  fieldLabel: { fontSize: 13, fontWeight: "600", color: C.ink },
+  segmented: { flexDirection: "row", gap: 10 },
+  segment: { flex: 1, height: 44, borderRadius: 14, alignItems: "center", justifyContent: "center" },
+  segmentText: { fontSize: 15, fontWeight: "700" },
+  fieldLabel: { fontSize: 13, fontWeight: "700", color: C.ink },
   input: { minHeight: 48, borderRadius: R.input, borderWidth: 1, borderColor: C.border, backgroundColor: C.card, paddingHorizontal: 14, fontSize: 15, color: C.ink },
   fieldHint: { fontSize: 12, color: C.muted },
   fieldError: { fontSize: 12, color: C.dangerInk, fontWeight: "600" },
-  statCell: { flex: 1, paddingHorizontal: 14, paddingVertical: 14 },
-  statCellDivider: { borderLeftWidth: StyleSheet.hairlineWidth, borderLeftColor: C.line },
-  statLabel: { fontSize: 11, fontWeight: "600", letterSpacing: 0.5, textTransform: "uppercase", color: C.muted },
-  statValue: { fontSize: 22, fontWeight: "700", color: C.ink },
-  statSub: { fontSize: 11, color: C.muted, marginTop: 1 },
+  tile: { backgroundColor: C.card, borderRadius: 16, paddingVertical: 14, paddingHorizontal: 12 },
+  tileValue: { fontSize: 22, fontWeight: "800", color: C.ink, letterSpacing: -0.5, flexShrink: 1 },
+  tileLabel: { fontSize: 12, fontWeight: "600", color: C.faint, marginTop: 2 },
+  tileSub: { fontSize: 11, color: C.faint, marginTop: 1 },
+  heroWrap: { borderRadius: R.hero, ...heroShadow },
+  hero: { borderRadius: R.hero, overflow: "hidden", minHeight: 136, justifyContent: "center" },
+  heroDecor1: { position: "absolute", width: 180, height: 180, borderRadius: 90, backgroundColor: "rgba(255,255,255,0.08)", top: -60, right: -40 },
+  heroDecor2: { position: "absolute", width: 120, height: 120, borderRadius: 60, backgroundColor: "rgba(255,255,255,0.06)", bottom: -50, right: 80 },
+  heroBody: { padding: 22 },
+  heroLabelRow: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 8 },
+  heroLabel: { fontSize: 13, fontWeight: "600", color: "rgba(255,255,255,0.85)", letterSpacing: 0.3 },
+  heroValue: { fontSize: 30, fontWeight: "800", color: "#ffffff", letterSpacing: -1, marginBottom: 4 },
+  heroSub: { fontSize: 13, color: "rgba(255,255,255,0.75)", fontWeight: "500", lineHeight: 18 },
+  heroArt: { position: "absolute", right: 0, top: 0, width: 124, height: "100%" },
+  fill: { position: "absolute", left: 0, top: 0, width: "100%", height: "100%" },
+  artTile: { flex: 1, minHeight: 140, borderRadius: 20, overflow: "hidden", padding: 18, justifyContent: "space-between", backgroundColor: C.border },
+  artIcon: { width: 48, height: 48, borderRadius: 16, backgroundColor: "rgba(255,255,255,0.22)", alignItems: "center", justifyContent: "center" },
+  artTitle: { fontSize: 15, fontWeight: "700", color: "#ffffff", lineHeight: 20 },
   thumbEmpty: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "#3f9ac4" },
-  thumbCount: { position: "absolute", right: 4, bottom: 4, backgroundColor: "rgba(16,35,26,0.75)", borderRadius: 6, paddingHorizontal: 5, paddingVertical: 1 },
+  thumbCount: { position: "absolute", right: 4, bottom: 4, backgroundColor: "rgba(17,24,39,0.75)", borderRadius: 6, paddingHorizontal: 5, paddingVertical: 1 },
   thumbCountText: { color: "#ffffff", fontSize: 10, fontWeight: "700" },
   empty: { alignItems: "center", paddingVertical: 28, paddingHorizontal: 20, gap: 6 },
-  emptyIcon: { width: 48, height: 48, borderRadius: 24, backgroundColor: C.bg, alignItems: "center", justifyContent: "center", marginBottom: 4 },
-  emptyTitle: { fontSize: 15, fontWeight: "600", color: C.ink, textAlign: "center" },
+  emptyIcon: { width: 56, height: 56, borderRadius: 28, alignItems: "center", justifyContent: "center", marginBottom: 6 },
+  emptyTitle: { fontSize: 16, fontWeight: "700", color: C.ink, textAlign: "center" },
   emptyBody: { fontSize: 13, color: C.muted, textAlign: "center", lineHeight: 19 },
   notice: { flexDirection: "row", gap: 10, borderRadius: 14, padding: 12 },
   noticeText: { flex: 1, fontSize: 13, lineHeight: 19 },
-  header: { flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 16, paddingBottom: 12, backgroundColor: C.card, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.line },
-  headerTitle: { fontSize: 17, fontWeight: "700", color: C.ink },
+  header: { flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 16, paddingBottom: 12, backgroundColor: C.card, borderBottomWidth: 1, borderBottomColor: C.line },
+  headerTitle: { fontSize: 20, fontWeight: "800", color: C.ink, letterSpacing: -0.3 },
+  headerSub: { fontSize: 13, color: C.faint, fontWeight: "500", marginTop: 1 },
   tabHeader: { flexDirection: "row", alignItems: "flex-end", gap: 12, paddingHorizontal: 20, paddingBottom: 4 },
-  tabTitle: { fontSize: 26, fontWeight: "700", color: C.ink, letterSpacing: -0.3 },
+  tabTitle: { fontSize: 28, fontWeight: "800", color: C.ink, letterSpacing: -0.6 },
+  tabSub: { fontSize: 15, color: C.faint, fontWeight: "500", marginTop: 2 },
   footer: { backgroundColor: C.card, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: C.line, paddingHorizontal: 20, paddingTop: 12 },
 });

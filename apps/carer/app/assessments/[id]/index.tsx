@@ -248,7 +248,7 @@ const styles = StyleSheet.create({
   dirText: { fontSize: 14, fontWeight: "600", color: C.ink },
   sheet: { marginTop: -24, backgroundColor: C.bg, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: 20, paddingTop: 20 },
   when: { fontSize: 13, color: C.muted },
-  title: { fontSize: 24, fontWeight: "700", color: C.ink, marginTop: 8, letterSpacing: -0.2 },
+  title: { fontSize: 24, fontWeight: "800", color: C.ink, marginTop: 8, letterSpacing: -0.5 },
   sub: { fontSize: 14, color: C.muted, marginTop: 2 },
   contact: { flexDirection: "row", alignItems: "center", gap: 10, padding: 14 },
   contactName: { fontSize: 15, fontWeight: "600", color: C.ink },

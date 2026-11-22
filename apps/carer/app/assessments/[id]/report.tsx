@@ -496,7 +496,7 @@ const styles = StyleSheet.create({
   condN: { fontSize: 17, fontWeight: "700", color: C.ink },
   condL: { fontSize: 11, color: C.muted, marginTop: 1 },
   photos: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  photoX: { position: "absolute", top: 4, right: 4, width: 22, height: 22, borderRadius: 11, backgroundColor: "rgba(16,35,26,0.75)", alignItems: "center", justifyContent: "center" },
+  photoX: { position: "absolute", top: 4, right: 4, width: 22, height: 22, borderRadius: 11, backgroundColor: "rgba(17,24,39,0.75)", alignItems: "center", justifyContent: "center" },
   addTile: { width: 84, height: 84, borderRadius: 12, borderWidth: 1.5, borderStyle: "dashed", borderColor: C.border, alignItems: "center", justifyContent: "center", gap: 2 },
   addText: { fontSize: 12, color: C.muted, fontWeight: "600" },
 });

@@ -22,6 +22,7 @@ import { C, Button, Field, Notice } from "../../src/ui";
 
 const BRAND_COLOR = "#397d54";
 const localLogo = require("../../assets/poolcare.png");
+const loginBg = require("../../assets/login-bg.png");
 
 export default function LoginScreen() {
   const insets = useSafeAreaInsets();
@@ -121,26 +122,25 @@ export default function LoginScreen() {
 
   return (
     <KeyboardAvoidingView style={styles.root} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+      {/* Pool photo behind a white card, same as the client app's sign-in */}
+      <Image source={loginBg} style={styles.bg} resizeMode="cover" />
+      <View style={styles.bgShade} />
       <ScrollView
-        contentContainerStyle={[styles.scroll, { paddingTop: insets.top + 48, paddingBottom: insets.bottom + 24 }]}
+        contentContainerStyle={[styles.scroll, { paddingTop: insets.top + 72, paddingBottom: insets.bottom + 24 }]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        {/* Brand */}
-        <View style={styles.brand}>
-          <View style={styles.logoWrap}>
-            <Image source={orgLogoUrl ? { uri: orgLogoUrl } : localLogo} style={styles.logo} resizeMode="contain" />
-          </View>
-          <Text style={styles.eyebrow}>{orgName} · Carer</Text>
-          <Text style={styles.title}>{step === "phone" ? "Sign in to start your day" : "Enter your code"}</Text>
-          <Text style={styles.sub}>
-            {step === "phone"
-              ? "Use the phone number the office registered you with. We'll text you a code."
-              : `We sent a 6-digit code to ${phone.trim()}.`}
-          </Text>
-        </View>
-
         <View style={styles.card}>
+          <View style={styles.brand}>
+            <Image source={orgLogoUrl ? { uri: orgLogoUrl } : localLogo} style={styles.logo} resizeMode="contain" />
+            <Text style={[styles.eyebrow, { color: themeColor }]}>Carer app</Text>
+            <Text style={styles.title}>{step === "phone" ? "Sign in to start your day" : "Enter your code"}</Text>
+            <Text style={styles.sub}>
+              {step === "phone"
+                ? `Use the phone number ${orgName} registered you with. We'll text you a code.`
+                : `We sent a 6-digit code to ${phone.trim()}.`}
+            </Text>
+          </View>
           {step === "phone" ? (
             <>
               <Field
@@ -237,19 +237,28 @@ export default function LoginScreen() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: C.bg },
+  root: { flex: 1, backgroundColor: "#1f2937" },
+  bg: { position: "absolute", left: 0, top: 0, width: "100%", height: "100%" },
+  bgShade: { position: "absolute", left: 0, top: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.12)" },
   scroll: { flexGrow: 1, paddingHorizontal: 20 },
-  brand: { paddingHorizontal: 4 },
-  logoWrap: { width: 64, height: 64, borderRadius: 18, backgroundColor: "#ffffff", alignItems: "center", justifyContent: "center", marginBottom: 24 },
-  logo: { width: 46, height: 46 },
-  eyebrow: { fontSize: 12, fontWeight: "600", letterSpacing: 0.7, textTransform: "uppercase", color: C.muted },
-  title: { fontSize: 28, fontWeight: "700", color: C.ink, marginTop: 6, letterSpacing: -0.4, lineHeight: 34 },
-  sub: { fontSize: 15, color: C.muted, marginTop: 8, lineHeight: 22 },
-  card: { backgroundColor: "#ffffff", borderRadius: 20, padding: 20, marginTop: 28 },
+  brand: { alignItems: "center", marginBottom: 22 },
+  logo: { width: 170, height: 64 },
+  eyebrow: { fontSize: 13, fontWeight: "800", letterSpacing: 2, textTransform: "uppercase", marginTop: 12 },
+  title: { fontSize: 22, fontWeight: "800", color: C.ink, marginTop: 14, letterSpacing: -0.4, textAlign: "center" },
+  sub: { fontSize: 14, color: C.muted, marginTop: 6, lineHeight: 20, textAlign: "center" },
+  card: {
+    backgroundColor: "#ffffff",
+    borderRadius: 28,
+    padding: 24,
+    ...Platform.select({
+      ios: { shadowColor: "#000", shadowOpacity: 0.2, shadowRadius: 20, shadowOffset: { width: 0, height: 10 } },
+      default: { elevation: 10 },
+    }),
+  },
   bigInput: { height: 56, fontSize: 18, fontWeight: "600" },
   code: { height: 64, borderRadius: 14, borderWidth: 1, borderColor: C.border, fontSize: 28, fontWeight: "700", letterSpacing: 10, textAlign: "center", color: C.ink },
   error: { fontSize: 13, color: C.dangerInk, fontWeight: "600", marginTop: 8, textAlign: "center" },
   otpLinks: { flexDirection: "row", justifyContent: "space-between", marginTop: 18, paddingHorizontal: 4 },
   link: { fontSize: 14, fontWeight: "600", color: C.ink },
-  help: { textAlign: "center", fontSize: 13, color: C.muted, marginTop: 24, lineHeight: 19 },
+  help: { textAlign: "center", fontSize: 13, color: "#ffffff", fontWeight: "600", marginTop: 20, lineHeight: 19, textShadowColor: "rgba(0,0,0,0.5)", textShadowRadius: 6 },
 });

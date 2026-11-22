@@ -284,11 +284,11 @@ export default function OnboardPoolScreen() {
               <>
                 {/* Search input */}
                 <View style={styles.searchRow}>
-                  <Ionicons name="search-outline" size={18} color="#8a968f" style={styles.searchIcon} />
+                  <Ionicons name="search-outline" size={18} color="#9ca3af" style={styles.searchIcon} />
                   <TextInput
                     style={styles.searchInput}
                     placeholder="Search by name, phone or email…"
-                    placeholderTextColor="#8a968f"
+                    placeholderTextColor="#9ca3af"
                     value={searchQuery}
                     onChangeText={handleSearch}
                     autoCapitalize="none"
@@ -316,7 +316,7 @@ export default function OnboardPoolScreen() {
                         <Text style={styles.clientContact}>{client.phone || client.email}</Text>
                       )}
                     </View>
-                    <Ionicons name="chevron-forward" size={18} color="#8a968f" />
+                    <Ionicons name="chevron-forward" size={18} color="#9ca3af" />
                   </TouchableOpacity>
                 ))}
 
@@ -344,7 +344,7 @@ export default function OnboardPoolScreen() {
             {showNewClientForm && (
               <View style={styles.newClientForm}>
                 <TouchableOpacity style={styles.backToSearch} onPress={() => setShowNewClientForm(false)}>
-                  <Ionicons name="arrow-back-outline" size={16} color="#5b6b62" />
+                  <Ionicons name="arrow-back-outline" size={16} color="#6b7280" />
                   <Text style={styles.backToSearchText}>Back to search</Text>
                 </TouchableOpacity>
 
@@ -352,7 +352,7 @@ export default function OnboardPoolScreen() {
                 <TextInput
                   style={styles.input}
                   placeholder="e.g. John Mensah"
-                  placeholderTextColor="#8a968f"
+                  placeholderTextColor="#9ca3af"
                   value={newClientName}
                   onChangeText={setNewClientName}
                   autoCapitalize="words"
@@ -362,7 +362,7 @@ export default function OnboardPoolScreen() {
                 <TextInput
                   style={styles.input}
                   placeholder="+233 20 000 0000"
-                  placeholderTextColor="#8a968f"
+                  placeholderTextColor="#9ca3af"
                   value={newClientPhone}
                   onChangeText={setNewClientPhone}
                   keyboardType="phone-pad"
@@ -373,7 +373,7 @@ export default function OnboardPoolScreen() {
                 <TextInput
                   style={styles.input}
                   placeholder="john@example.com"
-                  placeholderTextColor="#8a968f"
+                  placeholderTextColor="#9ca3af"
                   value={newClientEmail}
                   onChangeText={setNewClientEmail}
                   keyboardType="email-address"
@@ -415,7 +415,7 @@ export default function OnboardPoolScreen() {
             <TextInput
               style={styles.input}
               placeholder="e.g. Backyard Pool"
-              placeholderTextColor="#8a968f"
+              placeholderTextColor="#9ca3af"
               value={poolName}
               onChangeText={setPoolName}
               autoCapitalize="words"
@@ -426,7 +426,7 @@ export default function OnboardPoolScreen() {
               <TextInput
                 style={[styles.input, styles.addressInput]}
                 placeholder="123 Main St, Accra"
-                placeholderTextColor="#8a968f"
+                placeholderTextColor="#9ca3af"
                 value={poolAddress}
                 onChangeText={(v) => {
                   setPoolAddress(v);
@@ -458,7 +458,7 @@ export default function OnboardPoolScreen() {
             <TextInput
               style={styles.input}
               placeholder="e.g. 50000"
-              placeholderTextColor="#8a968f"
+              placeholderTextColor="#9ca3af"
               value={poolVolume}
               onChangeText={setPoolVolume}
               keyboardType="numeric"
@@ -507,7 +507,7 @@ export default function OnboardPoolScreen() {
             <TextInput
               style={[styles.input, styles.textArea]}
               placeholder="Any special notes about the pool…"
-              placeholderTextColor="#8a968f"
+              placeholderTextColor="#9ca3af"
               value={poolNotes}
               onChangeText={setPoolNotes}
               multiline
@@ -525,16 +525,16 @@ export default function OnboardPoolScreen() {
                     style={styles.photoRemoveBtn}
                     onPress={() => setPoolImages((prev) => prev.filter((_, idx) => idx !== i))}
                   >
-                    <Ionicons name="close-circle" size={22} color="#10231a" />
+                    <Ionicons name="close-circle" size={22} color="#111827" />
                   </TouchableOpacity>
                 </View>
               ))}
               <TouchableOpacity style={styles.addPhotoBtn} onPress={handleTakePhoto}>
-                <Ionicons name="camera-outline" size={22} color="#8a968f" />
+                <Ionicons name="camera-outline" size={22} color="#9ca3af" />
                 <Text style={styles.addPhotoText}>Camera</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.addPhotoBtn} onPress={handlePickImage}>
-                <Ionicons name="image-outline" size={22} color="#8a968f" />
+                <Ionicons name="image-outline" size={22} color="#9ca3af" />
                 <Text style={styles.addPhotoText}>Gallery</Text>
               </TouchableOpacity>
             </View>
@@ -615,13 +615,18 @@ export default function OnboardPoolScreen() {
   );
 }
 
-const INK = "#10231a";
-const MUTED = "#5b6b62";
-const LINE = "#eceee9";
-const BORDER = "#dfe3dc";
+const INK = "#111827";
+const CARD_LIFT = Platform.select({
+  ios: { shadowColor: "#000", shadowOpacity: 0.07, shadowRadius: 10, shadowOffset: { width: 0, height: 3 } },
+  web: { boxShadow: "0 3px 10px rgba(0,0,0,0.07)" },
+  default: { elevation: 3 },
+}) as any;
+const MUTED = "#6b7280";
+const LINE = "#f3f4f6";
+const BORDER = "#e5e7eb";
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#f4f5f2" },
+  container: { flex: 1, backgroundColor: "#f9fafb" },
   header: {},
   backBtn: {},
   headerTitle: {},
@@ -631,13 +636,13 @@ const styles = StyleSheet.create({
   progressLine: { height: 4, borderRadius: 2, backgroundColor: LINE },
   scrollView: { flex: 1 },
   content: { paddingHorizontal: 20, paddingTop: 20 },
-  stepTitle: { fontSize: 24, fontWeight: "700", color: INK, letterSpacing: -0.2 },
+  stepTitle: { fontSize: 24, fontWeight: "800", color: INK, letterSpacing: -0.5 },
   stepSubtitle: { fontSize: 14, color: MUTED, marginTop: 4, marginBottom: 18, lineHeight: 20 },
   searchRow: { flexDirection: "row", alignItems: "center", height: 52, backgroundColor: "#ffffff", borderRadius: 14, borderWidth: 1, borderColor: BORDER, marginBottom: 12 },
   searchIcon: { marginLeft: 14, marginRight: 8 },
   searchInput: { flex: 1, fontSize: 16, color: INK, paddingVertical: 0 },
   noResultsText: { fontSize: 14, color: MUTED, textAlign: "center", paddingVertical: 16 },
-  clientCard: { flexDirection: "row", alignItems: "center", gap: 12, backgroundColor: "#ffffff", borderRadius: 16, padding: 14, marginBottom: 8 },
+  clientCard: { flexDirection: "row", alignItems: "center", gap: 12, backgroundColor: "#ffffff", borderRadius: 18, padding: 14, marginBottom: 10, ...CARD_LIFT },
   clientAvatar: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center" },
   clientAvatarText: { fontSize: 15, fontWeight: "700" },
   clientInfo: { flex: 1, minWidth: 0 },
@@ -661,8 +666,8 @@ const styles = StyleSheet.create({
   selectedClientBadge: { flexDirection: "row", alignItems: "center", gap: 6, alignSelf: "flex-start", backgroundColor: "#ffffff", borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6, marginTop: 8 },
   selectedClientText: { fontSize: 13, fontWeight: "600" },
   chipRow: { flexGrow: 0 },
-  chip: { minHeight: 40, paddingHorizontal: 14, borderRadius: 10, borderWidth: 1, borderColor: BORDER, backgroundColor: "#ffffff", justifyContent: "center", marginRight: 8 },
-  chipText: { fontSize: 14, color: "#3c4a42", fontWeight: "500" },
+  chip: { minHeight: 40, paddingHorizontal: 14, borderRadius: 999, borderWidth: 1, borderColor: BORDER, backgroundColor: "#ffffff", justifyContent: "center", marginRight: 8 },
+  chipText: { fontSize: 14, color: "#374151", fontWeight: "500" },
   photoRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   photoThumb: { width: 84, height: 84 },
   photoThumbImage: { width: 84, height: 84, borderRadius: 12 },
@@ -670,11 +675,11 @@ const styles = StyleSheet.create({
   addPhotoBtn: { width: 84, height: 84, borderRadius: 12, borderWidth: 1.5, borderStyle: "dashed", borderColor: BORDER, alignItems: "center", justifyContent: "center", gap: 4, backgroundColor: "#ffffff" },
   addPhotoText: { fontSize: 12, color: MUTED, fontWeight: "600" },
   primaryBtn: { height: 56, borderRadius: 16, alignItems: "center", justifyContent: "center", marginTop: 20 },
-  primaryBtnText: { color: "#ffffff", fontSize: 16, fontWeight: "600" },
+  primaryBtnText: { color: "#ffffff", fontSize: 16, fontWeight: "700" },
   outlineBtn: { height: 56, borderRadius: 16, borderWidth: 1, alignItems: "center", justifyContent: "center", backgroundColor: "#ffffff" },
-  outlineBtnText: { fontSize: 16, fontWeight: "600" },
+  outlineBtnText: { fontSize: 16, fontWeight: "700" },
   successContainer: { flex: 1, paddingHorizontal: 24, alignItems: "stretch", justifyContent: "center" },
   successIcon: { alignSelf: "center", width: 104, height: 104, borderRadius: 52, alignItems: "center", justifyContent: "center" },
-  successTitle: { fontSize: 26, fontWeight: "700", color: INK, textAlign: "center", marginTop: 20 },
+  successTitle: { fontSize: 26, fontWeight: "800", color: INK, textAlign: "center", marginTop: 20, letterSpacing: -0.5 },
   successSubtitle: { fontSize: 15, color: MUTED, textAlign: "center", marginTop: 8, lineHeight: 22 },
 });
