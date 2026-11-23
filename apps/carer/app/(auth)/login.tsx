@@ -27,7 +27,9 @@ const loginBg = require("../../assets/login-bg.png");
 export default function LoginScreen() {
   const insets = useSafeAreaInsets();
   const { refreshTheme } = useTheme();
+  const [method, setMethod] = useState<"phone" | "email">("phone");
   const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
   const [otp, setOtp] = useState("");
   const [step, setStep] = useState<"phone" | "otp">("phone");
   const [loading, setLoading] = useState(false);
@@ -47,6 +49,9 @@ export default function LoginScreen() {
     }).catch(() => {});
   }, []);
 
+  const target = method === "phone" ? phone.trim() : email.trim().toLowerCase();
+  const validTarget = method === "phone" ? !!target : /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(target);
+
   // Countdown for the resend-code cooldown
   useEffect(() => {
     if (resendIn <= 0) return;
@@ -55,24 +60,24 @@ export default function LoginScreen() {
   }, [resendIn]);
 
   const handleRequestOtp = async () => {
-    if (!phone.trim()) {
-      setError("Enter the phone number the office registered you with");
+    if (!validTarget) {
+      setError(method === "phone" ? "Enter the phone number the office registered you with" : "Enter the email address the office registered you with");
       return;
     }
     setLoading(true);
     setError(null);
     try {
-      await api.requestOtp("phone", phone.trim());
+      await api.requestOtp(method, target);
       if (__DEV__) {
         try {
-          const check = await api.checkOtpCode("phone", phone.trim());
+          const check = await api.checkOtpCode(method, target);
           if (check.exists && check.code) setDevOtpCode(check.code);
         } catch {}
       }
       setStep("otp");
       setResendIn(45);
     } catch (error: any) {
-      setError(error.message || "Couldn't send the code. Check the number and try again.");
+      setError(error.message || (method === "phone" ? "Couldn't send the code. Check the number and try again." : "Couldn't send the code. Check the email and try again."));
     } finally {
       setLoading(false);
     }
@@ -82,10 +87,10 @@ export default function LoginScreen() {
     if (resendIn > 0 || resending) return;
     setResending(true);
     try {
-      await api.requestOtp("phone", phone.trim());
+      await api.requestOtp(method, target);
       if (__DEV__) {
         try {
-          const check = await api.checkOtpCode("phone", phone.trim());
+          const check = await api.checkOtpCode(method, target);
           if (check.exists && check.code) setDevOtpCode(check.code);
         } catch {}
       }
@@ -106,7 +111,7 @@ export default function LoginScreen() {
     setLoading(true);
     setError(null);
     try {
-      const result = await api.verifyOtp("phone", phone.trim(), otp.trim());
+      const result = await api.verifyOtp(method, target, otp.trim());
       if (result.token) {
         refreshTheme();
         router.replace("/");
@@ -137,36 +142,83 @@ export default function LoginScreen() {
             <Text style={styles.title}>{step === "phone" ? "Sign in to start your day" : "Enter your code"}</Text>
             <Text style={styles.sub}>
               {step === "phone"
-                ? `Use the phone number ${orgName} registered you with. We'll text you a code.`
-                : `We sent a 6-digit code to ${phone.trim()}.`}
+                ? method === "phone"
+                  ? `Use the phone number ${orgName} registered you with. We'll text you a code.`
+                  : `Use the email address ${orgName} registered you with. We'll email you a code.`
+                : `We sent a 6-digit code to ${target}.`}
             </Text>
           </View>
           {step === "phone" ? (
             <>
-              <Field
-                label="Phone number"
-                placeholder="e.g. 024 123 4567"
-                value={phone}
-                onChangeText={(t) => {
-                  setPhone(t);
-                  if (error) setError(null);
-                }}
-                keyboardType="phone-pad"
-                autoComplete="tel"
-                textContentType="telephoneNumber"
-                returnKeyType="send"
-                onSubmitEditing={handleRequestOtp}
-                editable={!loading}
-                inputStyle={styles.bigInput}
-                error={error}
-              />
+              <View style={styles.segment} accessibilityRole="tablist">
+                {(["phone", "email"] as const).map((m) => {
+                  const on = method === m;
+                  return (
+                    <TouchableOpacity
+                      key={m}
+                      style={[styles.segmentBtn, on && styles.segmentOn]}
+                      onPress={() => {
+                        setMethod(m);
+                        setError(null);
+                      }}
+                      disabled={loading}
+                      accessibilityRole="tab"
+                      accessibilityState={{ selected: on }}
+                    >
+                      <Ionicons name={m === "phone" ? "call-outline" : "mail-outline"} size={16} color={on ? C.ink : C.muted} />
+                      <Text style={[styles.segmentText, on && { color: C.ink }]}>{m === "phone" ? "Phone" : "Email"}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+              {method === "phone" ? (
+                <Field
+                  key="phone"
+                  label="Phone number"
+                  placeholder="e.g. 024 123 4567"
+                  value={phone}
+                  onChangeText={(t) => {
+                    setPhone(t);
+                    if (error) setError(null);
+                  }}
+                  keyboardType="phone-pad"
+                  autoComplete="tel"
+                  textContentType="telephoneNumber"
+                  returnKeyType="send"
+                  onSubmitEditing={handleRequestOtp}
+                  editable={!loading}
+                  inputStyle={styles.bigInput}
+                  error={error}
+                />
+              ) : (
+                <Field
+                  key="email"
+                  label="Email address"
+                  placeholder="you@example.com"
+                  value={email}
+                  onChangeText={(t) => {
+                    setEmail(t);
+                    if (error) setError(null);
+                  }}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  autoComplete="email"
+                  textContentType="emailAddress"
+                  returnKeyType="send"
+                  onSubmitEditing={handleRequestOtp}
+                  editable={!loading}
+                  inputStyle={styles.bigInput}
+                  error={error}
+                />
+              )}
               <Button
                 title="Send code"
                 iconRight="arrow-forward"
                 onPress={handleRequestOtp}
                 loading={loading}
-                style={[{ marginTop: 18 }, phone.trim() && !loading ? { backgroundColor: themeColor } : null]}
-                disabled={!phone.trim()}
+                style={[{ marginTop: 18 }, validTarget && !loading ? { backgroundColor: themeColor } : null]}
+                disabled={!validTarget}
               />
             </>
           ) : (
@@ -212,7 +264,7 @@ export default function LoginScreen() {
                   }}
                   hitSlop={10}
                 >
-                  <Text style={styles.link}>Change number</Text>
+                  <Text style={styles.link}>{method === "phone" ? "Change number" : "Change email"}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity onPress={handleResendOtp} disabled={resendIn > 0 || resending} hitSlop={10}>
                   {resending ? (
@@ -256,6 +308,16 @@ const styles = StyleSheet.create({
     }),
   },
   bigInput: { height: 56, fontSize: 18, fontWeight: "600" },
+  segment: { flexDirection: "row", backgroundColor: "#f3f4f6", borderRadius: 14, padding: 4, marginBottom: 16 },
+  segmentBtn: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 10, borderRadius: 11 },
+  segmentOn: {
+    backgroundColor: "#ffffff",
+    ...Platform.select({
+      ios: { shadowColor: "#000", shadowOpacity: 0.08, shadowRadius: 4, shadowOffset: { width: 0, height: 1 } },
+      default: { elevation: 2 },
+    }),
+  },
+  segmentText: { fontSize: 14, fontWeight: "700", color: C.muted },
   code: { height: 64, borderRadius: 14, borderWidth: 1, borderColor: C.border, fontSize: 28, fontWeight: "700", letterSpacing: 10, textAlign: "center", color: C.ink },
   error: { fontSize: 13, color: C.dangerInk, fontWeight: "600", marginTop: 8, textAlign: "center" },
   otpLinks: { flexDirection: "row", justifyContent: "space-between", marginTop: 18, paddingHorizontal: 4 },

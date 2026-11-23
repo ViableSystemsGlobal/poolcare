@@ -38,7 +38,7 @@ export class AuthService {
         throw new BadRequestException("Database not configured. Please set DATABASE_URL.");
       }
       
-      const requestTarget = dto.channel === "phone" ? (normalizePhone(dto.target) ?? dto.target) : dto.target;
+      const requestTarget = dto.channel === "phone" ? (normalizePhone(dto.target) ?? dto.target) : dto.target.trim().toLowerCase();
       // Check cooldown with timeout
       const existing = await Promise.race([
         prisma.otpRequest.findFirst({
@@ -94,7 +94,7 @@ export class AuthService {
               const normalized = normalizePhone(dto.target);
               return normalized ? { OR: [{ phone: dto.target }, { phone: normalized }] } : { phone: dto.target };
             })()
-          : { email: dto.target };
+          : { email: { equals: dto.target.trim(), mode: "insensitive" as const } };
         const existingUser = await prisma.user.findFirst({
           where: userLookup,
           include: {
@@ -196,7 +196,7 @@ export class AuthService {
     console.log('[AuthService] Verifying OTP for:', dto.channel, dto.target);
     const maxAttempts = this.configService.get<number>("OTP_MAX_ATTEMPTS") || 5;
 
-    const otpTargetForVerify = dto.channel === "phone" ? (normalizePhone(dto.target) ?? dto.target) : dto.target;
+    const otpTargetForVerify = dto.channel === "phone" ? (normalizePhone(dto.target) ?? dto.target) : dto.target.trim().toLowerCase();
     const otpRequest = await prisma.otpRequest.findFirst({
       where: {
         channel: dto.channel,
@@ -270,7 +270,7 @@ export class AuthService {
             const normalized = normalizePhone(dto.target);
             return normalized ? { OR: [{ phone: dto.target }, { phone: normalized }] } : { phone: dto.target };
           })()
-        : { email: dto.target };
+        : { email: { equals: dto.target.trim(), mode: "insensitive" as const } };
       let user = await prisma.user.findFirst({
         where: userLookupVerify,
       });
