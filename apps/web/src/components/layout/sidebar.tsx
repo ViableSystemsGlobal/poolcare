@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useTheme } from "@/contexts/theme-context";
 import { useHelpDialog } from "@/contexts/help-dialog-context";
 import { useAuth } from "@/contexts/auth-context";
@@ -233,6 +233,9 @@ export default function Sidebar({ collapsed = false }: { collapsed?: boolean }) 
   const [expandedSections, setExpandedSections] = useState<string[]>([]);
   const [logoError, setLogoError] = useState(false);
   const [newApplications, setNewApplications] = useState(0);
+  // Collapsed rail: hovering a section with children opens a flyout of its pages.
+  const [flyout, setFlyout] = useState<{ name: string; top: number; left: number } | null>(null);
+  const flyoutTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { getThemeClasses, customLogo, getThemeColor } = useTheme();
   const { setHelpOpen } = useHelpDialog();
 
@@ -292,6 +295,28 @@ export default function Sidebar({ collapsed = false }: { collapsed?: boolean }) 
     background: `linear-gradient(to bottom right, ${themeHex}, var(--theme-color-dark, ${themeHex}))`,
     color: '#ffffff',
   });
+
+  const cancelFlyoutClose = () => {
+    if (flyoutTimer.current) clearTimeout(flyoutTimer.current);
+    flyoutTimer.current = null;
+  };
+  const closeFlyoutSoon = () => {
+    cancelFlyoutClose();
+    flyoutTimer.current = setTimeout(() => setFlyout(null), 140);
+  };
+  const openFlyout = (name: string, el: HTMLElement) => {
+    cancelFlyoutClose();
+    // The admin body is CSS-zoomed; convert the visual rect back to CSS px for position:fixed.
+    const zoom = parseFloat(getComputedStyle(document.body).zoom || "1") || 1;
+    const r = el.getBoundingClientRect();
+    const count = navigationGroups.flatMap((g) => g.items).find((i) => i.name === name)?.children?.length || 0;
+    const height = 44 + count * 36; // header + rows
+    const maxTop = window.innerHeight / zoom - height - 8;
+    setFlyout({ name, top: Math.max(8, Math.min(r.top / zoom, maxTop)), left: (r.right + 8) / zoom });
+  };
+  useEffect(() => { if (!collapsed) setFlyout(null); }, [collapsed]);
+  useEffect(() => { setFlyout(null); }, [pathname]);
+  useEffect(() => () => cancelFlyoutClose(), []);
 
   const toggleSection = (sectionName: string) => {
     setExpandedSections((prev) =>
@@ -353,12 +378,19 @@ export default function Sidebar({ collapsed = false }: { collapsed?: boolean }) 
                   <div key={item.name}>
                     {hasChildren ? (
                       <button
-                        onClick={() => toggleSection(item.name)}
+                        onClick={(e) => (collapsed ? openFlyout(item.name, e.currentTarget) : toggleSection(item.name))}
                         className={cn("group flex items-center rounded-lg text-sm font-medium transition-colors text-gray-700 hover:text-white", collapsed ? "mx-auto h-10 w-10 justify-center" : "w-full px-3 py-2")}
-                        title={collapsed ? item.name : undefined}
-                        style={isActiveItem ? getActiveStyle() : undefined}
-                        onMouseEnter={(e) => { if (!isActiveItem) { e.currentTarget.style.backgroundColor = themeHex; e.currentTarget.style.color = '#fff'; } }}
-                        onMouseLeave={(e) => { if (!isActiveItem) { e.currentTarget.style.backgroundColor = ''; e.currentTarget.style.color = ''; } }}
+                        aria-haspopup={collapsed ? "menu" : undefined}
+                        aria-expanded={collapsed ? flyout?.name === item.name : isExpanded}
+                        style={isActiveItem || (collapsed && flyout?.name === item.name) ? getActiveStyle() : undefined}
+                        onMouseEnter={(e) => {
+                          if (collapsed) openFlyout(item.name, e.currentTarget);
+                          if (!isActiveItem) { e.currentTarget.style.backgroundColor = themeHex; e.currentTarget.style.color = '#fff'; }
+                        }}
+                        onMouseLeave={(e) => {
+                          if (collapsed) closeFlyoutSoon();
+                          if (!isActiveItem) { e.currentTarget.style.backgroundColor = ''; e.currentTarget.style.color = ''; }
+                        }}
                       >
                         <item.icon className={cn("h-5 w-5 flex-shrink-0", !collapsed && "mr-3")} />
                         {!collapsed && (
@@ -426,6 +458,49 @@ export default function Sidebar({ collapsed = false }: { collapsed?: boolean }) 
           </div>
         ))}
       </nav>
+
+      {/* Collapsed flyout for sections with children */}
+      {collapsed && flyout && (() => {
+        const section = navigationGroups.flatMap((g) => g.items).find((i) => i.name === flyout.name);
+        if (!section?.children?.length) return null;
+        return (
+          <div
+            role="menu"
+            className="fixed z-50 w-56 rounded-xl bg-white p-1.5 shadow-lg ring-1 ring-black/5"
+            style={{ top: flyout.top, left: flyout.left }}
+            onMouseEnter={cancelFlyoutClose}
+            onMouseLeave={closeFlyoutSoon}
+          >
+            <div className="px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+              {section.name}
+            </div>
+            {section.children.map((child) => {
+              const active = isActive(child.href, true);
+              return (
+                <Link
+                  key={child.name}
+                  href={child.href}
+                  role="menuitem"
+                  className={cn(
+                    "flex items-center rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                    active ? "bg-gray-50" : "text-gray-700 hover:bg-gray-50 hover:text-gray-900"
+                  )}
+                  style={active ? { color: themeHex } : undefined}
+                  onClick={() => setFlyout(null)}
+                >
+                  <child.icon className="mr-3 h-4 w-4 flex-shrink-0" />
+                  {child.name}
+                  {child.name === "Careers" && newApplications > 0 && (
+                    <span className="ml-auto text-[10px] font-semibold px-1.5 py-0.5 rounded-full text-white" style={{ backgroundColor: themeHex }}>
+                      {newApplications}
+                    </span>
+                  )}
+                </Link>
+              );
+            })}
+          </div>
+        );
+      })()}
 
       {/* Footer */}
       <div className="border-t border-gray-200 px-2 py-1.5 space-y-0.5">
