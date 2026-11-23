@@ -4,6 +4,16 @@ import { MapsService } from "../maps/maps.service";
 import { CreateCarerDto, UpdateCarerDto } from "./dto";
 import { normalizePhone, emptyAsNull } from "../utils/phone.util";
 
+function normalizePhoneOrNull(v: string | null | undefined): string | null {
+  const t = emptyAsNull(v);
+  return t ? normalizePhone(t) ?? t : null;
+}
+
+function normalizeEmailOrNull(v: string | null | undefined): string | null {
+  const t = emptyAsNull(v);
+  return t ? t.toLowerCase() : null;
+}
+
 @Injectable()
 export class CarersService {
   constructor(private readonly mapsService: MapsService) {}
@@ -83,82 +93,102 @@ export class CarersService {
   }
 
   async create(orgId: string, dto: CreateCarerDto) {
-    const phone = emptyAsNull(dto.phone) ?? undefined;
-    const email = emptyAsNull(dto.email) ?? undefined;
+    const phone = normalizePhoneOrNull(dto.phone);
+    const email = normalizeEmailOrNull(dto.email);
 
     let userId = dto.userId;
-
-    // If no userId provided, create user from phone/email
     if (!userId) {
       if (!phone && !email) {
-        throw new BadRequestException("Either userId, phone, or email must be provided");
+        throw new BadRequestException("Add a phone number or email so the carer can sign in.");
       }
-
-      const orConditions: Array<{ phone?: string; email?: string }> = [];
-      if (phone) orConditions.push({ phone: normalizePhone(phone) ?? phone });
-      if (email) orConditions.push({ email });
-
-      let existingUser = email
-        ? await prisma.user.findFirst({ where: { email } })
-        : null;
-      if (!existingUser && orConditions.length > 0) {
-        existingUser = await prisma.user.findFirst({
-          where: { OR: orConditions },
-        });
-      }
-
-      if (existingUser) {
-        userId = existingUser.id;
-      } else {
-        try {
-          const newUser = await prisma.user.create({
-            data: {
-              phone: phone ? (normalizePhone(phone) ?? phone) : undefined,
-              email: email || undefined,
-              name: dto.name,
-            },
-          });
-          userId = newUser.id;
-        } catch (err: any) {
-          if (err?.code === "P2002") {
-            const target = err?.meta?.target as string[] | undefined;
-            const field = target?.includes("email") ? "email" : target?.includes("phone") ? "phone" : "identifier";
-            throw new ConflictException(`A user with this ${field} already exists.`);
-          }
-          throw err;
-        }
-      }
-
+      userId = await this.resolveLoginUser({ phone, email, name: dto.name ?? null });
     }
 
-    // Ensure the user has a CARER membership (multi-role: creates alongside any existing roles)
-    const existingCarerMember = await prisma.orgMember.findFirst({
-      where: { orgId, userId: userId!, role: "CARER" },
+    // One carer profile per person per org
+    const already = await prisma.carer.findFirst({ where: { orgId, userId }, select: { id: true, name: true } });
+    if (already) {
+      throw new ConflictException(`${already.name || "This person"} is already a carer. Edit their existing profile instead.`);
+    }
+
+    await prisma.orgMember.upsert({
+      where: { orgId_userId_role: { orgId, userId: userId!, role: "CARER" } },
+      create: { orgId, userId: userId!, role: "CARER" },
+      update: {},
     });
-    if (!existingCarerMember) {
-      await prisma.orgMember.create({
-        data: { orgId, userId: userId!, role: "CARER" },
-      });
-    }
 
-    const carer = await prisma.carer.create({
+    return prisma.carer.create({
       data: {
         orgId,
-        userId,
+        userId: userId!,
         name: dto.name,
-        phone: phone ?? dto.phone,
+        phone: phone ?? undefined,
+        imageUrl: emptyAsNull(dto.imageUrl) ?? undefined,
         homeBaseLat: dto.homeBase?.lat,
         homeBaseLng: dto.homeBase?.lng,
         homeBaseAddress: dto.homeBaseAddress,
         ghanaPostAddress: dto.ghanaPostAddress,
         active: dto.active ?? true,
       },
-      include: {
-        user: true,
-      },
+      include: { user: true },
     });
+  }
 
-    return carer;
+  /**
+   * Find the User a carer signs in as, by phone/email; create one if nobody has
+   * either. Refuses when the phone and email belong to two different people.
+   */
+  private async resolveLoginUser(input: { phone: string | null; email: string | null; name: string | null }): Promise<string> {
+    const byPhone = input.phone ? await this.findUserByPhone(input.phone) : null;
+    const byEmail = input.email ? await this.findUserByEmail(input.email) : null;
+    if (byPhone && byEmail && byPhone.id !== byEmail.id) {
+      throw new ConflictException("That phone number and email belong to two different accounts. Use one or the other.");
+    }
+    const existing = byPhone || byEmail;
+    if (existing) {
+      // Fill in whichever identifier the account is missing
+      const fill: any = {};
+      if (input.phone && !existing.phone) fill.phone = input.phone;
+      if (input.email && !existing.email) fill.email = input.email;
+      if (input.name && !existing.name) fill.name = input.name;
+      if (Object.keys(fill).length) await this.updateUserOrConflict(existing.id, fill);
+      return existing.id;
+    }
+    try {
+      const created = await prisma.user.create({
+        data: { phone: input.phone ?? undefined, email: input.email ?? undefined, name: input.name ?? undefined },
+      });
+      return created.id;
+    } catch (err: any) {
+      throw this.uniqueConflict(err);
+    }
+  }
+
+  /** Users store phones as 233XXXXXXXXX, 0XXXXXXXXX or as typed; match any of them. */
+  private async findUserByPhone(phone: string) {
+    const n = normalizePhone(phone) ?? phone;
+    const variants = Array.from(new Set([phone, n, n.startsWith("233") ? "0" + n.slice(3) : n, "+" + n]));
+    return prisma.user.findFirst({ where: { phone: { in: variants } } });
+  }
+
+  private async findUserByEmail(email: string) {
+    return prisma.user.findFirst({ where: { email: { equals: email, mode: "insensitive" } } });
+  }
+
+  private async updateUserOrConflict(userId: string, data: { phone?: string | null; email?: string | null; name?: string }) {
+    try {
+      await prisma.user.update({ where: { id: userId }, data });
+    } catch (err: any) {
+      throw this.uniqueConflict(err);
+    }
+  }
+
+  private uniqueConflict(err: any) {
+    if (err?.code === "P2002") {
+      const target = String(err?.meta?.target || "");
+      const field = target.includes("email") ? "email" : target.includes("phone") ? "phone number" : "phone or email";
+      return new ConflictException(`Another account already uses this ${field}.`);
+    }
+    return err;
   }
 
   async getOne(orgId: string, role: string, currentUserId: string, carerId: string) {
@@ -186,21 +216,25 @@ export class CarersService {
 
   async update(orgId: string, carerId: string, dto: UpdateCarerDto) {
     const carer = await prisma.carer.findFirst({
-      where: {
-        id: carerId,
-        orgId,
-      },
+      where: { id: carerId, orgId },
+      include: { user: true },
     });
-
     if (!carer) {
       throw new NotFoundException("Carer not found");
     }
 
+    // Phone/email are what the carer signs in with, and sign-in looks them up on
+    // the User, so keep the User in step with what the office edits here.
+    const phone = dto.phone === undefined ? undefined : normalizePhoneOrNull(dto.phone);
+    const email = dto.email === undefined ? undefined : normalizeEmailOrNull(dto.email);
+    const userId = await this.syncLoginDetails(orgId, carer, phone, email);
+
     const updated = await prisma.carer.update({
       where: { id: carerId },
       data: {
+        userId,
         name: dto.name,
-        phone: dto.phone,
+        phone,
         imageUrl: dto.imageUrl,
         homeBaseLat: dto.homeBase?.lat,
         homeBaseLng: dto.homeBase?.lng,
@@ -210,21 +244,114 @@ export class CarersService {
         ratePerVisitCents: dto.ratePerVisitCents,
         currency: dto.currency,
       },
-      include: {
-        user: true,
-      },
+      include: { user: true },
     });
 
     // Ensure the carer's user has a CARER membership (auto-heals missing memberships)
-    if (updated.userId) {
-      await prisma.orgMember.upsert({
-        where: { orgId_userId_role: { orgId, userId: updated.userId, role: "CARER" } },
-        create: { orgId, userId: updated.userId, role: "CARER" },
-        update: {},
-      });
-    }
+    await prisma.orgMember.upsert({
+      where: { orgId_userId_role: { orgId, userId: updated.userId, role: "CARER" } },
+      create: { orgId, userId: updated.userId, role: "CARER" },
+      update: {},
+    });
 
     return updated;
+  }
+
+  /**
+   * Apply an office edit of a carer's phone/email to the account they sign in with.
+   * - Nobody else has the new value: update the carer's own account.
+   * - Another account already has it (e.g. the person is also a client or staff):
+   *   move the carer profile onto that account, so they sign in with it.
+   * Returns the userId the carer profile should point at.
+   */
+  private async syncLoginDetails(
+    orgId: string,
+    carer: { id: string; userId: string; user: { id: string; phone: string | null; email: string | null } | null },
+    phone: string | null | undefined,
+    email: string | null | undefined
+  ): Promise<string> {
+    const current = carer.user;
+    if (!current) return carer.userId;
+
+    const phoneChanged = phone !== undefined && (normalizePhone(current.phone) ?? current.phone) !== phone;
+    const emailChanged = email !== undefined && (current.email || "").toLowerCase() !== (email || "");
+    if (!phoneChanged && !emailChanged) return carer.userId;
+
+    const nextPhone = phone === undefined ? current.phone : phone;
+    const nextEmail = email === undefined ? current.email : email;
+    if (!nextPhone && !nextEmail) {
+      throw new BadRequestException("A carer needs a phone number or email to sign in.");
+    }
+
+    const phoneOwner = phoneChanged && phone ? await this.findUserByPhone(phone) : null;
+    const emailOwner = emailChanged && email ? await this.findUserByEmail(email) : null;
+    const others = [phoneOwner, emailOwner].filter((u): u is NonNullable<typeof u> => !!u && u.id !== current.id);
+    const ids = Array.from(new Set(others.map((u) => u.id)));
+
+    if (ids.length > 1) {
+      throw new ConflictException("That phone number and email belong to two different accounts. Use one or the other.");
+    }
+
+    if (ids.length === 1) {
+      const target = others[0];
+      const clash = await prisma.carer.findFirst({
+        where: { orgId, userId: target.id, id: { not: carer.id } },
+        select: { name: true },
+      });
+      if (clash) {
+        throw new ConflictException(`That ${phoneOwner?.id === target.id ? "phone number" : "email"} is already used by another carer (${clash.name || "unnamed"}).`);
+      }
+      // Fill gaps on the target account without taking values from someone else
+      const fill: any = {};
+      if (phoneChanged && phone && phoneOwner?.id !== target.id && !target.phone) fill.phone = phone;
+      if (emailChanged && email && emailOwner?.id !== target.id && !target.email) fill.email = email;
+      if (Object.keys(fill).length) await this.updateUserOrConflict(target.id, fill);
+
+      // The old account no longer represents this carer
+      const otherCarerProfiles = await prisma.carer.count({ where: { orgId, userId: current.id, id: { not: carer.id } } });
+      if (!otherCarerProfiles) {
+        await prisma.orgMember.deleteMany({ where: { orgId, userId: current.id, role: "CARER" } });
+      }
+      return target.id;
+    }
+
+    await this.updateUserOrConflict(current.id, {
+      ...(phoneChanged ? { phone: phone ?? null } : {}),
+      ...(emailChanged ? { email: email ?? null } : {}),
+    });
+    return current.id;
+  }
+
+  /**
+   * Remove a carer who never did any work. Carers with jobs, visits or pay
+   * history must be set inactive instead, so records stay intact.
+   */
+  async remove(orgId: string, carerId: string) {
+    const carer = await prisma.carer.findFirst({ where: { id: carerId, orgId }, select: { id: true, userId: true, name: true } });
+    if (!carer) throw new NotFoundException("Carer not found");
+
+    const [jobs, assessments, supplies] = await Promise.all([
+      prisma.job.count({ where: { orgId, assignedCarerId: carerId } }),
+      prisma.assessmentReport.count({ where: { orgId, assignedCarerId: carerId } }),
+      prisma.supplyRequest.count({ where: { orgId, carerId } }),
+    ]);
+    if (jobs + assessments + supplies > 0) {
+      const what = [
+        jobs ? `${jobs} job${jobs === 1 ? "" : "s"}` : "",
+        assessments ? `${assessments} assessment${assessments === 1 ? "" : "s"}` : "",
+        supplies ? `${supplies} supply request${supplies === 1 ? "" : "s"}` : "",
+      ].filter(Boolean).join(", ");
+      throw new ConflictException(
+        `${carer.name || "This carer"} has ${what} on record. Set them inactive instead, so their history stays intact.`
+      );
+    }
+
+    await prisma.carer.delete({ where: { id: carerId } });
+    const otherProfiles = await prisma.carer.count({ where: { orgId, userId: carer.userId } });
+    if (!otherProfiles) {
+      await prisma.orgMember.deleteMany({ where: { orgId, userId: carer.userId, role: "CARER" } });
+    }
+    return { deleted: true };
   }
 
   async getMyNotifications(userId: string, orgId: string, page: number, limit: number) {
@@ -372,10 +499,13 @@ export class CarersService {
       throw new NotFoundException("Carer profile not found");
     }
 
-    // Carers can only update preferences, not active status
-    const { active, ...prefs } = dto;
+    // Carers may change their name, photo and home base only. Phone/email (their
+    // sign-in), pay rate and active status are set by the office.
     const updateData: any = {
-      ...prefs,
+      name: dto.name,
+      imageUrl: dto.imageUrl,
+      homeBaseAddress: dto.homeBaseAddress,
+      ghanaPostAddress: dto.ghanaPostAddress,
       homeBaseLat: dto.homeBase?.lat,
       homeBaseLng: dto.homeBase?.lng,
     };

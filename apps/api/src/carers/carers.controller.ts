@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Patch,
+  Delete,
   Param,
   Query,
   Body,
@@ -74,6 +75,13 @@ export class CarersController {
     @Body() dto: UpdateCarerDto
   ) {
     return this.carersService.update(user.org_id, id, dto);
+  }
+
+  @Delete(":id")
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "MANAGER")
+  async remove(@CurrentUser() user: { org_id: string }, @Param("id") carerId: string) {
+    return this.carersService.remove(user.org_id, carerId);
   }
 
   @Post(":id/device-tokens")

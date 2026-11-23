@@ -33,6 +33,8 @@ import {
 import { DashboardAICard } from "@/components/dashboard-ai-card";
 import { useTheme } from "@/contexts/theme-context";
 import { SkeletonMetricCard, SkeletonTable } from "@/components/ui/skeleton";
+import { useToast } from "@/hooks/use-toast";
+import { useConfirm } from "@/components/ui/confirm-provider";
 
 interface Carer {
   id: string;
@@ -60,6 +62,8 @@ interface Carer {
 }
 
 export default function CarersPage() {
+  const { toast } = useToast();
+  const confirm = useConfirm();
   const router = useRouter();
   const { getThemeClasses } = useTheme();
   const theme = getThemeClasses();
@@ -387,12 +391,12 @@ export default function CarersPage() {
     if (file) {
       // Validate file type
       if (!file.type.startsWith("image/")) {
-        alert("Please select an image file");
+        toast({ title: "Choose an image file", variant: "destructive" });
         return;
       }
       // Validate file size (5MB)
       if (file.size > 5 * 1024 * 1024) {
-        alert("Image size must be less than 5MB");
+        toast({ title: "Image is too large", description: "Use an image under 5MB.", variant: "destructive" });
         return;
       }
       setImageFile(file);
@@ -438,7 +442,7 @@ export default function CarersPage() {
     } catch (error: any) {
       console.error("Failed to upload image:", error);
       const errorMessage = error.message || "Unknown error";
-      alert(`Failed to upload image: ${errorMessage}`);
+      toast({ title: "Couldn't upload the image", description: errorMessage, variant: "destructive" });
       return null;
     } finally {
       setUploadingImage(false);
@@ -512,7 +516,7 @@ export default function CarersPage() {
         if (isJson) {
           try {
             const error = await response.json();
-            errorMessage = error.error || error.details || error.message || "Unknown error";
+            errorMessage = error.message || error.details || error.error || "Unknown error";
           } catch (e) {
             errorMessage = `HTTP ${response.status}: ${response.statusText}`;
           }
@@ -520,11 +524,11 @@ export default function CarersPage() {
           const text = await response.text();
           errorMessage = text || `HTTP ${response.status}: ${response.statusText}`;
         }
-        alert(`Failed to create carer: ${errorMessage}`);
+        toast({ title: "Couldn't add the carer", description: errorMessage, variant: "destructive" });
       }
     } catch (error: any) {
       console.error("Failed to create carer:", error);
-      alert(`Failed to create carer: ${error.message || "Unknown error"}`);
+      toast({ title: "Couldn't add the carer", description: error.message || "Unknown error", variant: "destructive" });
     }
   };
 
@@ -558,6 +562,7 @@ export default function CarersPage() {
       const payload: any = {
         name: formData.name,
         phone: formData.phone,
+        email: formData.email.trim() || null,
         active: formData.active,
       };
 
@@ -591,19 +596,20 @@ export default function CarersPage() {
       if (response.ok) {
         setEditingCarer(null);
         resetForm();
+        toast({ title: "Carer saved" });
         await fetchCarers();
       } else {
         const error = await response.json();
-        alert(`Failed to update carer: ${error.message || error.error || "Unknown error"}`);
+        toast({ title: "Couldn't save the carer", description: error.message || error.error || "Unknown error", variant: "destructive" });
       }
     } catch (error) {
       console.error("Failed to update carer:", error);
-      alert("Failed to update carer");
+      toast({ title: "Couldn't save the carer", description: "Check your connection and try again.", variant: "destructive" });
     }
   };
 
   const handleDelete = async (carerId: string) => {
-    if (!confirm("Are you sure you want to delete this carer? This action cannot be undone.")) return;
+    if (!(await confirm({ title: "Delete this carer?", description: "Only carers with no jobs, assessments or supply requests can be deleted. This cannot be undone.", destructive: true, confirmLabel: "Delete" }))) return;
 
     try {
       const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
@@ -615,14 +621,15 @@ export default function CarersPage() {
       });
 
       if (response.ok) {
+        toast({ title: "Carer deleted" });
         await fetchCarers();
       } else {
-        const error = await response.json();
-        alert(`Failed to delete carer: ${error.message || error.error || "Unknown error"}`);
+        const error = await response.json().catch(() => ({}));
+        toast({ title: "Couldn't delete the carer", description: error.message || error.error || "Unknown error", variant: "destructive" });
       }
     } catch (error) {
       console.error("Failed to delete carer:", error);
-      alert("Failed to delete carer");
+      toast({ title: "Couldn't delete the carer", description: "Check your connection and try again.", variant: "destructive" });
     }
   };
 
@@ -1023,11 +1030,11 @@ export default function CarersPage() {
                 <p className="text-xs text-blue-600">Uploading image...</p>
               )}
             </div>
-            {!editingCarer && (
-              <p className="text-xs text-gray-500">
-                Provide at least phone or email — a user account is created (or linked) automatically for this carer.
-              </p>
-            )}
+            <p className="text-xs text-gray-500">
+              {editingCarer
+                ? "The carer signs in to the app with this phone number or email."
+                : "Provide at least phone or email — a user account is created (or linked) automatically for this carer."}
+            </p>
 
             <div className="grid gap-2">
               <Label htmlFor="homeBaseSearch">Home Base Location</Label>

@@ -143,6 +143,7 @@ export default function CarerDetailPage() {
   const [formData, setFormData] = useState({
     name: "",
     phone: "",
+    email: "",
     imageUrl: "",
     homeBaseLat: "",
     homeBaseLng: "",
@@ -166,6 +167,7 @@ export default function CarerDetailPage() {
       setFormData({
         name: carer.name || "",
         phone: carer.phone || carer.user?.phone || "",
+        email: carer.user?.email || "",
         imageUrl: carer.imageUrl || "",
         homeBaseLat: carer.homeBaseLat?.toString() || "",
         homeBaseLng: carer.homeBaseLng?.toString() || "",
@@ -199,6 +201,7 @@ export default function CarerDetailPage() {
             setFormData({
               name: carerData.name || "",
               phone: carerData.phone || carerData.user?.phone || "",
+              email: carerData.user?.email || "",
               imageUrl: carerData.imageUrl || "",
               homeBaseLat: carerData.homeBaseLat?.toString() || "",
               homeBaseLng: carerData.homeBaseLng?.toString() || "",
@@ -275,7 +278,7 @@ export default function CarerDetailPage() {
     } catch (error: any) {
       console.error("Failed to upload image:", error);
       const errorMessage = error.message || "Unknown error";
-      alert(`Failed to upload image: ${errorMessage}`);
+      toast({ title: "Couldn't upload the image", description: errorMessage, variant: "destructive" });
       return null;
     } finally {
       setUploadingImage(false);
@@ -287,12 +290,12 @@ export default function CarerDetailPage() {
     if (file) {
       // Validate file type
       if (!file.type.startsWith("image/")) {
-        alert("Please select an image file");
+        toast({ title: "Choose an image file", variant: "destructive" });
         return;
       }
       // Validate file size (5MB)
       if (file.size > 5 * 1024 * 1024) {
-        alert("Image size must be less than 5MB");
+        toast({ title: "Image is too large", description: "Use an image under 5MB.", variant: "destructive" });
         return;
       }
       setImageFile(file);
@@ -322,6 +325,7 @@ export default function CarerDetailPage() {
       const payload: any = {
         name: formData.name || null,
         phone: formData.phone || null,
+        email: formData.email.trim() || null,
         active: formData.active,
       };
 
@@ -364,11 +368,11 @@ export default function CarerDetailPage() {
         await fetchCarerData();
       } else {
         const error = await response.json();
-        alert(`Failed to update carer: ${error.message || error.error || "Unknown error"}`);
+        toast({ title: "Couldn't save the carer", description: error.message || error.error || "Unknown error", variant: "destructive" });
       }
     } catch (error) {
       console.error("Failed to update carer:", error);
-      alert("Failed to update carer");
+      toast({ title: "Couldn't save the carer", description: "Check your connection and try again.", variant: "destructive" });
     }
   };
 
@@ -764,14 +768,27 @@ export default function CarerDetailPage() {
               />
             </div>
 
-            <div className="grid gap-2">
-              <Label htmlFor="edit-phone">Phone</Label>
-              <Input
-                id="edit-phone"
-                value={formData.phone}
-                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-              />
+            <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-2">
+                <Label htmlFor="edit-phone">Phone</Label>
+                <Input
+                  id="edit-phone"
+                  type="tel"
+                  value={formData.phone}
+                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="edit-email">Email</Label>
+                <Input
+                  id="edit-email"
+                  type="email"
+                  value={formData.email}
+                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                />
+              </div>
             </div>
+            <p className="-mt-2 text-xs text-gray-500">The carer signs in to the app with this phone number or email.</p>
 
             <div className="grid gap-2">
               <Label htmlFor="edit-image">Profile Image</Label>
