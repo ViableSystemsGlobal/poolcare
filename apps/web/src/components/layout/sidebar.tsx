@@ -328,7 +328,7 @@ export default function Sidebar({ collapsed = false }: { collapsed?: boolean }) 
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 space-y-1 p-4 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-transparent hover:scrollbar-thumb-gray-400">
+      <nav className={cn("flex-1 space-y-1 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-transparent hover:scrollbar-thumb-gray-400", collapsed ? "px-3 py-4" : "p-4")}>
         {navigationGroups.map((group, groupIndex) => (
           <div key={group.label}>
             {!collapsed && groupIndex > 0 && (
@@ -354,12 +354,13 @@ export default function Sidebar({ collapsed = false }: { collapsed?: boolean }) 
                     {hasChildren ? (
                       <button
                         onClick={() => toggleSection(item.name)}
-                        className="group flex w-full items-center rounded-lg px-3 py-2 text-sm font-medium transition-colors text-gray-700 hover:text-white"
+                        className={cn("group flex items-center rounded-lg text-sm font-medium transition-colors text-gray-700 hover:text-white", collapsed ? "mx-auto h-10 w-10 justify-center" : "w-full px-3 py-2")}
+                        title={collapsed ? item.name : undefined}
                         style={isActiveItem ? getActiveStyle() : undefined}
                         onMouseEnter={(e) => { if (!isActiveItem) { e.currentTarget.style.backgroundColor = themeHex; e.currentTarget.style.color = '#fff'; } }}
                         onMouseLeave={(e) => { if (!isActiveItem) { e.currentTarget.style.backgroundColor = ''; e.currentTarget.style.color = ''; } }}
                       >
-                        <item.icon className="mr-3 h-5 w-5 flex-shrink-0" />
+                        <item.icon className={cn("h-5 w-5 flex-shrink-0", !collapsed && "mr-3")} />
                         {!collapsed && (
                           <>
                             {item.name}
@@ -386,12 +387,13 @@ export default function Sidebar({ collapsed = false }: { collapsed?: boolean }) 
                     ) : (
                       <Link
                         href={item.href || "#"}
-                        className="group flex items-center rounded-lg px-3 py-2 text-sm font-medium transition-colors w-full text-left text-gray-700 hover:text-white"
+                        className={cn("group flex items-center rounded-lg text-sm font-medium transition-colors text-left text-gray-700 hover:text-white", collapsed ? "mx-auto h-10 w-10 justify-center" : "w-full px-3 py-2")}
+                        title={collapsed ? item.name : undefined}
                         style={isActiveItem ? getActiveStyle() : undefined}
                         onMouseEnter={(e) => { if (!isActiveItem) { e.currentTarget.style.backgroundColor = themeHex; e.currentTarget.style.color = '#fff'; } }}
                         onMouseLeave={(e) => { if (!isActiveItem) { e.currentTarget.style.backgroundColor = ''; e.currentTarget.style.color = ''; } }}
                       >
-                        <item.icon className="mr-3 h-5 w-5 flex-shrink-0" />
+                        <item.icon className={cn("h-5 w-5 flex-shrink-0", !collapsed && "mr-3")} />
                         {!collapsed && item.name}
                       </Link>
                     )}
