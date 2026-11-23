@@ -150,7 +150,7 @@ export class CarerDayPlanService {
           `<td style="padding:10px 0;border-top:1px solid #f3f4f6;vertical-align:top;">` +
           `<div style="color:#111827;font-weight:600;">${esc(poolLabel(j))}</div>` +
           `<div style="color:#6b7280;font-size:13px;">${esc([j.pool?.client?.name, j.pool?.address].filter(Boolean).join(" · "))}</div>` +
-          (maps ? `<a href="${maps}" style="font-size:13px;color:#2563eb;text-decoration:none;">Directions</a>` : "") +
+          (maps ? `<a href="${maps}" style="font-size:13px;font-weight:600;color:${CarerNotifyService.brand};text-decoration:none;">Directions</a>` : "") +
           `</td></tr>`
         );
       })

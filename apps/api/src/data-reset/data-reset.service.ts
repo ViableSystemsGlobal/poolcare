@@ -8,6 +8,7 @@ import * as zlib from "zlib";
 import { SmsAdapter } from "../notifications/adapters/sms.adapter";
 import { EmailAdapter } from "../notifications/adapters/email.adapter";
 import { DATA_AREAS, AREA_ORDER, DataArea, expandAreas, isDataArea } from "./data-reset.areas";
+import { createEmailTemplate, getOrgEmailSettings, emailUi, escapeHtml } from "../email/email-template.util";
 
 const CODE_TTL_MS = 10 * 60 * 1000;
 const RESEND_COOLDOWN_MS = 60 * 1000;
@@ -86,17 +87,21 @@ export class DataResetService {
       const subject = "Confirm data deletion in PoolCare";
       const list = areaNames.join(", ");
       const text = `Your PoolCare data deletion code is: ${code}\n\nIt will permanently delete: ${list}.\n\nThe code expires in 10 minutes. If you didn't request this, don't share the code and change your password.`;
-      const html = `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-          <h2 style="color: #b91c1c; margin-bottom: 8px;">Confirm data deletion</h2>
-          <p>Use this code to confirm deleting data in PoolCare:</p>
-          <div style="background-color: #f3f4f6; padding: 20px; text-align: center; margin: 20px 0;">
-            <h1 style="color: #b91c1c; font-size: 32px; margin: 0; letter-spacing: 6px;">${code}</h1>
-          </div>
-          <p>This will permanently delete: <strong>${list}</strong>.</p>
-          <p>The code expires in <strong>10 minutes</strong>.</p>
-          <p style="color: #6b7280; font-size: 12px; margin-top: 30px;">If you didn't request this, don't share the code with anyone.</p>
-        </div>`;
+      const brand = await getOrgEmailSettings(orgId);
+      const html = createEmailTemplate(
+        emailUi.code(code) +
+          emailUi.warn(`This will permanently delete: <strong>${escapeHtml(list)}</strong>. It can't be undone.`) +
+          emailUi.p("Enter the code in PoolCare to confirm. It expires in <strong>10 minutes</strong>.") +
+          emailUi.p("If you didn't ask for this, don't share the code with anyone and change your password.", "margin:0;color:#6b7280;font-size:14px;"),
+        {
+          ...brand,
+          eyebrow: "Confirm deletion",
+          title: "Your deletion code",
+          preheader: `Code to confirm deleting ${list}. Expires in 10 minutes.`,
+          reason: "You're getting this because someone asked to delete data from your PoolCare account.",
+          art: false,
+        }
+      );
       try {
         await this.email.send(user.email, subject, text, html, orgId);
         sentTo.push(this.maskEmail(user.email));

@@ -6,7 +6,7 @@ import { CrmMessagingService } from "./crm-messaging.service";
 import { PushAdapter } from "../notifications/adapters/push.adapter";
 import { EmailAdapter } from "../notifications/adapters/email.adapter";
 import { NotificationsService } from "../notifications/notifications.service";
-import { createEmailTemplate, getOrgEmailSettings } from "../email/email-template.util";
+import { createEmailTemplate, getOrgEmailSettings, emailUi, escapeHtml } from "../email/email-template.util";
 import { MapsService } from "../maps/maps.service";
 import { SettingsService } from "../settings/settings.service";
 
@@ -256,13 +256,23 @@ export class OpportunitiesService {
     if (assignee.email) {
       const text = `You've been assigned a pool assessment for ${account}, scheduled ${when}.${note ? `\n\nNote: ${note}` : ""}\n\nOpen the assessment form (no login needed):\n${formUrl}`;
       const orgSettings = await getOrgEmailSettings(orgId);
-      const content = `
-        <p style="margin:0 0 16px">You've been assigned a pool assessment for <strong>${account}</strong>, scheduled <strong>${when}</strong>.</p>
-        ${note ? `<p style="margin:0 0 16px">Note: ${note}</p>` : ""}
-        <p style="margin:0 0 16px"><a href="${formUrl}" style="display:inline-block;background:${orgSettings.primaryColor || "#0d9488"};color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600">Open the assessment form</a></p>
-        <p style="margin:0;color:#888;font-size:12px">No login required. Or paste this link: <a href="${formUrl}" style="color:#888">${formUrl}</a></p>
-      `;
-      const html = createEmailTemplate(content, orgSettings);
+      const ui = emailUi;
+      const content =
+        ui.p(`You've been assigned a pool assessment for <strong>${escapeHtml(account)}</strong>.`) +
+        ui.facts([
+          ["When", when],
+          ["Site", account],
+        ]) +
+        (note ? ui.note(escapeHtml(note)) : "") +
+        ui.button("Open the assessment form", formUrl, orgSettings.primaryColor, `No login needed. Or paste this link: <a href="${escapeHtml(formUrl)}" style="color:#9ca3af;">${escapeHtml(formUrl)}</a>`);
+      const html = createEmailTemplate(content, {
+        ...orgSettings,
+        eyebrow: "Assessment assigned",
+        title: account,
+        subtitle: when,
+        preheader: `Pool assessment for ${account}, ${when}.`,
+        reason: `You're getting this because you were assigned an assessment at ${orgSettings.organizationName}.`,
+      });
       try {
         await this.email.send(assignee.email, `Pool assessment assigned: ${account}`, text, html, orgId);
         emailed = true;

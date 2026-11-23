@@ -1,7 +1,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { prisma } from "@poolcare/db";
 import { EmailAdapter } from "../notifications/adapters/email.adapter";
-import { createEmailTemplate, getOrgEmailSettings } from "../email/email-template.util";
+import { createEmailTemplate, getOrgEmailSettings, emailUi, escapeHtml } from "../email/email-template.util";
 
 const ADMIN_ROLES = ["ADMIN", "MANAGER"];
 
@@ -153,79 +153,74 @@ export class TodayService {
   }
 
   /** Branded HTML body for the digest — rendered inside the shared org email template. */
-  buildDigestHtml(name: string, data: TodayData, appUrl: string, primaryColor = "#0d9488", office = false): string {
-    const esc = (s: unknown) =>
-      String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-    const d = new Date(data.date);
-    const dateStr = d.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" });
+  buildDigestHtml(name: string, data: TodayData, appUrl: string, primaryColor = "#387c52", office = false): string {
+    const ui = emailUi;
+    const esc = escapeHtml;
     const dayStart = new Date(new Date().setHours(0, 0, 0, 0));
-
-    const sectionHeading = (label: string) =>
-      `<p style="margin: 24px 0 8px 0; font-size: 12px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: #666666;">${label}</p>`;
+    const org = data.scope === "org";
 
     const jobRows = data.jobs
       .slice(0, 20)
-      .map((j) => {
+      .map((j, i) => {
         const pool = esc(j.pool?.name || j.pool?.address || "Pool");
-        const client = j.pool?.client?.name ? ` — ${esc(j.pool.client.name)}` : "";
-        const carer =
-          data.scope === "org"
-            ? j.assignedCarer?.name
-              ? `<span style="color: #666666;">${esc(j.assignedCarer.name)}</span>`
-              : `<span style="color: #d97706; font-weight: 600;">Unassigned</span>`
-            : "";
+        const client = j.pool?.client?.name ? `<span style="color:#6b7280;"> · ${esc(j.pool.client.name)}</span>` : "";
+        const carer = org
+          ? j.assignedCarer?.name
+            ? `<p style="margin:2px 0 0 0;font-size:13px;color:#6b7280;">${esc(j.assignedCarer.name)}</p>`
+            : `<p style="margin:2px 0 0 0;font-size:13px;color:#b45309;font-weight:700;">Unassigned</p>`
+          : "";
+        const status = String(j.status).replace(/_/g, " ");
+        const border = i ? "border-top:1px solid #f3f4f6;" : "";
         return `<tr>
-          <td style="padding: 8px 12px 8px 0; white-space: nowrap; color: #666666; vertical-align: top;">${this.fmtTime(j.windowStart)}–${this.fmtTime(j.windowEnd)}</td>
-          <td style="padding: 8px 12px 8px 0; color: #333333; vertical-align: top;">${pool}${client}</td>
-          <td style="padding: 8px 12px 8px 0; vertical-align: top;">${carer}</td>
-          <td style="padding: 8px 0; color: #666666; text-transform: capitalize; vertical-align: top;">${esc(String(j.status).replace(/_/g, " "))}</td>
+          <td style="padding:12px 12px 12px 0;${border}white-space:nowrap;vertical-align:top;font-size:14px;font-weight:700;color:#111827;">${this.fmtTime(j.windowStart)}</td>
+          <td style="padding:12px 12px 12px 0;${border}vertical-align:top;font-size:14px;color:#111827;font-weight:600;">${pool}${client}${carer}</td>
+          <td align="right" style="padding:12px 0;${border}vertical-align:top;"><span style="display:inline-block;padding:3px 10px;border-radius:999px;background:#f3f4f6;color:#374151;font-size:11px;font-weight:700;text-transform:capitalize;white-space:nowrap;">${esc(status)}</span></td>
         </tr>`;
       })
       .join("");
     const jobsHtml =
       data.jobs.length === 0
-        ? `<p style="margin: 0; color: #666666;">No jobs scheduled today.</p>`
-        : `<table role="presentation" style="width: 100%; border-collapse: collapse; font-size: 14px;">${jobRows}</table>` +
-          (data.jobs.length > 20
-            ? `<p style="margin: 8px 0 0 0; color: #666666; font-size: 14px;">…and ${data.jobs.length - 20} more</p>`
-            : "");
+        ? ui.small("No jobs scheduled today.")
+        : `<table role="presentation" width="100%" style="border-collapse:collapse;">${jobRows}</table>` +
+          (data.jobs.length > 20 ? ui.small(`…and ${data.jobs.length - 20} more`) : "");
 
-    const unassignedHtml =
-      data.scope === "org" && data.stats.unassigned > 0
-        ? `<p style="margin: 12px 0 0 0; color: #d97706; font-size: 14px; font-weight: 600;">⚠ ${data.stats.unassigned} job${data.stats.unassigned !== 1 ? "s" : ""} still unassigned.</p>`
+    const unassigned =
+      org && data.stats.unassigned > 0
+        ? ui.warn(`<strong>${data.stats.unassigned} job${data.stats.unassigned !== 1 ? "s are" : " is"} still unassigned.</strong> Assign a carer before the day starts.`)
         : "";
 
-    const taskItems = data.tasks
+    const taskRows = data.tasks
       .slice(0, 15)
-      .map((t) => {
-        const who =
-          data.scope === "org"
-            ? `<span style="color: #666666;"> · ${esc(t.assignedTo?.name || t.assignedTo?.email || t.createdBy?.name || t.createdBy?.email || "unassigned")}</span>`
-            : "";
+      .map((t, i) => {
+        const who = org
+          ? `<p style="margin:2px 0 0 0;font-size:13px;color:#6b7280;">${esc(t.assignedTo?.name || t.assignedTo?.email || t.createdBy?.name || t.createdBy?.email || "Unassigned")}</p>`
+          : "";
         const overdue =
           t.dueDate && new Date(t.dueDate) < dayStart
-            ? ` <span style="color: #dc2626; font-weight: 600;">(overdue)</span>`
+            ? `<span style="display:inline-block;padding:3px 10px;border-radius:999px;background:#fee2e2;color:#b91c1c;font-size:11px;font-weight:700;">Overdue</span>`
             : "";
-        return `<li style="margin: 0 0 8px 0;">${esc(this.taskLabel(t))}${who}${overdue}</li>`;
+        const border = i ? "border-top:1px solid #f3f4f6;" : "";
+        return `<tr><td style="padding:12px 12px 12px 0;${border}font-size:14px;color:#111827;font-weight:600;vertical-align:top;">${esc(this.taskLabel(t))}${who}</td><td align="right" style="padding:12px 0;${border}vertical-align:top;">${overdue}</td></tr>`;
       })
       .join("");
     const tasksHtml =
       data.tasks.length === 0
-        ? `<p style="margin: 0; color: #666666;">Nothing due.</p>`
-        : `<ul style="margin: 0; padding-left: 20px; color: #333333; font-size: 14px;">${taskItems}</ul>`;
+        ? ui.small("Nothing due.")
+        : `<table role="presentation" width="100%" style="border-collapse:collapse;">${taskRows}</table>`;
 
-    return `
-      <h2 style="color: #333333; margin-top: 0; margin-bottom: 8px;">Good morning ${esc(name)},</h2>
-      <p style="margin: 0 0 8px 0; color: #333333;">Here is ${data.scope === "org" ? "the team's" : "your"} day — ${dateStr}.</p>
-      ${sectionHeading(`Jobs today (${data.stats.jobsToday})`)}
-      ${jobsHtml}
-      ${unassignedHtml}
-      ${sectionHeading(`Tasks due (${data.tasks.length}${data.stats.overdue ? `, ${data.stats.overdue} overdue` : ""})`)}
-      ${tasksHtml}
-      <p style="margin: 28px 0 0 0;">
-        <a href="${appUrl}${office ? "/dashboard" : "/today"}" style="display: inline-block; background-color: ${primaryColor}; color: #ffffff; text-decoration: none; font-size: 14px; font-weight: 600; padding: 10px 20px; border-radius: 6px;">${office ? "Open the dashboard" : "Open your Today page"}</a>
-      </p>
-    `;
+    return (
+      ui.p(`Good morning ${esc(name)}. Here's ${org ? "the team's" : "your"} day.`) +
+      ui.tiles([
+        { label: "Jobs today", value: String(data.stats.jobsToday) },
+        { label: "Tasks due", value: String(data.tasks.length), ok: data.stats.overdue ? false : null, tag: data.stats.overdue ? `${data.stats.overdue} overdue` : undefined },
+      ]) +
+      unassigned +
+      ui.h("Jobs") +
+      jobsHtml +
+      ui.h("Tasks") +
+      tasksHtml +
+      ui.button(office ? "Open the dashboard" : "Open your Today page", `${appUrl}${office ? "/dashboard" : "/today"}`, primaryColor)
+    );
   }
 
   /** Send the digest to every admin-web member of every org (or one org) who has jobs or tasks today. */
@@ -265,10 +260,15 @@ export class TodayService {
           // Office roles work from the dashboard; everyone else from Today.
           const office = m.roles.some((r) => r === "ADMIN" || r === "MANAGER");
           const { subject, body } = this.buildDigestText(first, data, appUrl, office);
-          const html = createEmailTemplate(
-            this.buildDigestHtml(first, data, appUrl, emailSettings.primaryColor, office),
-            emailSettings,
-          );
+          const dateStr = new Date(data.date).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" });
+          const html = createEmailTemplate(this.buildDigestHtml(first, data, appUrl, emailSettings.primaryColor, office), {
+            ...emailSettings,
+            eyebrow: "Today",
+            title: dateStr,
+            subtitle: `${data.stats.jobsToday} job${data.stats.jobsToday !== 1 ? "s" : ""} · ${data.tasks.length} task${data.tasks.length !== 1 ? "s" : ""}${data.stats.overdue ? ` · ${data.stats.overdue} overdue` : ""}`,
+            preheader: subject,
+            reason: `You're getting this daily plan because you're on the ${emailSettings.organizationName} team.`,
+          });
           await this.email.send(m.user.email, subject, body, html, org.id);
           sent++;
         } catch (e: any) {

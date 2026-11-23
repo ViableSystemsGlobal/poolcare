@@ -4,7 +4,7 @@ import { prisma } from "@poolcare/db";
 import { CreatePlanDto, UpdatePlanDto, PausePlanDto, OverrideWindowDto, CancelPlanDto } from "./dto";
 import { SubscriptionTemplatesService } from "../subscription-templates/subscription-templates.service";
 import { NotificationsService } from "../notifications/notifications.service";
-import { createEmailTemplate, getOrgEmailSettings } from "../email/email-template.util";
+import { createEmailTemplate, getOrgEmailSettings, emailUi, escapeHtml, clientAppLink } from "../email/email-template.util";
 import { PrepaidTermsService } from "./prepaid-terms.service";
 import { DEFAULT_DAYS, WEEKLY_DAY_COUNT, emergencyVisitsUsedThisMonth, missedVisitsLast30Days } from "./visit-entitlement";
 import { chemicalUsageThisMonth } from "../settings/chemical-rates";
@@ -554,29 +554,32 @@ Thank you for choosing PoolCare!`;
       // Get org settings for email template
       const orgSettings = await getOrgEmailSettings(orgId);
       
-      const emailContent = `
-        <h2 style="color: #333333; margin-top: 0; margin-bottom: 16px;">Service Plan Created Successfully!</h2>
-        <p style="margin: 0 0 16px 0;">Dear ${client.name || "Valued Client"},</p>
-        <p style="margin: 0 0 16px 0;">Your ${orgSettings.organizationName} service plan has been created successfully!</p>
-        
-        <div style="background-color: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
-          <h3 style="margin-top: 0; margin-bottom: 16px; color: #374151;">Plan Details:</h3>
-          <p style="margin: 8px 0;"><strong>Plan Name:</strong> ${planName}</p>
-          <p style="margin: 8px 0;"><strong>Pool:</strong> ${pool.name || pool.address || "Your Pool"}</p>
-          <p style="margin: 8px 0;"><strong>Frequency:</strong> ${frequency}</p>
-          <p style="margin: 8px 0;"><strong>Billing Type:</strong> ${billingType}</p>
-          <p style="margin: 8px 0;"><strong>Price:</strong> ${currency} ${price}</p>
-          <p style="margin: 8px 0;"><strong>Start Date:</strong> ${startDate}</p>
-          ${planWithDetails.nextBillingDate ? `<p style="margin: 8px 0;"><strong>Next Billing Date:</strong> ${new Date(planWithDetails.nextBillingDate).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}</p>` : ""}
-        </div>
+      const ui = emailUi;
+      const nextBilling = planWithDetails.nextBillingDate
+        ? new Date(planWithDetails.nextBillingDate).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })
+        : null;
+      const emailContent =
+        ui.p(`Hi ${escapeHtml((client.name || "there").split(" ")[0])}, your service plan is set up. Here are the details.`) +
+        ui.facts([
+          ["Plan", planName],
+          ["Pool", pool.name || pool.address || "Your pool"],
+          ["Visits", frequency],
+          ["Billing", billingType],
+          ["Price", `${currency} ${price}`],
+          ["Starts", startDate],
+          ["Next bill", nextBilling],
+        ]) +
+        (planWithDetails.notes ? ui.note(escapeHtml(planWithDetails.notes)) : "") +
+        ui.button("View my plan", clientAppLink("my-subscriptions"), orgSettings.primaryColor, "You can see upcoming visits and manage your plan in the app.");
 
-        ${planWithDetails.notes ? `<p style="margin: 16px 0;"><strong>Notes:</strong> ${planWithDetails.notes}</p>` : ""}
-        
-        <p style="margin: 16px 0 0 0;">You can view and manage your service plan in the ${orgSettings.organizationName} app.</p>
-        <p style="margin: 16px 0 0 0;">Thank you for choosing ${orgSettings.organizationName}!</p>
-      `;
-
-      const emailHtml = createEmailTemplate(emailContent, orgSettings);
+      const emailHtml = createEmailTemplate(emailContent, {
+        ...orgSettings,
+        eyebrow: "Service plan",
+        title: "Your plan is set up",
+        subtitle: `${planName} · ${pool.name || pool.address || "your pool"}`,
+        preheader: `${planName} starts ${startDate}. ${frequency}, ${currency} ${price}.`,
+        reason: `You're getting this because ${orgSettings.organizationName} set up a service plan for you.`,
+      });
 
       // Send SMS if client has phone
       if (client.phone) {

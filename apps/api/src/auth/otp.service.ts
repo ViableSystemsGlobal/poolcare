@@ -1,5 +1,5 @@
 import { Injectable, Logger, BadRequestException } from "@nestjs/common";
-import { createEmailTemplate, getOrgEmailSettings } from "../email/email-template.util";
+import { createEmailTemplate, getOrgEmailSettings, emailUi } from "../email/email-template.util";
 import { SmsAdapter } from "../notifications/adapters/sms.adapter";
 import { EmailAdapter } from "../notifications/adapters/email.adapter";
 
@@ -21,19 +21,20 @@ export class OtpService {
       const text = `Your PoolCare verification code is: ${code}\n\nThis code is valid for 5 minutes. Please do not share this code with anyone.\n\nIf you didn't request this code, please ignore this email.`;
       const brand = orgId
         ? await getOrgEmailSettings(orgId)
-        : { organizationName: "PoolCare", primaryColor: "#0d9488" };
-      const color = brand.primaryColor || "#0d9488";
+        : { organizationName: "PoolCare", primaryColor: "#387c52" };
+            const ui = emailUi;
+      const spaced = code.length === 6 ? `${code.slice(0, 3)} ${code.slice(3)}` : code;
       const html = createEmailTemplate(
-        `
-        <h2 style="color: #333333; margin-top: 0; margin-bottom: 16px;">Your verification code</h2>
-        <p style="margin: 0 0 16px 0;">Use this code to sign in:</p>
-        <div style="background-color: #f3f4f6; padding: 20px; text-align: center; margin: 0 0 16px 0; border-radius: 8px;">
-          <span style="color: ${color}; font-size: 32px; font-weight: bold; letter-spacing: 6px;">${code}</span>
-        </div>
-        <p style="margin: 0 0 16px 0;">It's valid for <strong>5 minutes</strong>. Don't share it with anyone.</p>
-        <p style="margin: 0; color: #6b7280; font-size: 14px;">If you didn't ask for this code, you can ignore this email.</p>
-      `,
-        brand
+        ui.code(spaced) +
+          ui.p("Enter this code in the app. It expires in <strong>5 minutes</strong>.") +
+          ui.p("We'll never ask for this code by phone or WhatsApp. Don't share it with anyone.", "margin:0;color:#6b7280;font-size:14px;"),
+        {
+          ...brand,
+          eyebrow: "Sign in",
+          title: "Your sign-in code",
+          preheader: `${spaced} is your ${brand.organizationName || "PoolCare"} code. It expires in 5 minutes.`,
+          reason: "Didn't ask for this? You can ignore this email. Nobody can sign in without the code.",
+        }
       );
       return await this.emailAdapter.send(target, subject, text, html, orgId);
     }

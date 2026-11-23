@@ -19,6 +19,8 @@ import {
   createEmailTemplate,
   getOrgEmailSettings,
   resolveOrgPrimaryColor,
+  emailUi,
+  clientAppLink,
 } from "../email/email-template.util";
 
 function startOfToday(): Date {
@@ -831,25 +833,6 @@ export class InvoicesService {
             .map((a) => `${paymentAccountTitle(a)}\n${paymentAccountRows(a).map(([l, v]) => `  ${l}: ${v}`).join("\n")}`)
             .join("\n\n")}${extras.paymentInstructions ? `\n\n${extras.paymentInstructions}` : ""}\n\n`
         : "";
-      const paymentHtml = extras.accounts.length || extras.paymentInstructions
-        ? `<div style="margin: 20px 0;">
-            <h3 style="margin: 0 0 12px 0; color: #374151;">How to pay</h3>
-            ${extras.accounts
-              .map(
-                (a) => `<div style="margin-bottom: 12px;">
-                  <strong style="display: block; margin-bottom: 4px;">${paymentAccountTitle(a)}</strong>
-                  ${paymentAccountRows(a)
-                    .map(([l, v]) => `<span style="display: block; color: #4b5563; font-size: 14px;">${l}: <strong style="color: #111827;">${esc(v)}</strong></span>`)
-                    .join("")}
-                </div>`
-              )
-              .join("")}
-            ${extras.paymentInstructions ? `<p style="margin: 8px 0 0 0; color: #4b5563; white-space: pre-line;">${esc(extras.paymentInstructions)}</p>` : ""}
-          </div>`
-        : "";
-      const footerNoteHtml = extras.footerNote
-        ? `<p style="margin: 16px 0; color: #4b5563; white-space: pre-line;">${esc(extras.footerNote)}</p>`
-        : "";
 
       // SMS message
       const smsBody = `Your PoolCare invoice #${invoiceNumber} for ${currency} ${totalAmount} is ready.\n\nDue: ${dueDateStr}\n\n${pool ? `Pool: ${pool.name || pool.address}` : ""}\n\nPay online or contact us for assistance.`;
@@ -872,37 +855,57 @@ Thank you for choosing PoolCare!`;
       // Get org settings for email template
       const orgSettings = await getOrgEmailSettings(orgId);
       
-      const emailContent = `
-        <h2 style="color: #333333; margin-top: 0; margin-bottom: 16px;">Invoice #${invoiceNumber}</h2>
-        <p style="margin: 0 0 16px 0;">Dear ${client.name || "Valued Client"},</p>
-        <p style="margin: 0 0 16px 0;">Your invoice for <strong>${currency} ${totalAmount}</strong> has been issued.</p>
-        
-        ${pool ? `<p style="margin: 8px 0;"><strong>Pool:</strong> ${pool.name || pool.address}</p>` : ""}
-        <p style="margin: 8px 0;"><strong>Due Date:</strong> ${dueDateStr}</p>
-        
-        <div style="background-color: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
-          <h3 style="margin-top: 0; margin-bottom: 16px; color: #374151;">Invoice Items:</h3>
-          ${items.map((item) => `
-            <div style="margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid #e5e5e5;">
-              <strong style="display: block; margin-bottom: 4px;">${item.label || item.name || "Item"}</strong>
-              <span style="color: #666666; font-size: 14px;">Quantity: ${item.qty || 1} × ${currency} ${((item.unitPriceCents || 0) / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} = ${currency} ${(((item.unitPriceCents || 0) * (item.qty || 1)) / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-            </div>
-          `).join("")}
-          ${invoice.taxCents > 0 ? `<div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid #d1d5db;"><strong>Tax:</strong> ${currency} ${(invoice.taxCents / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>` : ""}
-          <div style="margin-top: 16px; padding-top: 16px; border-top: 2px solid ${orgSettings.primaryColor}; font-size: 18px; font-weight: bold; color: ${orgSettings.primaryColor};">
-            <strong>Total: ${currency} ${totalAmount}</strong>
-          </div>
-        </div>
-        
-        ${invoice.notes ? `<p style="margin: 16px 0;"><strong>Notes:</strong> ${invoice.notes}</p>` : ""}
-        ${paymentHtml}
-        ${footerNoteHtml}
-        
-        <p style="margin: 16px 0 0 0;">You can pay this invoice online or contact us for assistance.</p>
-        <p style="margin: 16px 0 0 0;">Thank you for choosing ${orgSettings.organizationName}!</p>
-      `;
+      const ui = emailUi;
+      const money = (cents: number) =>
+        `${currency === "GHS" ? "GH₵" : `${currency} `}${(cents / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+      const dueShort = dueDate.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+      const balanceCents = invoice.totalCents - invoice.paidCents;
+      const lineRows = items.map((item) => {
+        const qty = item.qty || 1;
+        const unit = item.unitPriceCents || 0;
+        return {
+          label: item.label || item.name || "Item",
+          detail: `${qty} × ${money(unit)}`,
+          amount: money(unit * qty),
+        };
+      });
+      if (invoice.taxCents > 0) lineRows.push({ label: "Tax", detail: "", amount: money(invoice.taxCents) });
+      if (invoice.paidCents > 0) lineRows.push({ label: "Already paid", detail: "", amount: `−${money(invoice.paidCents)}` });
+      const payBlock =
+        extras.accounts.length || extras.paymentInstructions
+          ? ui.h("How to pay") +
+            extras.accounts
+              .map(
+                (a) =>
+                  `<p style="margin:8px 0 0 0;font-size:14px;font-weight:700;color:#111827;">${esc(paymentAccountTitle(a))}</p>` +
+                  ui.facts(paymentAccountRows(a).map(([l, v]) => [l, v] as [string, string]))
+              )
+              .join("") +
+            (extras.paymentInstructions ? ui.small(esc(extras.paymentInstructions).replace(/\n/g, "<br>")) : "")
+          : "";
+      const emailContent =
+        ui.p(`Hi ${esc((client.name || "there").split(" ")[0])}, your invoice is ready.`) +
+        ui.money(lineRows, invoice.paidCents > 0 ? "Balance due" : "Total due", money(balanceCents)) +
+        (invoice.notes ? ui.note(esc(invoice.notes).replace(/\n/g, "<br>")) : "") +
+        ui.button(
+          `Pay ${money(balanceCents)}`,
+          clientAppLink(`pay/${invoice.id}`),
+          orgSettings.primaryColor,
+          "Pay by card or mobile money in the app."
+        ) +
+        payBlock +
+        (extras.footerNote ? ui.small(esc(extras.footerNote).replace(/\n/g, "<br>")) : "");
 
-      const emailHtml = createEmailTemplate(emailContent, orgSettings);
+      const emailHtml = createEmailTemplate(emailContent, {
+        ...orgSettings,
+        eyebrow: `Invoice ${invoiceNumber}`,
+        title: `${money(balanceCents)} due ${dueShort}`,
+        subtitle: [pool ? pool.name || pool.address : null, `issued ${new Date(updated.issuedAt || new Date()).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}`]
+          .filter(Boolean)
+          .join(" · "),
+        preheader: `Invoice ${invoiceNumber} for ${money(balanceCents)} is due ${dueDateStr}. Pay by card or mobile money.`,
+        reason: `You're getting this because you're a ${orgSettings.organizationName} client.`,
+      });
 
       // Send SMS if client has phone
       if (client.phone) {
@@ -928,10 +931,15 @@ Thank you for choosing PoolCare!`;
         }
       }
 
-      // Send Email if client has email
+      // Send Email if client has email (invoice PDF attached)
       if (client.email) {
+        const pdf = await this.generatePdf(orgId, "ADMIN", "", invoice.id).catch((e) => {
+          console.error(`Invoice ${invoice.id}: PDF for email failed:`, e?.message ?? e);
+          return null;
+        });
         try {
           await this.notificationsService.send(orgId, {
+            ...(pdf ? { attachments: [{ filename: pdf.filename, content: pdf.buffer, contentType: "application/pdf" }] } : {}),
             recipientId: client.id,
             recipientType: "client",
             channel: "email",

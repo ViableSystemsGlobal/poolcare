@@ -6,9 +6,10 @@ import { FilesService } from "../files/files.service";
 import { InvoicesService } from "../invoices/invoices.service";
 import { NotificationsService } from "../notifications/notifications.service";
 import { VisitAiReportService } from "./visit-ai-report.service";
-import { createEmailTemplate, getOrgEmailSettings } from "../email/email-template.util";
+import { createEmailTemplate, getOrgEmailSettings, emailUi, escapeHtml, clientAppLink } from "../email/email-template.util";
+import { readingsForClient } from "./water-targets";
+import { buildVisitReportPdf } from "./visit-report-pdf";
 import { CarerNotifyService, ghTime } from "../notifications/carer-notify.service";
-import PDFDocument from "pdfkit";
 import { v4 as uuidv4 } from "uuid";
 import {
   AddReadingDto,
@@ -197,7 +198,12 @@ export class VisitsService {
       );
     }
 
-    return { ...this.scopeAiReport(visit, role), ...this.reportStatus(visit) };
+    return {
+      ...this.scopeAiReport(visit, role),
+      ...this.reportStatus(visit),
+      // Latest readings checked against this pool's own healthy ranges (for the apps)
+      readingsSummary: readingsForClient(visit.readings?.[0], visit.job?.pool),
+    };
   }
 
   /** Draft AI reports are office-only; clients and carers see a report once it's published. */
@@ -615,13 +621,6 @@ export class VisitsService {
       console.error(`Failed to notify carer of completion for visit ${visitId}:`, err)
     );
 
-    // REQUIREMENT: Auto-generate and send PDF report to client
-    // Generate report asynchronously (don't block completion)
-    this.generateAndSendReport(orgId, visitId, updated).catch((err) => {
-      console.error(`Failed to generate/send report for visit ${visitId}:`, err);
-      // Don't fail the completion if report generation fails
-    });
-
     // AI-written report (draft for the office) when an AI provider is configured
     this.aiReport.generateInBackground(orgId, visitId);
 
@@ -780,389 +779,160 @@ export class VisitsService {
     throw new ForbiddenException("Access denied");
   }
 
+  /** PDF visit report. Clients may download reports for their own pools. */
   async generateReport(orgId: string, role: string, userId: string, visitId: string): Promise<Buffer> {
-    const visit = await this.verifyVisitAccess(orgId, userId, visitId);
+    if (role === "CLIENT") {
+      await this.assertClientOwnsVisit(orgId, userId, visitId);
+    } else {
+      await this.verifyVisitAccess(orgId, userId, visitId);
+    }
+    return this.buildReportPdf(orgId, visitId, { includeDraftAi: role === "ADMIN" || role === "MANAGER" });
+  }
 
-    // Fetch all related data
-    const visitData = await prisma.visitEntry.findUnique({
-      where: { id: visitId },
+  private async assertClientOwnsVisit(orgId: string, userId: string, visitId: string) {
+    const visit = await prisma.visitEntry.findFirst({
+      where: { id: visitId, orgId },
+      select: { job: { select: { pool: { select: { client: { select: { userId: true } } } } } } },
+    });
+    if (!visit) throw new NotFoundException("Visit not found");
+    if (visit.job?.pool?.client?.userId !== userId) throw new ForbiddenException("Access denied");
+  }
+
+  /** Build the client-facing visit report PDF (no access check: callers check). */
+  async buildReportPdf(orgId: string, visitId: string, opts: { includeDraftAi?: boolean } = {}): Promise<Buffer> {
+    const visit: any = await prisma.visitEntry.findFirst({
+      where: { id: visitId, orgId },
       include: {
-        job: {
-          include: {
-            pool: {
-              include: {
-                client: true,
-              },
-            },
-            assignedCarer: {
-              include: {
-                user: true,
-              },
-            },
-            plan: true,
-          },
-        },
-        template: true,
-        readings: {
-          orderBy: { measuredAt: "desc" },
-        },
-        chemicals: {
-          orderBy: { createdAt: "desc" },
-        },
-        photos: {
-          orderBy: { takenAt: "asc" },
-        },
+        job: { include: { pool: { include: { client: true } }, assignedCarer: true } },
+        readings: { orderBy: { measuredAt: "desc" }, take: 1 },
+        chemicals: { orderBy: { createdAt: "asc" } },
+        photos: { orderBy: { takenAt: "asc" } },
       },
     });
-
-    if (!visitData) {
-      throw new NotFoundException("Visit not found");
-    }
-
-    // Create PDF
-    const doc = new PDFDocument({ margin: 50, size: "A4" });
-    const buffers: Buffer[] = [];
-
-    doc.on("data", buffers.push.bind(buffers));
-
-    // Header
-    doc.fontSize(24).text("PoolCare Service Report", { align: "center" });
-    doc.moveDown(0.5);
-    doc.fontSize(12).fillColor("#666666").text(
-      `Visit Date: ${new Date(visitData.completedAt || visitData.startedAt || Date.now()).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}`,
-      { align: "center" }
-    );
-    doc.moveDown(1);
-
-    // Pool Information
-    doc.fontSize(16).fillColor("#000000").text("Pool Information", { underline: true });
-    doc.moveDown(0.5);
-    doc.fontSize(11).fillColor("#333333");
-    doc.text(`Pool Name: ${visitData.job.pool.name || "N/A"}`);
-    doc.text(`Address: ${visitData.job.pool.address || "N/A"}`);
-    doc.text(`Pool Type: ${visitData.job.pool.type || "N/A"}`);
-    if (visitData.job.pool.volumeL) {
-      doc.text(`Volume: ${visitData.job.pool.volumeL.toLocaleString()} liters`);
-    }
-    doc.moveDown(1);
-
-    // Carer Information
-    if (visitData.job.assignedCarer) {
-      doc.fontSize(16).fillColor("#000000").text("Service Technician", { underline: true });
-      doc.moveDown(0.5);
-      doc.fontSize(11).fillColor("#333333");
-      doc.text(`Name: ${visitData.job.assignedCarer.name || "N/A"}`);
-      if (visitData.job.assignedCarer.phone) {
-        doc.text(`Phone: ${visitData.job.assignedCarer.phone}`);
-      }
-      doc.moveDown(1);
-    }
-
-    // Water Chemistry Readings
-    if (visitData.readings && visitData.readings.length > 0) {
-      const latestReading = visitData.readings[0];
-      doc.fontSize(16).fillColor("#000000").text("Water Chemistry Readings", { underline: true });
-      doc.moveDown(0.5);
-      doc.fontSize(11).fillColor("#333333");
-      
-      if (latestReading.ph !== null && latestReading.ph !== undefined) {
-        doc.text(`pH Level: ${latestReading.ph.toFixed(2)} (Ideal: 7.2 - 7.6)`);
-      }
-      if (latestReading.chlorineFree !== null && latestReading.chlorineFree !== undefined) {
-        doc.text(`Free Chlorine: ${latestReading.chlorineFree.toFixed(2)} ppm (Ideal: 1.0 - 3.0)`);
-      }
-      if (latestReading.alkalinity !== null && latestReading.alkalinity !== undefined) {
-        doc.text(`Total Alkalinity: ${latestReading.alkalinity} ppm (Ideal: 80 - 120)`);
-      }
-      if (latestReading.calciumHardness !== null && latestReading.calciumHardness !== undefined) {
-        doc.text(`Calcium Hardness: ${latestReading.calciumHardness} ppm (Ideal: 200 - 400)`);
-      }
-      if (latestReading.cyanuricAcid !== null && latestReading.cyanuricAcid !== undefined) {
-        doc.text(`Cyanuric Acid (CYA): ${latestReading.cyanuricAcid} ppm (Ideal: 30 - 50)`);
-      }
-      if (latestReading.tempC !== null && latestReading.tempC !== undefined) {
-        doc.text(`Temperature: ${latestReading.tempC.toFixed(1)}°C`);
-      }
-      doc.moveDown(1);
-    }
-
-    // Chemicals Used
-    if (visitData.chemicals && visitData.chemicals.length > 0) {
-      doc.fontSize(16).fillColor("#000000").text("Chemicals Used", { underline: true });
-      doc.moveDown(0.5);
-      doc.fontSize(11).fillColor("#333333");
-      visitData.chemicals.forEach((chem: any) => {
-        const chemicalName = chem.chemical || chem.name || "Unnamed Chemical";
-        const quantity = chem.qty || chem.quantity || 0;
-        const unit = chem.unit || "ml";
-        const lotNo = chem.lotNo ? ` (Lot: ${chem.lotNo})` : "";
-        const cost = chem.costCents ? ` - Cost: ${(chem.costCents / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "";
-        doc.text(`• ${chemicalName}: ${quantity} ${unit}${lotNo}${cost}`);
-      });
-      doc.moveDown(1);
-    }
-
-    // Checklist Items (Tasks Completed) - Use saved checklist from visit if available
-    const savedChecklist = visitData.checklist && typeof visitData.checklist === 'object' 
-      ? (Array.isArray(visitData.checklist) ? visitData.checklist : Object.values(visitData.checklist))
-      : null;
-    
-    const checklistToDisplay = savedChecklist || (visitData.template && visitData.template.checklist
-      ? (Array.isArray(visitData.template.checklist) 
-          ? visitData.template.checklist 
-          : typeof visitData.template.checklist === 'object' 
-          ? Object.values(visitData.template.checklist) 
-          : [])
-      : []);
-    
-    if (checklistToDisplay.length > 0) {
-      doc.fontSize(16).fillColor("#000000").text("Tasks Completed", { underline: true });
-      doc.moveDown(0.5);
-      doc.fontSize(11).fillColor("#333333");
-      
-      checklistToDisplay.forEach((item: any) => {
-        const task = item.label || item.task || item.name || "Task";
-        const completed = item.completed !== false && item.completed !== undefined;
-        const required = item.required === true;
-        const notApplicable = item.notApplicable === true;
-        const status = notApplicable ? "N/A" : (completed ? "✓" : "✗");
-        const requiredMark = required ? " (Required)" : "";
-        const valueText = item.value !== undefined && item.value !== null ? ` - Value: ${item.value}` : "";
-        const commentText = item.comment ? ` - Note: ${item.comment}` : "";
-        
-        doc.text(`${status} ${task}${requiredMark}${valueText}${commentText}`);
-      });
-      doc.moveDown(1);
-    }
-
-    // Service Summary
-    doc.fontSize(16).fillColor("#000000").text("Service Summary", { underline: true });
-    doc.moveDown(0.5);
-    doc.fontSize(11).fillColor("#333333");
-    
-    if (visitData.startedAt) {
-      doc.text(`Service Started: ${new Date(visitData.startedAt).toLocaleString("en-US")}`);
-    }
-    if (visitData.completedAt) {
-      doc.text(`Service Completed: ${new Date(visitData.completedAt).toLocaleString("en-US")}`);
-      if (visitData.startedAt) {
-        const duration = (new Date(visitData.completedAt).getTime() - new Date(visitData.startedAt).getTime()) / 1000 / 60;
-        doc.text(`Duration: ${Math.round(duration)} minutes`);
-      }
-    }
-    doc.moveDown(1);
-
-    // Photos with images embedded
-    if (visitData.photos && visitData.photos.length > 0) {
-      const beforePhotos = visitData.photos.filter((p: any) => p.label === "before" || p.label === "photo_before");
-      const afterPhotos = visitData.photos.filter((p: any) => p.label === "after" || p.label === "photo_after");
-      const issuePhotos = visitData.photos.filter((p: any) => p.label === "issue");
-      
-      doc.fontSize(16).fillColor("#000000").text("Photos", { underline: true });
-      doc.moveDown(0.5);
-      doc.fontSize(11).fillColor("#333333");
-      
-      // Fetch all images first, then add them to PDF
-      if (beforePhotos.length > 0) {
-        doc.fontSize(12).fillColor("#000000").text("Before Photos", { underline: true });
-        doc.moveDown(0.3);
-        for (const photo of beforePhotos) {
-          try {
-            const imageBuffer = await this.fetchImageBuffer(photo.url || photo.imageUrl, visitData.orgId);
-            if (imageBuffer) {
-              doc.image(imageBuffer, {
-                fit: [500, 300],
-                align: "center",
-              });
-              doc.moveDown(0.3);
-            } else {
-              doc.fontSize(10).fillColor("#666666").text(`[Photo ${photo.id} - Unable to load]`);
-              doc.moveDown(0.3);
-            }
-          } catch (error) {
-            console.error(`Failed to add before photo ${photo.id} to PDF:`, error);
-            doc.fontSize(10).fillColor("#666666").text(`[Photo ${photo.id} - Unable to load]`);
-            doc.moveDown(0.3);
-          }
-        }
-        doc.moveDown(0.5);
-      }
-      
-      if (afterPhotos.length > 0) {
-        doc.fontSize(12).fillColor("#000000").text("After Photos", { underline: true });
-        doc.moveDown(0.3);
-        for (const photo of afterPhotos) {
-          try {
-            const imageBuffer = await this.fetchImageBuffer(photo.url || photo.imageUrl, visitData.orgId);
-            if (imageBuffer) {
-              doc.image(imageBuffer, {
-                fit: [500, 300],
-                align: "center",
-              });
-              doc.moveDown(0.3);
-            } else {
-              doc.fontSize(10).fillColor("#666666").text(`[Photo ${photo.id} - Unable to load]`);
-              doc.moveDown(0.3);
-            }
-          } catch (error) {
-            console.error(`Failed to add after photo ${photo.id} to PDF:`, error);
-            doc.fontSize(10).fillColor("#666666").text(`[Photo ${photo.id} - Unable to load]`);
-            doc.moveDown(0.3);
-          }
-        }
-        doc.moveDown(0.5);
-      }
-      
-      if (issuePhotos.length > 0) {
-        doc.fontSize(12).fillColor("#000000").text("Issue Photos", { underline: true });
-        doc.moveDown(0.3);
-        for (const photo of issuePhotos) {
-          try {
-            const imageBuffer = await this.fetchImageBuffer(photo.url || photo.imageUrl, visitData.orgId);
-            if (imageBuffer) {
-              doc.image(imageBuffer, {
-                fit: [500, 300],
-                align: "center",
-              });
-              doc.moveDown(0.3);
-            } else {
-              doc.fontSize(10).fillColor("#666666").text(`[Photo ${photo.id} - Unable to load]`);
-              doc.moveDown(0.3);
-            }
-          } catch (error) {
-            console.error(`Failed to add issue photo ${photo.id} to PDF:`, error);
-            doc.fontSize(10).fillColor("#666666").text(`[Photo ${photo.id} - Unable to load]`);
-            doc.moveDown(0.3);
-          }
-        }
-        doc.moveDown(0.5);
-      }
-      
-      doc.moveDown(0.5);
-    }
-
-    // Client Signature
-    if (visitData.clientSignatureUrl) {
-      doc.fontSize(16).fillColor("#000000").text("Client Approval", { underline: true });
-      doc.moveDown(0.5);
-      doc.fontSize(11).fillColor("#333333");
-      doc.text("✓ Client signature received");
-      doc.moveDown(1);
-    }
-
-    // Rating & Feedback
-    if (visitData.rating) {
-      doc.fontSize(16).fillColor("#000000").text("Client Feedback", { underline: true });
-      doc.moveDown(0.5);
-      doc.fontSize(11).fillColor("#333333");
-      doc.text(`Rating: ${visitData.rating}/5`);
-      if (visitData.feedback) {
-        doc.text(`Feedback: ${visitData.feedback}`);
-      }
-      doc.moveDown(1);
-    }
-
-    // Footer
-    doc.fontSize(10).fillColor("#666666").text(
-      `Generated on ${new Date().toLocaleString("en-US")} | PoolCare Service Management System`,
-      { align: "center" }
-    );
-
-    doc.end();
-
-    // Wait for PDF to be generated
-    return new Promise((resolve, reject) => {
-      doc.on("end", () => {
-        const pdfBuffer = Buffer.concat(buffers);
-        resolve(pdfBuffer);
-      });
-      doc.on("error", reject);
+    if (!visit) throw new NotFoundException("Visit not found");
+    const b = await this.invoicesService.getInvoiceBranding(orgId);
+    const ai =
+      visit.aiReport && (visit.aiReportStatus === "published" || opts.includeDraftAi) ? (visit.aiReport as any) : null;
+    return buildVisitReportPdf({
+      visit,
+      aiReport: ai,
+      branding: {
+        name: b.name,
+        address: b.address,
+        supportEmail: b.supportEmail,
+        supportPhone: b.supportPhone,
+        primaryColor: b.primaryColor,
+        logo: b.logo,
+      },
+      loadPhoto: (url) => this.aiReport.fetchImage(url),
     });
   }
 
+  /** "visit-report-Mensah-Residence-2026-11-23.pdf" */
+  private reportFilename(visit: any) {
+    const name = String(visit?.job?.pool?.name || "pool").replace(/[^A-Za-z0-9]+/g, "-").replace(/^-|-$/g, "") || "pool";
+    const d = new Date(visit?.completedAt || Date.now()).toISOString().slice(0, 10);
+    return `visit-report-${name}-${d}.pdf`;
+  }
+
   /**
-   * Auto-generate PDF report and send to client after visit completion
+   * Email the shared visit report (short AI summary + PDF attached) to the
+   * client, or to `to` when given. Used when the office shares the report and
+   * when a client asks for the PDF from the app.
    */
-  private async generateAndSendReport(orgId: string, visitId: string, visit: any) {
+  async sendReportEmail(orgId: string, visitId: string, opts: { to?: string; requested?: boolean } = {}) {
+    const visit: any = await prisma.visitEntry.findFirst({
+      where: { id: visitId, orgId },
+      include: { job: { include: { pool: { include: { client: true } }, assignedCarer: true } } },
+    });
+    if (!visit) throw new NotFoundException("Visit not found");
+    const pool = visit.job?.pool;
+    const client = pool?.client;
+    const to = opts.to || client?.email;
+    if (!to) throw new BadRequestException("There's no email address on file for this client.");
+
+    const ui = emailUi;
+    const settings = await getOrgEmailSettings(orgId);
+    const ai = visit.aiReportStatus === "published" ? (visit.aiReport as any) : null;
+    const done = visit.completedAt ? new Date(visit.completedAt) : new Date();
+    const day = done.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "Africa/Accra" });
+    const poolName = pool?.name || "your pool";
+    const first = (client?.name || "").split(" ")[0];
+
+    const pdf = await this.buildReportPdf(orgId, visitId).catch((e) => {
+      console.error(`Visit ${visitId}: report PDF failed:`, e?.message ?? e);
+      return null;
+    });
+
+    const content =
+      ui.p(`${first ? `Hi ${escapeHtml(first)}, h` : "H"}ere's the report for your visit on ${escapeHtml(day)}.${pdf ? " The full report is attached as a PDF." : ""}`) +
+      (ai?.summary ? ui.note(escapeHtml(ai.summary)) : "") +
+      ((ai?.recommendations || []).length ? ui.h("Next steps") + ui.bullets((ai.recommendations as string[]).slice(0, 4)) : "") +
+      ui.button("Open the report in the app", clientAppLink(`visits/${visitId}`), settings.primaryColor, "You have 7 days after a visit to flag anything that looks wrong.");
+
+    const html = createEmailTemplate(content, {
+      ...settings,
+      eyebrow: "Visit report",
+      title: poolName,
+      subtitle: `${day}${visit.job?.assignedCarer?.name ? ` · ${visit.job.assignedCarer.name}` : ""}`,
+      preheader: ai?.summary ? String(ai.summary).slice(0, 140) : `Your visit report for ${day} is ready.`,
+      reason: opts.requested
+        ? "You're getting this because you asked for this report in the app."
+        : `You're getting this because you have a pool serviced by ${settings.organizationName}.`,
+    });
+
+    await this.notificationsService.send(orgId, {
+      channel: "email",
+      to,
+      recipientId: client?.userId || client?.id,
+      recipientType: "client",
+      subject: `Visit report: ${poolName}, ${day}`,
+      body: `Your visit report for ${poolName} (${day}) is ready.${ai?.summary ? `\n\n${ai.summary}` : ""}`,
+      ...(pdf ? { attachments: [{ filename: this.reportFilename(visit), content: pdf, contentType: "application/pdf" }] } : {}),
+      metadata: { visitId, poolId: pool?.id, type: "visit_report", html },
+    } as any);
+    return { sent: true, to };
+  }
+
+  /** Client asked for the PDF from the app: send it to the email on their account. */
+  async emailReportToClient(orgId: string, role: string, userId: string, visitId: string) {
+    if (role !== "CLIENT") throw new ForbiddenException("Only clients can request their report by email");
+    await this.assertClientOwnsVisit(orgId, userId, visitId);
+    const visit = await prisma.visitEntry.findFirst({ where: { id: visitId, orgId }, select: { completedAt: true } });
+    if (!visit?.completedAt) throw new BadRequestException("The report is ready once the visit is complete.");
+    const user = await prisma.user.findUnique({ where: { id: userId }, select: { email: true } });
+    const client = await prisma.client.findFirst({ where: { orgId, userId }, select: { email: true } });
+    const to = client?.email || user?.email;
+    if (!to) throw new BadRequestException("Add an email address in Settings first, then try again.");
+    return this.sendReportEmail(orgId, visitId, { to, requested: true });
+  }
+
+  /** Office shared the AI report: tell the client (email with PDF + push). Never throws. */
+  async notifyReportShared(orgId: string, visitId: string) {
     try {
-      // Generate PDF report
-      const client = visit.job?.pool?.client;
-      const pdfBuffer = await this.generateReport(orgId, "client", client?.userId || client?.id || "", visitId);
-      
-      // Store PDF in MinIO for future access
-      const filesService = this.filesService as any;
-      const minioClient = filesService.minioClient;
-      const bucket = filesService.bucket;
-      
-      const fileName = `org/${orgId}/visit-reports/${visitId}-${Date.now()}.pdf`;
-      
-      // Upload to MinIO
-      await minioClient.putObject(
-        bucket,
-        fileName,
-        pdfBuffer,
-        pdfBuffer.length,
-        {
-          "Content-Type": "application/pdf",
-          "x-visit-id": visitId,
-          "x-generated-at": new Date().toISOString(),
-        }
-      );
-      
-      // Generate presigned URL for access (valid for 1 year)
-      const reportUrl = await minioClient.presignedGetObject(bucket, fileName, 365 * 24 * 60 * 60);
-      
-      // Note: Report URL is stored in MinIO, can be regenerated via /visits/:id/report endpoint
-
-      // Send PDF report to client via email
-      const poolName = visit.job?.pool?.name || "your pool";
-      
-      if (client?.email) {
+      await this.sendReportEmail(orgId, visitId);
+    } catch (e: any) {
+      console.error(`Visit ${visitId}: report email failed:`, e?.message ?? e);
+    }
+    try {
+      const v: any = await prisma.visitEntry.findFirst({
+        where: { id: visitId, orgId },
+        select: { job: { select: { pool: { select: { name: true, client: { select: { userId: true } } } } } } },
+      });
+      const userId = v?.job?.pool?.client?.userId;
+      if (userId) {
         await this.notificationsService.send(orgId, {
-          channel: "email",
-          to: client.email,
-          recipientId: client.userId || client.id, // Use userId if available, fallback to client.id
+          channel: "push",
+          to: userId,
+          recipientId: userId,
           recipientType: "client",
-          subject: `Service Report - ${poolName}`,
-          body: `Your pool service report is ready. Please find the detailed PDF report attached.`,
-          metadata: {
-            visitId,
-            jobId: visit.jobId,
-            poolId: visit.job?.poolId,
-            type: "visit_report",
-            attachments: [
-              {
-                filename: `visit-report-${visitId}.pdf`,
-                content: pdfBuffer,
-                contentType: "application/pdf",
-              },
-            ],
-            html: `
-              <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-                <h2 style="color: #1E8449;">PoolCare Service Report</h2>
-                <p>Dear ${client.name || "Valued Client"},</p>
-                <p>Your pool service report for <strong>${poolName}</strong> is ready.</p>
-                <p>Please find the detailed PDF report attached to this email.</p>
-                <p>The report includes:</p>
-                <ul>
-                  <li>Tasks completed during the service</li>
-                  <li>Water chemistry readings</li>
-                  <li>Chemicals used</li>
-                  <li>Service duration and summary</li>
-                  <li>Photos taken during the visit</li>
-                </ul>
-                <p>You can also view this report in the PoolCare app.</p>
-                <p>Thank you for choosing PoolCare!</p>
-              </div>
-            `,
-          },
-        });
+          subject: "Your visit report is ready",
+          body: `See what we did at ${v.job.pool.name || "your pool"} and how the water is.`,
+          metadata: { type: "visit_report", visitId, url: `/visits/${visitId}` },
+        } as any);
       }
-
-      console.log(`Report generated and sent for visit ${visitId}`);
-    } catch (error) {
-      console.error(`Error generating/sending report for visit ${visitId}:`, error);
-      throw error;
+    } catch (e: any) {
+      console.error(`Visit ${visitId}: report push failed:`, e?.message ?? e);
     }
   }
 
@@ -1400,7 +1170,14 @@ export class VisitsService {
 
     // Email if available
     if (client.email) {
-      attempt("email", this.buildVisitCompletionEmail(visit, pool, carer, summaryItems, duration, orgId).then((html) => this.notificationsService.send(orgId, {
+      attempt("email", Promise.all([
+        this.buildVisitCompletionEmail(visit, pool, carer, summaryItems, duration, orgId),
+        this.buildReportPdf(orgId, visit.id).catch((e) => {
+          console.error(`Visit ${visit.id}: report PDF failed:`, e?.message ?? e);
+          return null;
+        }),
+      ]).then(([html, pdf]) => this.notificationsService.send(orgId, {
+        ...(pdf ? { attachments: [{ filename: this.reportFilename(visit), content: pdf, contentType: "application/pdf" }] } : {}),
         channel: "email",
         to: client.email,
         recipientId: client.userId || client.id, // Use userId if available, fallback to client.id
@@ -1552,24 +1329,28 @@ export class VisitsService {
         // Get org settings for email template
         const orgSettings = await getOrgEmailSettings(orgId);
         
-        const emailContent = `
-          <h2 style="color: #333333; margin-top: 0; margin-bottom: 16px;">Visit Approved - ${poolName}</h2>
-          <p style="margin: 0 0 16px 0;">Your visit to ${poolName} has been approved!</p>
-          <p style="margin: 0 0 8px 0;"><strong>Client:</strong> ${clientName}</p>
-          <p style="margin: 0 0 16px 0;"><strong>Payment Amount:</strong> ${amount}</p>
-          <table role="presentation" style="width: 100%; border-collapse: collapse; background-color: #f9fafb; border-radius: 8px; margin: 0 0 16px 0;">
-            <tr>
-              <td style="padding: 14px 16px;">
-                <p style="margin: 0 0 4px 0; font-size: 12px; letter-spacing: 0.05em; text-transform: uppercase; color: #6b7280;">Your Earnings</p>
-                <p style="margin: 0 0 4px 0; color: #333333;">This month: <strong>${fmt(monthTotal)}</strong> from ${monthVisits} approved visit${monthVisits !== 1 ? "s" : ""}</p>
-                <p style="margin: 0; color: #333333;">All time: <strong>${fmt(allTimeTotal)}</strong></p>
-              </td>
-            </tr>
-          </table>
-          <p style="margin: 16px 0 0 0;">Thank you for your excellent work!</p>
-        `;
-        
-        const emailHtml = createEmailTemplate(emailContent, orgSettings);
+        const ui = emailUi;
+        const emailContent =
+          ui.p(`Your visit to <strong>${escapeHtml(poolName)}</strong> has been approved. Thank you for your work.`) +
+          ui.facts([
+            ["Client", clientName],
+            ["Payment", amount],
+          ]) +
+          ui.h("Your earnings") +
+          ui.tiles([
+            { label: "This month", value: fmt(monthTotal) },
+            { label: "Approved visits", value: String(monthVisits) },
+          ]) +
+          ui.facts([["All time", fmt(allTimeTotal)]]);
+
+        const emailHtml = createEmailTemplate(emailContent, {
+          ...orgSettings,
+          eyebrow: "Visit approved",
+          title: amount === "payment" ? "Your visit is approved" : `${amount} approved`,
+          subtitle: `${poolName} · ${clientName}`,
+          preheader: `${earningsLine}`,
+          reason: `You're getting this because you're a carer with ${orgSettings.organizationName}.`,
+        });
         
         await this.notificationsService.send(orgId, {
           channel: "email",
@@ -1592,37 +1373,78 @@ export class VisitsService {
     }
   }
 
-  private async buildVisitCompletionEmail(visit: any, pool: any, carer: any, summaryItems: string[], duration: string, orgId: string): Promise<string> {
-    const carerName = carer?.name || "Your carer";
-    const poolName = pool.name || "your pool";
-    
-    // Get org settings for email template
+  private async buildVisitCompletionEmail(visit: any, pool: any, carer: any, _summaryItems: string[], duration: string, orgId: string): Promise<string> {
+    const ui = emailUi;
     const orgSettings = await getOrgEmailSettings(orgId);
-    
-    const emailContent = `
-      <h2 style="color: #333333; margin-top: 0; margin-bottom: 16px;">Service Completed - ${poolName}</h2>
-      <p style="margin: 0 0 16px 0;">Your pool service has been completed by <strong>${carerName}</strong> (Duration: ${duration}).</p>
-      
-      <h3 style="color: ${orgSettings.primaryColor}; margin-top: 24px; margin-bottom: 16px;">Summary of Work Done:</h3>
-      <ul style="list-style-type: none; padding-left: 0; margin: 0;">
-        ${summaryItems.map(item => `<li style="margin: 8px 0; padding-left: 20px; position: relative;">
-          <span style="position: absolute; left: 0; color: ${orgSettings.primaryColor};">•</span>
-          ${item}
-        </li>`).join("")}
-      </ul>
-      
-      <p style="margin-top: 24px;">
-        <a href="#" style="background-color: ${orgSettings.primaryColor}; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">
-          Review Visit
-        </a>
-      </p>
-      
-      <p style="margin-top: 20px; color: #666; font-size: 14px;">
-        You can review this visit in the app and leave feedback.
-      </p>
-    `;
-    
-    return createEmailTemplate(emailContent, orgSettings);
+    const carerName = carer?.name || "Your carer";
+    const carerFirst = carerName.split(" ")[0];
+    const poolName = pool.name || "your pool";
+    const clientFirst = (pool.client?.name || "").split(" ")[0];
+    const tz = "Africa/Accra";
+    const done = visit.completedAt ? new Date(visit.completedAt) : new Date();
+    const started = visit.arrivedAt || visit.startedAt;
+    const time = (d: Date) => d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: tz });
+    const day = done.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: tz });
+    const when = started ? `${time(new Date(started))}–${time(done)}` : time(done);
+
+    // Water readings against this pool's own targets
+    const readings = readingsForClient(visit.readings?.[0], pool).slice(0, 4);
+    const offTarget = readings.filter((r) => r.ok === false);
+
+    // Checklist: what the carer actually ticked, else the template's tasks
+    const ticked: string[] = [];
+    const list = Array.isArray(visit.checklist) ? visit.checklist : Array.isArray(visit.template?.checklist) ? visit.template.checklist : [];
+    for (const item of list) {
+      if (item && item.completed !== false && item.skipped !== true) {
+        const label = item.task || item.label || item.title;
+        if (label) ticked.push(String(label));
+      }
+    }
+    const chemicals: string[] = (visit.chemicals || []).map((c: any) =>
+      [c.chemical, c.qty != null ? `${c.qty}${c.unit ? ` ${c.unit}` : ""}` : ""].filter(Boolean).join(" · ")
+    );
+    const photoCount = (visit.photos || []).length;
+
+    const mins = started ? Math.round((done.getTime() - new Date(started).getTime()) / 60000) : null;
+    const onSite = mins && mins > 0 ? (mins >= 60 ? `${Math.floor(mins / 60)} h ${mins % 60} min` : `${mins} minutes`) : duration !== "completed" ? duration : "";
+    const intro = `${clientFirst ? `Hi ${escapeHtml(clientFirst)}, ` : ""}<strong>${escapeHtml(carerName)}</strong> finished your visit at ${time(done)}${
+      onSite ? ` after ${escapeHtml(onSite)} on site` : ""
+    }.`;
+    const state = !readings.length
+      ? ""
+      : offTarget.length
+      ? ui.note(
+          `${offTarget.map((r) => escapeHtml(r.label)).join(" and ")} ${offTarget.length > 1 ? "were" : "was"} outside the healthy range${
+            chemicals.length ? `, so ${escapeHtml(carerFirst)} treated the water` : ""
+          }. Your full report in the app explains what was done and what happens next.`
+        )
+      : ui.note("All water readings were in the healthy range.");
+
+    const content =
+      ui.p(intro) +
+      state +
+      (readings.length ? ui.h("Water readings") + ui.tiles(readings.map((r) => ({ label: r.label, value: r.display, ok: r.ok }))) : "") +
+      (ticked.length ? ui.h("What we did") + ui.checks(ticked.slice(0, 12)) : "") +
+      (chemicals.length ? ui.h("Chemicals added") + ui.bullets(chemicals) : "") +
+      ui.button(
+        photoCount ? "See photos and full report" : "See the full report",
+        clientAppLink(`visits/${visit.id}`),
+        orgSettings.primaryColor,
+        "Open the app to rate this visit. You have 7 days to flag anything that looks wrong."
+      );
+
+    return createEmailTemplate(content, {
+      ...orgSettings,
+      eyebrow: "Visit complete",
+      title: "Your pool is serviced",
+      subtitle: `${poolName} · ${day} · ${when}`,
+      preheader: offTarget.length
+        ? `${carerFirst} finished at ${time(done)} and treated the water.`
+        : readings.length
+        ? `${carerFirst} finished at ${time(done)}. Water readings are all in range.`
+        : `${carerFirst} finished your visit at ${time(done)}.`,
+      reason: `You're getting this because you have a pool serviced by ${orgSettings.organizationName}.`,
+    });
   }
 
   /**

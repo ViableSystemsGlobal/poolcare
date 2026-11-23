@@ -55,7 +55,10 @@ export class VisitsController {
   @UseGuards(RolesGuard)
   @Roles("ADMIN", "MANAGER")
   async publishAiReport(@CurrentUser() user: { org_id: string; role: string }, @Param("id") visitId: string) {
-    return this.aiReportService.setPublished(user.org_id, user.role, visitId, true);
+    const result = await this.aiReportService.setPublished(user.org_id, user.role, visitId, true);
+    // The client gets it by email (PDF attached) and push; never blocks the office.
+    this.visitsService.notifyReportShared(user.org_id, visitId).catch(() => undefined);
+    return result;
   }
 
   @Post(":id/ai-report/unpublish")
@@ -172,6 +175,15 @@ export class VisitsController {
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", `attachment; filename="visit-report-${visitId}.pdf"`);
     res.send(pdfBuffer);
+  }
+
+  /** Client app: email me this visit's report as a PDF. */
+  @Post(":id/report/email")
+  async emailReport(
+    @CurrentUser() user: { org_id: string; role: string; sub: string },
+    @Param("id") visitId: string
+  ) {
+    return this.visitsService.emailReportToClient(user.org_id, user.role, user.sub, visitId);
   }
 
   @Post(":id/review")

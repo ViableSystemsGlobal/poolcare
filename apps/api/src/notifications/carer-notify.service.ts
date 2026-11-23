@@ -1,7 +1,20 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { prisma } from "@poolcare/db";
 import { NotificationsService } from "./notifications.service";
-import { createEmailTemplate, getOrgEmailSettings } from "../email/email-template.util";
+import { createEmailTemplate, getOrgEmailSettings, emailUi } from "../email/email-template.util";
+
+const BRAND_TOKEN = "__ORG_BRAND_COLOR__";
+const CARER_EYEBROWS: Record<string, string> = {
+  job_assigned: "New job",
+  day_plan: "Today's plan",
+  visit_completed: "Visit complete",
+  visit_paid: "Payment sent",
+  visit_approved: "Visit approved",
+  job_rescheduled: "Schedule change",
+  job_cancelled: "Job cancelled",
+  job_unassigned: "Schedule change",
+  assessment: "Assessment",
+};
 
 /*
  * One way to tell a carer something: push to the carer app, SMS and a branded
@@ -126,7 +139,15 @@ export class CarerNotifyService {
               subject: msg.emailSubject || msg.title,
               body: msg.emailText || msg.sms,
               template: msg.type,
-              metadata: { ...metadata, html: createEmailTemplate(msg.emailHtml, settings) },
+              metadata: {
+                ...metadata,
+                html: createEmailTemplate(msg.emailHtml.split(BRAND_TOKEN).join(settings.primaryColor || "#387c52"), {
+                  ...settings,
+                  eyebrow: CARER_EYEBROWS[msg.type] || "PoolCare carer",
+                  preheader: msg.push,
+                  reason: `You're getting this because you're a carer with ${settings.organizationName}.`,
+                }),
+              },
             } as any)
           )
           .then(() => void (sent.email = true))
@@ -141,24 +162,25 @@ export class CarerNotifyService {
   // ---------------------------------------------------------------------------
   // Shared email building blocks (kept plain so every email client renders them)
 
+  /** Title of the email (lifted into the brand header by the layout). */
   static heading(text: string) {
-    return `<h2 style="color:#111827;margin:0 0 12px 0;font-size:20px;">${esc(text)}</h2>`;
+    return `<h2>${esc(text)}</h2>`;
   }
 
-  static para(text: string) {
-    return `<p style="margin:0 0 14px 0;color:#374151;line-height:1.5;">${text}</p>`;
+  static para(html: string) {
+    return emailUi.p(html);
   }
 
-  /** Two-column detail rows: [label, value] (values are escaped). */
+  /** Label/value rows: [label, value] (values are escaped). */
   static details(rows: Array<[string, string | null | undefined]>) {
-    const body = rows
-      .filter(([, v]) => v)
-      .map(
-        ([k, v]) =>
-          `<tr><td style="padding:6px 12px 6px 0;color:#6b7280;font-size:13px;white-space:nowrap;vertical-align:top;">${esc(k)}</td>` +
-          `<td style="padding:6px 0;color:#111827;font-size:14px;">${esc(v)}</td></tr>`
-      )
-      .join("");
-    return `<table role="presentation" style="border-collapse:collapse;margin:0 0 16px 0;">${body}</table>`;
+    return emailUi.facts(rows);
   }
+
+  /** Centred button in the org's brand colour (filled in when the email is sent). */
+  static button(label: string, href: string) {
+    return emailUi.button(label, href, BRAND_TOKEN);
+  }
+
+  /** Colour placeholder for links in carer emails; replaced with the org colour on send. */
+  static readonly brand = BRAND_TOKEN;
 }

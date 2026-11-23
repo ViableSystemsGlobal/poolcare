@@ -111,7 +111,7 @@ export function AiReportCard({
     if (!published) {
       const ok = await confirm({
         title: "Share this report with the client?",
-        description: "It will appear on their visit report in the app.",
+        description: "It will appear on their visit report in the app, and they'll get it by email with the PDF attached.",
         confirmLabel: "Share",
       });
       if (!ok) return;
@@ -119,7 +119,7 @@ export function AiReportCard({
     setBusy("publish");
     try {
       await call(published ? "/unpublish" : "/publish", "POST");
-      toast({ title: published ? "Report hidden from the client" : "Report shared with the client" });
+      toast({ title: published ? "Report hidden from the client" : "Report shared and emailed to the client" });
     } catch (e: any) {
       toast({ title: "Couldn't update", description: e.message, variant: "destructive" });
     } finally {

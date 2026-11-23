@@ -2,7 +2,7 @@ import { Injectable, Logger } from "@nestjs/common";
 import { Cron } from "@nestjs/schedule";
 import { prisma } from "@poolcare/db";
 import { NotificationsService } from "../notifications/notifications.service";
-import { createEmailTemplate, getOrgEmailSettings } from "../email/email-template.util";
+import { createEmailTemplate, getOrgEmailSettings, emailUi, escapeHtml, clientAppLink } from "../email/email-template.util";
 import { buildPerformanceReport } from "./performance-report";
 
 /**
@@ -77,12 +77,29 @@ export class MonthlyReportScheduler {
     }
     if (client.email) {
       const settings = await getOrgEmailSettings(plan.orgId);
+      const ui = emailUi;
+      const tiles = report.water
+        .filter((w) => w.inRangePct != null)
+        .slice(0, 4)
+        .map((w) => ({
+          label: w.label,
+          value: `${w.inRangePct}% in range`,
+          ok: (w.inRangePct as number) >= 80,
+          tag: `avg ${w.average}${w.unit ? ` ${w.unit}` : ""}`,
+        }));
       const html = createEmailTemplate(
-        `<h2 style="margin:0 0 12px 0;">${poolName} — ${report.label}</h2>
-         <p style="margin:0 0 12px 0;">${summary}</p>
-         ${inRange.length ? `<ul style="margin:0 0 12px 18px;padding:0;">${inRange.map((l) => `<li>${l}</li>`).join("")}</ul>` : ""}
-         <p style="margin:0;">Open the ${settings.organizationName} app for the full report.</p>`,
-        settings
+        ui.p(`Hi ${escapeHtml((client.name || "there").split(" ")[0])}, here's how ${escapeHtml(poolName)} did in ${escapeHtml(report.label)}.`) +
+          ui.tiles([{ label: "Visits delivered", value: String(report.visits.delivered) }]) +
+          (tiles.length ? ui.h("Water over the month") + ui.tiles(tiles) : "") +
+          ui.button("See the full report", clientAppLink(`reports/${plan.id}?period=${period}`), settings.primaryColor, "Readings, chemicals and every visit, in the app."),
+        {
+          ...settings,
+          eyebrow: "Monthly report",
+          title: `${report.label} at ${poolName}`,
+          subtitle: summary,
+          preheader: `${summary} See your water readings and chemicals.`,
+          reason: `You're getting this because you have a service plan with ${settings.organizationName}.`,
+        }
       );
       await this.notificationsService
         .send(plan.orgId, {

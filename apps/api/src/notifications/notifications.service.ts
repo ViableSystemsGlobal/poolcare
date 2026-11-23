@@ -5,7 +5,7 @@ import { SmsAdapter } from "./adapters/sms.adapter";
 import { EmailAdapter } from "./adapters/email.adapter";
 import { PushAdapter } from "./adapters/push.adapter";
 import { SendNotificationDto } from "./dto";
-import { createEmailTemplate, getOrgEmailSettings } from "../email/email-template.util";
+import { createEmailTemplate, getOrgEmailSettings, emailUi, escapeHtml, clientAppLink } from "../email/email-template.util";
 
 @Injectable()
 export class NotificationsService {
@@ -392,20 +392,19 @@ export class NotificationsService {
       // Get org settings for email template
       const orgSettings = await getOrgEmailSettings(orgId);
       
-      const emailContent = `
-        <h2 style="color: #333333; margin-top: 0; margin-bottom: 16px;">New Quote Ready for Approval</h2>
-        <p style="margin: 0 0 16px 0;">A new quote is ready for your review.</p>
-        <p style="margin: 16px 0;">
-          <a href="${appUrl}/quotes/${quoteId}" style="background-color: ${orgSettings.primaryColor}; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">
-            View and Approve Quote
-          </a>
-        </p>
-        <p style="margin: 16px 0 0 0; color: #666; font-size: 14px;">
-          You can review the quote details and approve it directly from the link above.
-        </p>
-      `;
-      
-      const emailHtml = createEmailTemplate(emailContent, orgSettings);
+      const ui = emailUi;
+      const emailContent =
+        ui.p(`Hi ${escapeHtml((client.name || "there").split(" ")[0])}, we've prepared a quote for you.`) +
+        ui.p("Open it in the app to see the work and the price. You can approve it there, or reply to this email with any questions.") +
+        ui.button("View the quote", clientAppLink(`quotes/${quoteId}`), orgSettings.primaryColor);
+
+      const emailHtml = createEmailTemplate(emailContent, {
+        ...orgSettings,
+        eyebrow: "New quote",
+        title: "Your quote is ready",
+        preheader: "Your quote is ready to review and approve in the app.",
+        reason: `You're getting this because you asked ${orgSettings.organizationName} for a quote.`,
+      });
       
       return this.send(orgId, {
         recipientId: client.userId,

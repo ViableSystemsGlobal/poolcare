@@ -2,7 +2,7 @@ import { Injectable, Logger, BadRequestException } from "@nestjs/common";
 import { Cron } from "@nestjs/schedule";
 import { SettingsService } from "../../settings/settings.service";
 import { prisma } from "@poolcare/db";
-import { createEmailTemplate, getOrgEmailSettings } from "../../email/email-template.util";
+import { createEmailTemplate, getOrgEmailSettings, styleBareHtml } from "../../email/email-template.util";
 import { EmailAdapter } from "../../notifications/adapters/email.adapter";
 
 @Injectable()
@@ -359,7 +359,14 @@ SUPPLIES:
           /<span class="recipient-name">[^<]*<\/span>/,
           firstName
         );
-        const html = createEmailTemplate(personalizedContent, emailSettings);
+        const html = createEmailTemplate(styleBareHtml(personalizedContent, emailSettings.primaryColor), {
+          ...emailSettings,
+          eyebrow: `${briefingType} briefing`,
+          title: briefingType === "Weekly" ? `Your week, ${firstName}` : `Good morning, ${firstName}`,
+          subtitle: String(metrics.date),
+          preheader: `Your ${orgName} ${briefingType.toLowerCase()} briefing for ${metrics.date}.`,
+          reason: `You're getting this because you're on the ${orgName} briefing list. Change it in Settings.`,
+        });
         await this.emailAdapter.send(recipient.email, subject, `${briefingType} business briefing`, html, orgId);
         sent++;
         this.logger.log(`${briefingType} briefing sent to ${recipient.name} (${recipient.email}) for org ${orgId}`);

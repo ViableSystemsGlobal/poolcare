@@ -1,5 +1,5 @@
 import { Injectable, Logger, Inject, forwardRef } from "@nestjs/common";
-import { createEmailTemplate, getOrgEmailSettings } from "../../email/email-template.util";
+import { createEmailTemplate, getOrgEmailSettings, emailUi, escapeHtml } from "../../email/email-template.util";
 import { Cron } from "@nestjs/schedule";
 import { prisma } from "@poolcare/db";
 import { NotificationsService } from "../../notifications/notifications.service";
@@ -749,12 +749,24 @@ export class TipSchedulerService {
                 tipsQueued,
                 newsletterDrafted,
                 html: createEmailTemplate(
-                  `<h2 style="color: #333333; margin-top: 0; margin-bottom: 16px;">Weekly content ready for review</h2>
-                  <p style="margin: 0 0 16px 0;">${message}</p>
-                  ${tipsQueued ? '<p style="margin: 0 0 8px 0; color: #555555;">&#x2713; Weekly tips have been pre-selected</p>' : ""}
-                  ${newsletterDrafted ? '<p style="margin: 0 0 8px 0; color: #555555;">&#x2713; Newsletter draft has been generated</p>' : ""}
-                  <p style="margin: 16px 0 0 0; color: #6b7280; font-size: 14px;">Log in to your dashboard to review and approve.</p>`,
-                  brand
+                  emailUi.p(escapeHtml(message)) +
+                    emailUi.checks([
+                      ...(tipsQueued ? ["Weekly tips are picked and waiting for approval"] : []),
+                      ...(newsletterDrafted ? ["The newsletter draft is written"] : []),
+                    ]) +
+                    emailUi.button(
+                      "Review and approve",
+                      `${process.env.ADMIN_APP_URL || process.env.WEB_URL || "https://admin.poolcare.africa"}/newsletter`,
+                      brand.primaryColor
+                    ),
+                  {
+                    ...brand,
+                    eyebrow: "Weekly content",
+                    title: "Ready for your review",
+                    subtitle: weekRange,
+                    preheader: message,
+                    reason: `You're getting this because you manage content for ${brand.organizationName}.`,
+                  }
                 ),
               },
             });

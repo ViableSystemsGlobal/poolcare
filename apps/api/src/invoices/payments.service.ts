@@ -4,7 +4,7 @@ import { prisma } from "@poolcare/db";
 import { NotificationsService } from "../notifications/notifications.service";
 import { PrepaidTermsService } from "../plans/prepaid-terms.service";
 import { QuotesService } from "../quotes/quotes.service";
-import { createEmailTemplate, getOrgEmailSettings } from "../email/email-template.util";
+import { createEmailTemplate, getOrgEmailSettings, emailUi } from "../email/email-template.util";
 import { ReceiptsService } from "./receipts.service";
 import { InitPaymentDto, CreateRefundDto } from "./dto";
 import * as crypto from "crypto";
@@ -478,23 +478,12 @@ export class PaymentsService {
         ["Invoice total", `${currency} ${fmt(invoice.totalCents)}`],
         ["Balance due", `${currency} ${fmt(balanceCents)}`],
       ];
-      const emailContent = `
-        <h2 style="color: #333333; margin-top: 0; margin-bottom: 16px;">Payment received</h2>
-        <p style="margin: 0 0 16px 0;">Dear ${esc(client.name || "Valued Client")},</p>
-        <p style="margin: 0 0 16px 0;">Thank you — we've received your payment of <strong>${currency} ${amount}</strong>. Your receipt is below and attached as a PDF.</p>
-        <div style="background-color: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
-          ${rows
-            .map(
-              ([l, v]) => `<div style="display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #e5e5e5;">
-                <span style="color: #666666;">${esc(l)}</span><strong style="text-transform: ${l === "Payment method" ? "capitalize" : "none"};">${esc(v)}</strong>
-              </div>`
-            )
-            .join("")}
-          <div style="margin-top: 16px; font-size: 18px; font-weight: bold; color: ${orgSettings.primaryColor};">Amount paid: ${currency} ${amount}</div>
-        </div>
-        <p style="margin: 16px 0 0 0;">${esc(balanceLine)}</p>
-        <p style="margin: 16px 0 0 0;">Thank you for choosing ${esc(orgName)}!</p>
-      `;
+      const ui = emailUi;
+      const emailContent =
+        ui.p(`Hi ${esc((client.name || "there").split(" ")[0])}, thank you. We've received your payment. Here's your receipt.`) +
+        ui.facts(rows.map(([l, v]) => [l, l === "Payment method" ? v.charAt(0).toUpperCase() + v.slice(1) : v] as [string, string])) +
+        ui.note(esc(balanceLine)) +
+        ui.signoff(orgName);
       const emailBody = `Dear ${client.name || "Valued Client"},
 
 Thank you — we've received your payment of ${currency} ${amount}.
@@ -525,7 +514,14 @@ Thank you for choosing ${orgName}!`;
             : {}),
           subject: `Receipt ${receipt.receiptNumber} - ${currency} ${amount}`,
           body: emailBody,
-          metadata: { ...metadata, html: createEmailTemplate(emailContent, orgSettings) },
+          metadata: { ...metadata, html: createEmailTemplate(emailContent, {
+            ...orgSettings,
+            eyebrow: `Receipt ${receipt.receiptNumber}`,
+            title: `${currency === "GHS" ? "GH₵" : `${currency} `}${amount} received`,
+            subtitle: `Invoice #${invoice.invoiceNumber} · ${paidOn}`,
+            preheader: `Thank you. ${balanceLine}`,
+            reason: `You're getting this because you made a payment to ${orgName}.`,
+          }) },
         });
         sent.email = true;
       } catch (err: any) {

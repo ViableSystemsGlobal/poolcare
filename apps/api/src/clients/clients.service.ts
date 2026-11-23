@@ -2,7 +2,7 @@ import { Injectable, NotFoundException, ForbiddenException, BadRequestException,
 import { prisma } from "@poolcare/db";
 import { CreateClientDto, UpdateClientDto, CreateHouseholdDto, InviteHouseholdMemberDto } from "./dto";
 import { NotificationsService } from "../notifications/notifications.service";
-import { createWelcomeEmailTemplate, createEmailTemplate } from "../email/email-template.util";
+import { createWelcomeEmailTemplate, createEmailTemplate, getOrgEmailSettings, emailUi, escapeHtml } from "../email/email-template.util";
 import { normalizePhone, emptyAsNull } from "../utils/phone.util";
 
 @Injectable()
@@ -186,10 +186,7 @@ export class ClientsService {
       // Send welcome email if email is provided
       if (email) {
         try {
-          const emailHtml = createWelcomeEmailTemplate(dto.name, orgName, {
-            logoUrl,
-            organizationName: orgName,
-          });
+          const emailHtml = createWelcomeEmailTemplate(dto.name, orgName, await getOrgEmailSettings(orgId));
 
           await this.notificationsService.send(orgId, {
             channel: "email",
@@ -607,27 +604,24 @@ export class ClientsService {
     // Send invitation via email
     if (dto.email) {
       try {
-        const emailContent = `
-          <h2 style="color: #333333; margin-top: 0; margin-bottom: 16px;">You've been invited!</h2>
-          <p style="margin: 0 0 16px 0;">Hi ${dto.name || "there"},</p>
-          <p style="margin: 0 0 16px 0;">
-            <strong>${primaryClient.name}</strong> has invited you to join their household on ${orgName}.
-          </p>
-          <p style="margin: 0 0 16px 0;">
-            ${dto.message || "Join their household to share access to pool services, invoices, and more."}
-          </p>
-          <p style="margin: 0 0 16px 0;">
-            Download our mobile app to accept the invitation and get started!
-          </p>
-          <p style="margin: 16px 0 0 0;">
-            Best regards,<br>
-            <strong>The ${orgName} Team</strong>
-          </p>
-        `;
+        const ui = emailUi;
+        const settings = await getOrgEmailSettings(orgId);
+        const appHref = settings.appDownloadUrl || settings.appStoreUrl || settings.googlePlayUrl;
+        const emailContent =
+          ui.p(`Hi ${escapeHtml(dto.name || "there")}, <strong>${escapeHtml(primaryClient.name)}</strong> has invited you to join their household on ${escapeHtml(orgName)}.`) +
+          (dto.message ? ui.note(escapeHtml(dto.message)) : "") +
+          ui.p("Once you join you can see the pool's visits, water readings and invoices, and get updates when a carer has been.") +
+          (appHref
+            ? ui.button("Get the app", appHref, settings.primaryColor, "Sign in with this email address to accept the invitation.")
+            : ui.centerNote("Download the app and sign in with this email address to accept the invitation."));
 
         const emailHtml = createEmailTemplate(emailContent, {
-          logoUrl,
-          organizationName: orgName,
+          ...settings,
+          eyebrow: "Household invite",
+          title: `Join ${primaryClient.name}'s household`,
+          subtitle: orgName,
+          preheader: `${primaryClient.name} invited you to share their pool on ${orgName}.`,
+          reason: `You're getting this because ${primaryClient.name} invited this email address.`,
         });
 
         await this.notificationsService.send(orgId, {

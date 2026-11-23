@@ -9,7 +9,7 @@ import {
   NotFoundException,
   BadRequestException,
 } from "@nestjs/common";
-import { createWelcomeEmailTemplate } from "../email/email-template.util";
+import { createWelcomeEmailTemplate, getOrgEmailSettings } from "../email/email-template.util";
 import { NotificationsService } from "./notifications.service";
 import { CarerDayPlanService } from "./carer-day-plan.service";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
@@ -269,10 +269,7 @@ export class NotificationsController {
     const profile = (org?.settings?.profile as any) || {};
     const orgName = profile.name || org?.name || "PoolCare";
 
-    const emailHtml = createWelcomeEmailTemplate(name, orgName, {
-      logoUrl: profile.logoUrl,
-      organizationName: orgName,
-    });
+    const emailHtml = createWelcomeEmailTemplate(name, orgName, await getOrgEmailSettings(orgId));
 
     await this.notificationsService.send(orgId, {
       channel: "email",

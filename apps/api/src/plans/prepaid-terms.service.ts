@@ -3,7 +3,9 @@ import { Cron } from "@nestjs/schedule";
 import { prisma } from "@poolcare/db";
 import { PlansService } from "./plans.service";
 import { NotificationsService } from "../notifications/notifications.service";
-import { createEmailTemplate, getOrgEmailSettings } from "../email/email-template.util";
+import { ModuleRef } from "@nestjs/core";
+import { InvoicesService } from "../invoices/invoices.service";
+import { createEmailTemplate, getOrgEmailSettings, emailUi, escapeHtml, clientAppLink } from "../email/email-template.util";
 import { nextInvoiceNumber } from "../invoices/invoice-number.util";
 import { contractedVisitsFor, settleCarryForward, summarizeTerm } from "./visit-entitlement";
 import { loadPrepaidTerms, resolveTermOption } from "../settings/prepaid-terms";
@@ -54,7 +56,8 @@ export class PrepaidTermsService {
     @Inject(forwardRef(() => PlansService))
     private readonly plansService: PlansService,
     @Inject(forwardRef(() => NotificationsService))
-    private readonly notificationsService: NotificationsService
+    private readonly notificationsService: NotificationsService,
+    private readonly moduleRef: ModuleRef
   ) {}
 
   /**
@@ -509,10 +512,32 @@ export class PrepaidTermsService {
     }
     if (client.email) {
       sends.push(
-        getOrgEmailSettings(orgId).then((settings) => {
+        Promise.all([
+          getOrgEmailSettings(orgId),
+          msg.invoiceId
+            ? this.moduleRef
+                .get(InvoicesService, { strict: false })
+                .generatePdf(orgId, "ADMIN", "", msg.invoiceId)
+                .catch(() => null)
+            : Promise.resolve(null),
+        ]).then(([settings, pdf]) => {
+          const ui = emailUi;
           const html = createEmailTemplate(
-            `<p style="margin: 0 0 16px 0;">Hello ${client.name || "there"},</p><p style="margin: 0 0 16px 0;">${msg.body}</p>`,
-            settings
+            ui.p(`Hi ${escapeHtml((client.name || "there").split(" ")[0])},`) +
+              ui.p(escapeHtml(msg.body).replace(/\n/g, "<br>")) +
+              ui.button(
+                msg.invoiceId ? "Pay now" : "Open my plan",
+                clientAppLink(msg.invoiceId ? `pay/${msg.invoiceId}` : "my-subscriptions"),
+                settings.primaryColor
+              ),
+            {
+              ...settings,
+              eyebrow: "Your service plan",
+              title: msg.subject,
+              subtitle: plan.pool?.name || undefined,
+              preheader: msg.body.slice(0, 140),
+              reason: `You're getting this because you have a service plan with ${settings.organizationName}.`,
+            }
           );
           return this.notificationsService.send(orgId, {
             recipientId: client.id,
@@ -522,6 +547,7 @@ export class PrepaidTermsService {
             template: msg.template,
             subject: msg.subject,
             body: html,
+            ...(pdf ? { attachments: [{ filename: pdf.filename, content: pdf.buffer, contentType: "application/pdf" }] } : {}),
             metadata: { ...metadata, html },
           });
         })

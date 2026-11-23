@@ -36,6 +36,8 @@ RUN apk add --no-cache libc6-compat openssl curl
 ENV NODE_ENV=production PORT=4000
 WORKDIR /app
 COPY --from=builder /out ./
+# Static images the email layout serves from /api/email-assets (read from cwd/assets).
+COPY --from=builder /repo/apps/api/assets ./assets
 COPY --from=builder /prisma-cli /prisma-cli
 ENV PATH="/prisma-cli/node_modules/.bin:$PATH"
 RUN mkdir -p /data/uploads

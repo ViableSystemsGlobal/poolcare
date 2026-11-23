@@ -440,6 +440,11 @@ class ApiClient {
   }
 
   /** Flag a material inaccuracy in a visit report (within 7 days of the visit). */
+  /** Email the visit report PDF to the address on the client's account. */
+  async emailVisitReport(id: string): Promise<{ sent: boolean; to: string }> {
+    return this.request(`/visits/${id}/report/email`, { method: "POST" });
+  }
+
   async disputeVisitReport(id: string, note: string) {
     return this.request(`/visits/${id}/report/dispute`, { method: "POST", body: JSON.stringify({ note }) });
   }

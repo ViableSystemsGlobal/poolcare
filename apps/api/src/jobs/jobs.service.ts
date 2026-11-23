@@ -1,3 +1,4 @@
+import { emailUi } from "../email/email-template.util";
 import { Injectable, NotFoundException, ForbiddenException, BadRequestException, Logger } from "@nestjs/common";
 import { CarerNotifyService, esc } from "../notifications/carer-notify.service";
 import { assertApproved } from "../utils/approval";
@@ -875,8 +876,8 @@ export class JobsService {
             ["Address", job.pool?.address],
             ["Distance", etaMinutes ? `About ${etaMinutes} min away` : null],
           ]) +
-          (maps ? H.para(`<a href="${maps}" style="color:#2563eb;text-decoration:none;">Get directions</a>`) : "") +
-          H.para("Open the PoolCare app to see the full details."),
+          (maps ? H.button("Get directions", maps) : "") +
+          emailUi.centerNote("Open the PoolCare app to see the full details."),
         metadata: { jobId: job.id, poolId: job.poolId, url: `/jobs/${job.id}` },
       });
     } catch (err) {

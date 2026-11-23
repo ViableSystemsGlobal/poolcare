@@ -2,6 +2,7 @@ import { Injectable, BadRequestException, NotFoundException, ForbiddenException,
 import { prisma } from "@poolcare/db";
 import { FilesService } from "../files/files.service";
 import { SettingsService } from "../settings/settings.service";
+import { targetsForPool } from "./water-targets";
 
 /*
  * AI-written visit reports.
@@ -30,33 +31,21 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T | null> {
   return Promise.race([p, new Promise<null>((resolve) => setTimeout(() => resolve(null), ms))]);
 }
 
-// Default target ranges; a pool's own `targets` JSON overrides these.
-const DEFAULT_TARGETS: Record<string, { min: number; max: number; unit: string; label: string }> = {
-  ph: { min: 7.2, max: 7.8, unit: "", label: "pH" },
-  chlorineFree: { min: 1, max: 3, unit: "ppm", label: "Free chlorine" },
-  chlorineTotal: { min: 1, max: 4, unit: "ppm", label: "Total chlorine" },
-  alkalinity: { min: 80, max: 120, unit: "ppm", label: "Total alkalinity" },
-  calciumHardness: { min: 200, max: 400, unit: "ppm", label: "Calcium hardness" },
-  cyanuricAcid: { min: 30, max: 50, unit: "ppm", label: "Cyanuric acid" },
-  tempC: { min: -100, max: 100, unit: "°C", label: "Water temperature" },
-  tds: { min: 0, max: 1500, unit: "ppm", label: "TDS" },
-  salinity: { min: 2700, max: 3400, unit: "ppm", label: "Salinity" },
-};
 
 const SYSTEM_PROMPT = `You write service reports for PoolCare, a professional pool maintenance company in Ghana.
 A report goes to the pool owner after each visit. Write in clear, warm, professional British English, the way a careful senior technician would explain the visit to the owner.
 
 Rules:
-- Use ONLY what is in the visit data and the photos. Never invent readings, tasks, chemicals, times or problems. If something wasn't recorded, don't mention it, or say plainly that it wasn't recorded when that matters.
+- Use ONLY what is in the visit data and the photos. Never invent readings, tasks, chemicals, times or problems. If something wasn't recorded, leave it out; don't list what is missing.
 - Look at the photos carefully and describe what they actually show (water clarity and colour, debris, algae, tiles and waterline, equipment, surroundings). Say which photo type (before/after/issue) supports an observation. If a photo is unclear, don't guess.
 - Compare readings with the target ranges given and with the pool's recent history. Explain in plain words what any out-of-range value means for the owner and what was done about it.
-- Be short but complete: the whole report should read in under a minute. No filler, no marketing, no emojis, no markdown symbols.
+- Be short. The owner reads this on a phone: the whole report should read in about 20 seconds. Plain words, no jargon, no filler, no marketing, no emojis, no markdown symbols. Don't repeat the numbers the owner already sees in the readings table unless one is out of range.
 - Use the client's first name once at most. Refer to the technician by first name.
 - Recommendations are concrete next steps for the owner or the next visit (0–4 items). Leave the list empty if nothing is needed.
 
 Return ONLY a JSON object, no prose around it:
 {
-  "summary": "2–3 sentences: what was done and the overall state of the pool",
+  "summary": "1–2 short sentences, at most 35 words: what was done and whether the pool is in good shape",
   "sections": [
     {"title": "Water chemistry", "body": "..."},
     {"title": "Work carried out", "body": "..."},
@@ -65,7 +54,7 @@ Return ONLY a JSON object, no prose around it:
   ],
   "recommendations": ["..."]
 }
-Include only sections that have something real to say (omit "Issues found" if there were none). Each section body is 1–3 sentences.`;
+Include only sections that have something real to say, at most 3 (omit "Issues found" if there were none; omit "Pool condition" if there are no photos or notes about it). Each section body is 1–2 short sentences. Recommendations: 0–3 items, each under 15 words.`;
 
 @Injectable()
 export class VisitAiReportService {
@@ -197,16 +186,7 @@ export class VisitAiReportService {
 
     const job: any = visit.job;
     const pool: any = job?.pool;
-    const targets = { ...DEFAULT_TARGETS };
-    // Salinity only matters for salt-water pools
-    if (!/salt/i.test(`${pool?.filtrationType || ""} ${pool?.poolType || ""}`)) delete targets.salinity;
-    if (pool?.targets && typeof pool.targets === "object") {
-      for (const [k, v] of Object.entries(pool.targets as Record<string, any>)) {
-        if (targets[k] && v && typeof v.min === "number" && typeof v.max === "number") {
-          targets[k] = { ...targets[k], min: v.min, max: v.max };
-        }
-      }
-    }
+    const targets = targetsForPool(pool);
 
     // Recent history on the same pool (last 3 completed visits before this one)
     const history = pool
@@ -325,7 +305,8 @@ export class VisitAiReportService {
     return { text: lines.join("\n"), images };
   }
 
-  private async fetchImage(url: string): Promise<Buffer | null> {
+  /** Load a visit photo (object storage key, local upload or URL). Never throws. */
+  async fetchImage(url: string): Promise<Buffer | null> {
     try {
       // Stored keys live in object storage; read them directly when we can.
       if (!/^https?:|^data:|^\/api\/files\/|^local\//.test(url)) {

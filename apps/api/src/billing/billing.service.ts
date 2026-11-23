@@ -2,7 +2,9 @@ import { Injectable, Logger, forwardRef, Inject } from "@nestjs/common";
 import { Cron } from "@nestjs/schedule";
 import { prisma } from "@poolcare/db";
 import { NotificationsService } from "../notifications/notifications.service";
-import { createEmailTemplate, getOrgEmailSettings } from "../email/email-template.util";
+import { ModuleRef } from "@nestjs/core";
+import { InvoicesService } from "../invoices/invoices.service";
+import { createEmailTemplate, getOrgEmailSettings, emailUi, escapeHtml, clientAppLink } from "../email/email-template.util";
 import { nextInvoiceNumber } from "../invoices/invoice-number.util";
 
 @Injectable()
@@ -11,8 +13,21 @@ export class BillingService {
 
   constructor(
     @Inject(forwardRef(() => NotificationsService))
-    private readonly notificationsService: NotificationsService
+    private readonly notificationsService: NotificationsService,
+    private readonly moduleRef: ModuleRef
   ) {}
+
+  /** Invoice PDF for an email attachment; null if it can't be drawn. */
+  private async invoicePdfAttachment(orgId: string, invoiceId: string) {
+    try {
+      const invoices = this.moduleRef.get(InvoicesService, { strict: false });
+      const pdf = await invoices.generatePdf(orgId, "ADMIN", "", invoiceId);
+      return [{ filename: pdf.filename, content: pdf.buffer, contentType: "application/pdf" }];
+    } catch (e: any) {
+      this.logger?.warn?.(`Invoice ${invoiceId}: PDF for email failed: ${e?.message ?? e}`);
+      return null;
+    }
+  }
 
   /**
    * Cron: runs at 8 AM on the 25th of every month.
@@ -331,29 +346,27 @@ export class BillingService {
       // Get org settings for email template
       const orgSettings = await getOrgEmailSettings(plan.orgId);
       
-      const emailContent = `
-        <h2 style="color: #333333; margin-top: 0; margin-bottom: 16px;">Subscription Invoice</h2>
-        <p style="margin: 0 0 16px 0;">Hello ${client.name || "Valued Customer"},</p>
-        <p style="margin: 0 0 16px 0;">Your subscription invoice has been generated for your service plan.</p>
-        
-        <div style="background: #f9fafb; padding: 20px; border-radius: 8px; margin: 20px 0;">
-          <p style="margin: 8px 0;"><strong>Invoice Number:</strong> ${invoiceNumber}</p>
-          <p style="margin: 8px 0;"><strong>Amount:</strong> ${currency} ${totalAmount}</p>
-          <p style="margin: 8px 0;"><strong>Due Date:</strong> ${dueDate}</p>
-          <p style="margin: 8px 0;"><strong>Pool:</strong> ${poolName}</p>
-          <p style="margin: 8px 0;"><strong>Service Plan:</strong> ${planName}</p>
-          <p style="margin: 8px 0;"><strong>Billing Period:</strong> ${periodStart} to ${periodEnd}</p>
-        </div>
+      const ui = emailUi;
+      const emailContent =
+        ui.p(`Hi ${escapeHtml((client.name || "there").split(" ")[0])}, your invoice for this billing period is ready.`) +
+        ui.facts([
+          ["Invoice", `#${invoiceNumber}`],
+          ["Service plan", planName],
+          ["Pool", poolName],
+          ["Period", `${periodStart} – ${periodEnd}`],
+          ["Due", dueDate],
+          ["Amount", `${currency} ${totalAmount}`],
+        ]) +
+        ui.button(`Pay ${currency} ${totalAmount}`, clientAppLink(`pay/${invoice.id}`), orgSettings.primaryColor, "Pay by card or mobile money in the app.");
 
-        <p style="margin: 16px 0 0 0;">You can view and pay this invoice directly in the ${orgSettings.organizationName} mobile app.</p>
-        
-        <p style="margin: 24px 0 0 0;">Thank you for your continued business!</p>
-        <p style="color: #6b7280; font-size: 12px; margin-top: 24px;">
-          This is an automated message. Please do not reply to this email.
-        </p>
-      `;
-
-      const emailHtml = createEmailTemplate(emailContent, orgSettings);
+      const emailHtml = createEmailTemplate(emailContent, {
+        ...orgSettings,
+        eyebrow: `Invoice ${invoiceNumber}`,
+        title: `${currency} ${totalAmount} due ${dueDate}`,
+        subtitle: `${planName} · ${periodStart} – ${periodEnd}`,
+        preheader: `Your ${planName} invoice for ${currency} ${totalAmount} is ready.`,
+        reason: `You're getting this because you have a service plan with ${orgSettings.organizationName}.`,
+      });
 
       await this.notificationsService.send(plan.orgId, {
         recipientId: client.id,
@@ -361,6 +374,7 @@ export class BillingService {
         channel: "email",
         to: client.email,
         template: "subscription_invoice",
+        ...(await this.invoicePdfAttachment(plan.orgId, invoice.id).then((a) => (a ? { attachments: a } : {}))),
         subject: emailSubject,
         body: emailHtml,
         metadata: {
